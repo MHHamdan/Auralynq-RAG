@@ -8,6 +8,11 @@ FROM docker.io/library/node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so the
+# API base must be known here. Override per-deployment, e.g. for a remote server:
+#   --build-arg NEXT_PUBLIC_API_BASE=http://<server-ip>:8000
+ARG NEXT_PUBLIC_API_BASE=http://localhost:8000
+ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 

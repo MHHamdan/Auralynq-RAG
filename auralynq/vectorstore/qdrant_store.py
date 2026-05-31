@@ -119,6 +119,8 @@ class QdrantStore(VectorStore):
         return qm.Filter(must=must) if must else None
 
     def search_dense(self, dense, k: int, filt: Filter | None = None) -> list[ScoredChunk]:
+        if not self.client.collection_exists(self.collection):
+            return []
         res = self.client.query_points(
             self.collection,
             query=np.asarray(dense).tolist(),
@@ -134,7 +136,7 @@ class QdrantStore(VectorStore):
     ) -> list[ScoredChunk]:
         from qdrant_client import models as qm
 
-        if not sparse:
+        if not sparse or not self.client.collection_exists(self.collection):
             return []
         res = self.client.query_points(
             self.collection,
@@ -160,6 +162,9 @@ class QdrantStore(VectorStore):
         return Chunk.model_validate(payload)
 
     def count(self) -> int:
+        # A not-yet-created collection means an empty index (don't 404).
+        if not self.client.collection_exists(self.collection):
+            return 0
         return int(self.client.count(self.collection, exact=True).count)
 
     def clear(self) -> None:

@@ -20,9 +20,14 @@ RUN pip install -e ".[ingest,eval,vector]"
 
 COPY scripts ./scripts
 
-# Non-root user (rootless containers map this safely).
-RUN useradd -m -u 10001 auralynq && chown -R auralynq:auralynq /app
+# Non-root user (rootless containers map this safely). Create the data/reports
+# mountpoints owned by the runtime user *before* declaring volumes so Podman
+# initializes named volumes with the correct (writable) ownership.
+RUN useradd -m -u 10001 auralynq \
+    && mkdir -p /app/data /app/reports \
+    && chown -R auralynq:auralynq /app
 USER auralynq
+VOLUME ["/app/data"]
 
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 \
