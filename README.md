@@ -103,6 +103,54 @@ auralynq talk    # push-to-talk voice loop
 Open the UI at **http://localhost:3000**, the API docs at **http://localhost:8000/docs**,
 and Phoenix traces at **http://localhost:6006**.
 
+## 🌐 Remote / server deployment
+
+Running the stack on a remote server (accessed from a browser on another machine)
+needs three things, because the web bundle and CORS are origin-specific. Put your
+deployment values in a git-ignored `.env` (read by `podman-compose` for `${...}`
+substitution); the committed defaults stay `localhost`.
+
+Replace `<SERVER_IP>` with your server's address (e.g. its LAN IP or hostname):
+
+```bash
+# .env  (git-ignored; consumed by podman-compose)
+# --- public address baked into the web bundle + allowed by CORS ---
+NEXT_PUBLIC_API_BASE=http://<SERVER_IP>:8000          # web build arg + runtime
+AURALYNQ_SERVE__CORS_ORIGINS=["http://<SERVER_IP>:3300"]
+
+# --- host ports (override if the defaults clash with other stacks) ---
+AURALYNQ_API_PORT=8000
+AURALYNQ_WEB_PORT=3300
+AURALYNQ_QDRANT_HTTP_PORT=6533
+AURALYNQ_QDRANT_GRPC_PORT=6534
+
+# --- rootless Podman: if inter-container DNS is unavailable, reach Qdrant via
+#     the host gateway + its published port instead of the service name ---
+AURALYNQ_VECTOR_URL=http://host.containers.internal:6533
+```
+
+```bash
+# NEXT_PUBLIC_* is inlined at build time, so the web image must be (re)built with it:
+podman-compose build web          # picks up NEXT_PUBLIC_API_BASE from .env
+podman-compose up -d              # full down/up if you changed images: down && up -d
+
+# seed data + build the index inside the API container (writes to the named volume):
+podman exec auralynq-api auralynq data --sample
+podman exec auralynq-api auralynq index --input /app/data/corpus
+```
+
+Then browse to **http://&lt;SERVER_IP&gt;:3300** (UI), **http://&lt;SERVER_IP&gt;:8000/docs**
+(API), **http://&lt;SERVER_IP&gt;:6006** (Phoenix). Ensure the server firewall allows
+those ports.
+
+**Notes**
+- Voice from the browser mic needs a real ASR engine in the API image; it ships
+  faster-whisper (the base model downloads on the first `/voice` request).
+- For TLS / a single public port, front the stack with a reverse proxy (Caddy/Nginx)
+  and set `NEXT_PUBLIC_API_BASE`/CORS to the public `https://` origin.
+- `podman-compose` (v1) ignores some directives and pins image IDs across partial
+  `up`s — after rebuilding an image, do a full `down && up -d`.
+
 ## ⚙️ Configuration
 
 All config is via env vars (prefix `AURALYNQ_`, nested with `__`). See [`.env.example`](.env.example).
