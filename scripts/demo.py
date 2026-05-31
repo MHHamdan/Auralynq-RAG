@@ -62,9 +62,10 @@ def main() -> None:
     console.print("→ building index (vector + knowledge graph) …")
     stats = build_index(corpus)
     st = Table(title="Index")
+    st.add_column("metric")
+    st.add_column("value", justify="right")
     for k, v in stats.items():
         st.add_row(k, str(v))
-    st.add_column("metric")
     console.print(st)
 
     from auralynq.agent import runner
