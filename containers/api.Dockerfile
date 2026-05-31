@@ -13,10 +13,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg libsndfile1 curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies first for layer caching.
+# Install dependencies first for layer caching. faster-whisper + soundfile give
+# real ASR for the voice endpoint without pulling torch (unlike the full [voice]
+# extra's silero-vad); faster-whisper uses CTranslate2 and its own bundled VAD.
 COPY pyproject.toml README.md ./
 COPY auralynq ./auralynq
-RUN pip install -e ".[ingest,eval,vector]"
+RUN pip install -e ".[ingest,eval,vector]" "faster-whisper>=1.0" "soundfile>=0.12"
 
 COPY scripts ./scripts
 
