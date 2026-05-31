@@ -117,6 +117,19 @@ All config is via env vars (prefix `AURALYNQ_`, nested with `__`). See [`.env.ex
 | `AURALYNQ_VOICE__TTS_PROVIDER` | `auto` | `auto`/`kokoro`/`null` |
 | `AURALYNQ_AGENT__MAX_ITERS` | `3` | Retry cap for the rewrite loop |
 | `AURALYNQ_AGENT__LATENCY_BUDGET_MS` | `15000` | Agent latency budget |
+| `AURALYNQ_SERVE__API_KEY` | _(empty)_ | Optional bearer token; empty = open (local) |
+| `AURALYNQ_SERVE__RATE_LIMIT_PER_MIN` | `120` | Per-client request cap |
+
+### Authentication
+
+The API is **open by default** for the local demo. Set `AURALYNQ_SERVE__API_KEY`
+to require `Authorization: Bearer <key>` on every endpoint except `/health` and
+`/metrics` (constant-time comparison; see [ADR-0011](DECISIONS.md)):
+
+```bash
+AURALYNQ_SERVE__API_KEY=$(openssl rand -hex 24) make serve
+curl -H "Authorization: Bearer <key>" localhost:8000/query -d '{"question":"..."}'
+```
 
 ## 🔌 Providers
 

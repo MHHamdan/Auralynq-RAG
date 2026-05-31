@@ -78,6 +78,9 @@ class ServeSettings(BaseSettings):
     rate_limit_per_min: int = 120
     max_upload_mb: int = 50
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    # Optional bearer-token auth. Empty == open (local/demo). When set, all
+    # endpoints except /health and /metrics require `Authorization: Bearer <key>`.
+    api_key: str = ""
 
 
 class TelemetrySettings(BaseSettings):

@@ -127,3 +127,24 @@ Short ADRs. Each: **Context → Decision → Rationale → Alternatives rejected
 **Rationale.** Honesty + reproducibility; the README is generated from real artifacts.
 
 **Alternatives rejected.** Hand-written marketing numbers.
+
+---
+
+## ADR-0011 — Optional bearer-token API auth (open-by-default)
+
+**Context.** The serving layer needs a production auth story, but the headline
+promise is a zero-friction local `$0` demo. These pull in opposite directions.
+
+**Decision.** Auth is gated by `AURALYNQ_SERVE__API_KEY`. Empty (default) ⇒ the API
+is open — the local demo and tests are unaffected. When set, an `AuthMiddleware`
+requires `Authorization: Bearer <key>` on all endpoints except `/health` and
+`/metrics` (and CORS pre-flight), returning a structured 401. Tokens are compared
+with `hmac.compare_digest` (constant-time).
+
+**Rationale.** One env var flips a local demo into an authenticated deployment with
+no code change; health/metrics stay public for orchestrators/probes; constant-time
+compare avoids timing leaks.
+
+**Alternatives rejected.** Always-on auth (breaks the $0 demo), per-route decorators
+(scattered, easy to miss an endpoint), full OAuth/JWT (over-engineered for a
+single-tenant local-first tool; can layer on later behind the same middleware).

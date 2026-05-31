@@ -22,6 +22,7 @@ from sse_starlette.sse import EventSourceResponse
 from auralynq import __version__
 from auralynq.config import get_settings
 from auralynq.providers import health_snapshot
+from auralynq.serving.auth import AuthMiddleware
 from auralynq.serving.errors import (
     AuralynqError,
     auralynq_error_handler,
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
         CORSMiddleware, allow_origins=s.serve.cors_origins, allow_methods=["*"], allow_headers=["*"]
     )
     app.add_middleware(RateLimitMiddleware, limit_per_min=s.serve.rate_limit_per_min)
+    app.add_middleware(AuthMiddleware, api_key=s.serve.api_key)
     app.add_exception_handler(AuralynqError, auralynq_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_error_handler)
 
