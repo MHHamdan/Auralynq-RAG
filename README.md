@@ -105,12 +105,20 @@ and Phoenix traces at **http://localhost:6006**.
 
 ## 🌐 Remote / server deployment
 
-The stack is **hardened for remote exposure** ([ADR-0012](DECISIONS.md)): only the
-**Web UI** and **API** are published on `0.0.0.0`; **Qdrant + Phoenix bind to
-localhost only** (off the external NIC); the API requires a **bearer token**; and
-the browser never holds the key — the web container runs a same-origin `/api/*`
-proxy that injects it server-side. Put deployment values in a git-ignored `.env`
-(read by `podman-compose` for `${...}` substitution); committed defaults stay safe.
+The stack is **hardened for remote exposure** ([ADR-0012](DECISIONS.md)/[0013](DECISIONS.md)/[0014](DECISIONS.md)):
+
+- **One public port** — a **Caddy TLS reverse proxy** on `:8443` is the *only*
+  service bound to `0.0.0.0`. UI, API, Qdrant and Phoenix bind to **localhost only**
+  (verified unreachable from the server IP).
+- **HTTPS** with a self-signed cert (server IP + localhost as SANs) baked into the
+  Caddy image; set `AURALYNQ_SITE_ADDRESS=https://your.domain` for a real domain.
+- **API auth** via bearer token; the browser never holds the key — the web
+  container's same-origin `/api/*` proxy injects it server-side.
+- **Rootless container DNS without sudo** — `make stack-up` pins the CNI conflist
+  to `0.4.0` + adds the `dnsname` plugin, so services resolve each other by
+  `container_name` ([ADR-0014](DECISIONS.md)).
+
+Put deployment values in a git-ignored `.env` (read by `podman-compose`):
 
 ```bash
 # .env  (git-ignored; consumed by podman-compose — never committed)
@@ -118,41 +126,41 @@ proxy that injects it server-side. Put deployment values in a git-ignored `.env`
 AURALYNQ_SERVE__API_KEY=<random-secret>
 # --- browser uses the same-origin proxy; no IP/secret baked into the bundle ---
 NEXT_PUBLIC_API_BASE=/api
-AURALYNQ_SERVE__CORS_ORIGINS=["http://<SERVER_IP>:3300"]
-# --- host ports (override if defaults clash with other stacks) ---
-AURALYNQ_API_PORT=8000
-AURALYNQ_WEB_PORT=3300
-AURALYNQ_QDRANT_HTTP_PORT=6533
-AURALYNQ_QDRANT_GRPC_PORT=6534
+AURALYNQ_SERVE__CORS_ORIGINS=["https://<SERVER_IP>:8443"]
+# --- TLS proxy (single public port) ---
+AURALYNQ_HTTPS_PORT=8443
+AURALYNQ_CERT_HOST=<SERVER_IP>     # self-signed cert SAN (or your domain)
+AURALYNQ_SITE_ADDRESS=:8443        # or https://your.domain for Let's Encrypt
 # --- internal services bind here (loopback = off the public NIC) ---
 AURALYNQ_BIND_INTERNAL=127.0.0.1
+AURALYNQ_WEB_PORT=3300             # loopback-only, for host debugging
+AURALYNQ_QDRANT_HTTP_PORT=6533
 # --- optional commercial providers (auto-detected; runtime errors degrade to
 #     the offline extractive answerer, never a 500) ---
-OPENAI_API_KEY=<...>        # ANTHROPIC_API_KEY / COHERE_API_KEY / HUGGINGFACE_TOKEN
+COHERE_API_KEY=<...>        # OPENAI_API_KEY / ANTHROPIC_API_KEY / HUGGINGFACE_TOKEN
 ```
 
 ```bash
-# Build images with the proxy baked in, then bring up the hardened stack:
-podman-compose build              # web bakes NEXT_PUBLIC_API_BASE=/api
-make stack-up                     # orders qdrant/phoenix first, wires the API to
-                                  # Qdrant by container IP (rootless-DNS-safe)
+# Build images (web bakes NEXT_PUBLIC_API_BASE=/api; caddy bakes the cert), then
+# bring up the hardened stack (handles the no-sudo CNI DNS fix automatically):
+podman-compose build
+make stack-up
 
 # Seed data + build the index inside the API container (writes the named volume):
 podman exec auralynq-api auralynq data --sample
 podman exec auralynq-api auralynq index --input /app/data/corpus
 ```
 
-Then browse to **http://&lt;SERVER_IP&gt;:3300** (UI) — chat/voice/trace all work
-through the proxy with no client-side key. The API is at
-**http://&lt;SERVER_IP&gt;:8000/docs** (send `Authorization: Bearer <key>`).
-**Qdrant (`:6533`) and Phoenix (`:6006`) are intentionally NOT reachable from the
-server IP** — only on the host's loopback. Open only `3300` + `8000` in the firewall.
+Then browse to **https://&lt;SERVER_IP&gt;:8443** (accept the self-signed cert) —
+chat/voice/trace all work through the proxy with no client-side key. **Only `8443`
+needs to be open in the firewall**; UI/API/Qdrant/Phoenix are not reachable from
+the server IP.
 
 **Notes**
+- Self-signed cert → browsers show a one-time warning; use a domain + `AURALYNQ_SITE_ADDRESS`
+  for a trusted cert (Caddy auto-provisions Let's Encrypt).
 - Voice from the browser mic needs a real ASR engine in the API image; it ships
   faster-whisper (the base model downloads on the first `/voice` request).
-- TLS / single public port is a **separate future step**: front UI+API with a
-  reverse proxy (Caddy/Nginx) on 443 and update `AURALYNQ_SERVE__CORS_ORIGINS`.
 - `podman-compose` (v1) pins image IDs across partial `up`s — after rebuilding an
   image, do a full `down` then `make stack-up`.
 
