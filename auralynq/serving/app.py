@@ -86,6 +86,38 @@ def create_app() -> FastAPI:
             snap["index"] = {"vectors": 0}
         return HealthResponse(**snap)
 
+    @app.get("/version")
+    async def version() -> JSONResponse:
+        # Stable service identity for orchestration / compatibility checks.
+        import platform
+
+        return JSONResponse(
+            {
+                "name": "auralynq",
+                "version": __version__,
+                "api": "v1",
+                "python": platform.python_version(),
+                "env": get_settings().env,
+            }
+        )
+
+    @app.get("/ready")
+    async def ready() -> JSONResponse:
+        # Readiness (vs /health liveness): is the index queryable yet? Returns 503
+        # until at least one vector is indexed, so orchestrators don't route
+        # traffic to an empty instance.
+        try:
+            from auralynq.vectorstore.factory import get_store
+
+            n = get_store().count()
+        except Exception:  # pragma: no cover
+            n = 0
+        ready = n > 0
+        return JSONResponse(
+            {"ready": ready, "vectors": n},
+            status_code=200 if ready else 503,
+        )
+
     @app.get("/metrics")
     async def metrics() -> JSONResponse:
         return JSONResponse(dict(_METRICS))

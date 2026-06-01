@@ -90,3 +90,20 @@ def test_ws_voice_roundtrip(client):
         final = ws.receive_json()
         assert final["type"] == "final"
         ws.close()
+
+
+def test_version_endpoint(client):
+    r = client.get("/version")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["name"] == "auralynq"
+    assert body["version"]
+    assert body["api"] == "v1"
+
+
+def test_ready_endpoint_reports_index(client):
+    # the `client` fixture indexes a corpus, so the service is ready
+    r = client.get("/ready")
+    assert r.status_code == 200
+    assert r.json()["ready"] is True
+    assert r.json()["vectors"] >= 1

@@ -131,6 +131,39 @@ services:
       retries: 5
       start_period: 20s
 
+  # MCP server exposing the 7 Auralynq tools over the streamable-HTTP transport,
+  # so remote MCP clients (Claude Desktop, IDEs, agents) can call them — not just
+  # local stdio. Internal-only (loopback publish); front with Caddy for public TLS.
+  mcp:
+    image: auralynq-api:latest
+    container_name: auralynq-mcp
+    restart: unless-stopped
+    security_opt: ["no-new-privileges"]
+    command: ["python", "-m", "auralynq.mcp_server.server", "--transport", "streamable-http"]
+    ports:
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_MCP_PORT:-8765}:8765"
+    environment:
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - COHERE_API_KEY=${COHERE_API_KEY:-}
+      - AURALYNQ_MCP_HOST=0.0.0.0
+      - AURALYNQ_MCP_PORT=8765
+      - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://auralynq-qdrant:6333}
+      - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
+      - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
+      - AURALYNQ_DATA_DIR=/app/data
+    volumes:
+      - auralynq-data:/app/data
+    depends_on:
+      - qdrant
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8765' 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   worker:
     build:
       context: .

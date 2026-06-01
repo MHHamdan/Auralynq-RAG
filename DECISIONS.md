@@ -245,3 +245,31 @@ compose (podman-compose 1.5.0 ignores them — attaches to the default net anywa
 shared network namespace for every service (couples lifecycles, can't publish
 per-container ports); service-name aliases (dnsname resolves container_name, not
 the compose service name, on this version).
+
+---
+
+## ADR-0015 — MCP as a first-class microservice (stdio + streamable-HTTP)
+
+**Context.** The MCP server exposes Auralynq's 7 tools but was stdio-only — usable
+by a local client that spawns the process, not by remote clients. The product goal
+is to "serve production-ready around the world" as composable microservices.
+
+**Decision.** Keep the transport-agnostic tool functions
+(`auralynq/mcp_server/tools.py`) as the single source of truth, and make the server
+**transport-selectable** via `--transport` / `AURALYNQ_MCP_TRANSPORT`:
+`stdio` (default, local), `streamable-http` (remote microservice on
+`AURALYNQ_MCP_HOST:PORT`, default `:8765`), or `sse` (legacy). A dedicated
+`auralynq-mcp` container in `compose.yml` runs the HTTP transport (internal-only;
+front with the Caddy TLS proxy for public exposure). An integration test drives
+the real stdio protocol end-to-end (client → server → tool) and auto-skips when
+the optional SDK is absent.
+
+**Rationale.** One tool implementation, many entry points (CLI, FastAPI, local
+MCP, remote MCP). HTTP transport lets agents/IDEs anywhere call the same grounded
+RAG + PathRAG + voice tools — the microservices foundation the roadmap needs —
+without duplicating logic.
+
+**Alternatives rejected.** A bespoke REST shim around the tools (re-implements MCP,
+loses client compatibility); HTTP-only (breaks the zero-config local Claude Desktop
+flow); embedding MCP in the FastAPI app (couples two servers with different
+lifecycles and auth models).

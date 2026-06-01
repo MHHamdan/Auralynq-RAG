@@ -210,6 +210,33 @@ posture (internal-only Qdrant/Phoenix, non-root containers, restart + healthchec
 | TTS        | Kokoro-82M → silent/sine fallback | — | — |
 | Tracing    | in-process spans | Phoenix / Langfuse | `LANGFUSE_*` |
 
+## 🧰 MCP server (`auralynq-mcp`)
+
+Auralynq ships a [Model Context Protocol](https://modelcontextprotocol.io) server
+exposing **7 tools** — `ingest_documents`, `search`, `graph_path_query`,
+`transcribe`, `talk_to_data`, `run_eval`, `get_trace` — so any MCP client (Claude
+Desktop, IDEs, agents) can drive the whole pipeline. Two transports:
+
+```bash
+# Local: a client spawns the process over stdio (default)
+pip install 'auralynq[mcp]'
+auralynq-mcp                       # stdio
+
+# Remote microservice: serve the same tools over HTTP for clients anywhere
+auralynq-mcp --transport streamable-http      # binds AURALYNQ_MCP_HOST/PORT (:8765)
+# in the stack: `make stack-up` starts an `auralynq-mcp` container on :8765
+```
+
+Claude Desktop config (stdio):
+
+```json
+{ "mcpServers": { "auralynq": { "command": "auralynq-mcp" } } }
+```
+
+Transport is selectable via `--transport {stdio,streamable-http,sse}` or
+`AURALYNQ_MCP_TRANSPORT`. For public exposure, front the HTTP transport with the
+Caddy TLS proxy (ADR-0013). See [ADR-0015](DECISIONS.md).
+
 ## 📊 Benchmarks
 
 > Numbers are produced **only** by the evaluation harness (`make eval` / `make bench`)
