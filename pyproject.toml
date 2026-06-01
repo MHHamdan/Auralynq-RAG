@@ -59,6 +59,7 @@ telemetry = [
   "opentelemetry-exporter-otlp>=1.25",
   "arize-phoenix>=4.0",
   "openinference-instrumentation>=0.1",
+  "langfuse>=2.0",
 ]
 mcp = ["mcp>=1.0"]
 dev = [

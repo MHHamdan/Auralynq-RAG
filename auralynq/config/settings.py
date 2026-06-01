@@ -89,6 +89,9 @@ class TelemetrySettings(BaseSettings):
     phoenix_endpoint: str = "http://localhost:6006"
     otlp_endpoint: str = ""
     service_name: str = "auralynq"
+    # Langfuse (optional hosted trace/eval). Activated when both LANGFUSE_* keys
+    # are set; host defaults to Langfuse Cloud, override for self-hosted.
+    langfuse_host: str = "https://cloud.langfuse.com"
 
 
 class Settings(BaseSettings):
@@ -125,6 +128,8 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     cohere_api_key: str = Field(default="", alias="COHERE_API_KEY")
+    langfuse_public_key: str = Field(default="", alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
 
     @property
     def index_dir(self) -> Path:

@@ -34,6 +34,16 @@ from auralynq.utils import stable_id
 _CACHE = SemanticCache()
 
 
+def _export_langfuse(trace: Trace, question: str, answer: str, metadata: dict) -> None:
+    """Best-effort hosted-trace export; never affects the response (ADR-0019)."""
+    try:
+        from auralynq.telemetry.langfuse_export import export_trace
+
+        export_trace(trace, question=question, answer=answer, metadata=metadata)
+    except Exception:  # pragma: no cover - observability must not break answers
+        pass
+
+
 class AnswerResult(BaseModel):
     answer: str
     citations: list[dict[str, Any]] = Field(default_factory=list)
@@ -117,6 +127,17 @@ def answer_question(
     )
     if use_cache and state.answer:
         _CACHE.store(question, state.answer, state.citations)
+    _export_langfuse(
+        trace,
+        question,
+        state.answer,
+        {
+            "route": state.route.value,
+            "confidence": state.confidence,
+            "iterations": state.iteration,
+            "cached": False,
+        },
+    )
     return result
 
 
@@ -170,6 +191,12 @@ def stream_answer_question(
     state.answer = "".join(acc).strip()
     state = node_self_check(state, deps)
     state = node_validate_citations(state, deps)
+    _export_langfuse(
+        trace,
+        question,
+        state.answer,
+        {"route": state.route.value, "confidence": state.confidence, "streamed": True},
+    )
     yield {
         "type": "final",
         "answer": state.answer,

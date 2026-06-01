@@ -14,10 +14,12 @@ from auralynq.config import get_settings
 def describe_providers() -> list[dict[str, str]]:
     from auralynq.embeddings.factory import resolved_provider as emb_provider
     from auralynq.llm.factory import resolved_provider as llm_provider
+    from auralynq.telemetry.langfuse_export import langfuse_enabled
     from auralynq.vectorstore.factory import resolved_backend as vec_backend
     from auralynq.voice.factory import resolved_asr, resolved_tts
 
     s = get_settings()
+    tracing = "langfuse+phoenix" if langfuse_enabled() else "in-process"
     rows = [
         ("embeddings", emb_provider(), "model=" + s.embedding.model),
         ("vector_store", vec_backend(), "url=" + s.vector.url),
@@ -25,6 +27,7 @@ def describe_providers() -> list[dict[str, str]]:
         ("llm", llm_provider(), "model=" + s.llm.model),
         ("asr", resolved_asr(), "model=" + s.voice.asr_model),
         ("tts", resolved_tts(), "voice=" + s.voice.tts_voice),
+        ("tracing", tracing, "host=" + s.telemetry.langfuse_host),
     ]
     return [{"subsystem": name, "provider": prov, "status": status} for name, prov, status in rows]
 
