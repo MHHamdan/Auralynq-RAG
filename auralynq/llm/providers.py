@@ -146,23 +146,24 @@ class CohereLLM(LLM):  # pragma: no cover - paid path
     def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
         resp = self._client.chat(
             model=self.model,
-            messages=self._messages(prompt, system),
+            messages=self._messages(prompt, system),  # type: ignore[arg-type]
             temperature=temperature if temperature is not None else 0.1,
             max_tokens=max_tokens or 1024,
         )
-        # v2 returns message.content as a list of typed blocks.
+        # v2 returns message.content as a list of typed blocks (text/thinking);
+        # we only join the text blocks (getattr guards non-text variants).
         return "".join(
-            block.text for block in (resp.message.content or []) if getattr(block, "text", None)
+            getattr(block, "text", "") or "" for block in (resp.message.content or [])
         ).strip()
 
     def stream(self, prompt, *, system=None, temperature=None, max_tokens=None) -> Iterator[str]:
         for event in self._client.chat_stream(
             model=self.model,
-            messages=self._messages(prompt, system),
+            messages=self._messages(prompt, system),  # type: ignore[arg-type]
             temperature=temperature if temperature is not None else 0.1,
             max_tokens=max_tokens or 1024,
         ):
             if event.type == "content-delta":
-                delta = event.delta.message.content.text
+                delta = event.delta.message.content.text  # type: ignore[union-attr]
                 if delta:
                     yield delta

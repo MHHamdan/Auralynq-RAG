@@ -37,7 +37,7 @@ class QdrantStore(VectorStore):
         self.collection = collection or s.vector.collection
         self.quantization = quantization or s.vector.quantization
         self._hnsw_m = s.vector.hnsw_m
-        self.client = QdrantClient(url=url or s.vector.url, timeout=30.0)
+        self.client = QdrantClient(url=url or s.vector.url, timeout=30)
         self._dim = 0
         _log.info("qdrant.connected", url=url or s.vector.url, collection=self.collection)
 
@@ -47,7 +47,8 @@ class QdrantStore(VectorStore):
         self._dim = dim
         if self.client.collection_exists(self.collection):
             return
-        quant = None
+
+        quant: Any = None  # qdrant accepts several quantization config types
         if self.quantization == "scalar":
             quant = qm.ScalarQuantization(
                 scalar=qm.ScalarQuantizationConfig(type=qm.ScalarType.INT8, always_ram=True)
