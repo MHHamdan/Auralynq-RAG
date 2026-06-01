@@ -361,3 +361,31 @@ backend is NOT multi-replica-safe — k8s config defaults to the Qdrant backend.
 skew, against the "one repo, keep updating" goal); per-service images for
 api/mcp/worker (3× build/scan for identical code); compose profiles (broken on
 podman-compose 1.5); baking scaling into compose (single-host; no autoscaling).
+
+---
+
+## ADR-0019 — Optional Langfuse trace export (best-effort, never blocking)
+
+**Context.** The agent already builds an in-process `Trace` (per-node spans) and
+mirrors it to OpenTelemetry/Phoenix. Production observability for a service "served
+worldwide" benefits from a hosted trace/eval backend (Langfuse), but it must never
+become a hard dependency or a failure point on the answer path.
+
+**Decision.** Add `auralynq/telemetry/langfuse_export.py`: a best-effort exporter
+that pushes a finished `Trace` to Langfuse as a trace (question input,
+answer/route/metadata output) with one nested span per agent node. It is wired at
+the end of `answer_question` and `stream_answer_question` via a `_export_langfuse`
+helper that swallows all errors. Activation requires BOTH `LANGFUSE_PUBLIC_KEY` and
+`LANGFUSE_SECRET_KEY` AND the importable `langfuse` SDK (in the `telemetry` extra);
+otherwise it is a silent no-op. Host is configurable for self-hosted Langfuse;
+`/health` reports the active tracing backend.
+
+**Rationale.** Same provider-abstraction + offline-safe pattern as every other
+integration (ADR-0003/0004): one config flag turns it on, missing SDK/keys/network
+degrade to the local tracer, and observability can never break or slow an answer.
+Complements (does not replace) the in-process trace and Phoenix mirror.
+
+**Alternatives rejected.** Hard-requiring langfuse (breaks $0 default, heavy dep);
+exporting inline inside each node (couples the agent to a vendor, multiplies
+failure surface); replacing the in-process tracer (loses the UI trace panel + the
+always-on local record).

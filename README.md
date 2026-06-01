@@ -296,6 +296,20 @@ AURALYNQ_MCP_API_KEY=$(openssl rand -hex 24) \
 For public exposure, front the HTTP transport with the Caddy TLS proxy (ADR-0013)
 so the token travels over HTTPS.
 
+## 🔭 Observability
+
+Every agent answer builds an in-process **trace** (one span per node — planner,
+router, retrievers, synthesizer, …) returned in the API response and rendered in
+the UI trace panel. Two optional hosted backends mirror it, both auto-detected and
+no-op when absent ([ADR-0019](DECISIONS.md)):
+
+- **Phoenix** — local OTLP/trace UI (in the `make stack-up` stack on `:6006`).
+- **Langfuse** — hosted trace/eval. Set `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY`
+  (and `pip install 'auralynq[telemetry]'`); each answer is exported as a Langfuse
+  trace with nested node spans, question input, and answer/route metadata. Set
+  `AURALYNQ_TELEMETRY__LANGFUSE_HOST` for self-hosted. Export failures never affect
+  the response. `/health` reports `tracing: langfuse+phoenix | in-process`.
+
 ## 📊 Benchmarks
 
 > Numbers are produced **only** by the evaluation harness (`make eval` / `make bench`)
