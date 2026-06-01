@@ -197,7 +197,7 @@ posture (internal-only Qdrant/Phoenix, non-root containers, restart + healthchec
 | Embeddings | `BAAI/bge-m3` → hashing fallback | OpenAI embeddings | `OPENAI_API_KEY` |
 | Vector DB  | Qdrant (Podman) → in-memory fallback | Qdrant Cloud | `AURALYNQ_VECTOR__URL` |
 | Rerank     | `bge-reranker-v2-m3` → lexical fallback | Cohere rerank | `COHERE_API_KEY` |
-| LLM        | Ollama local → extractive fallback | OpenAI / Anthropic | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` |
+| LLM        | Ollama local → extractive fallback | OpenAI / Anthropic / Cohere | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `COHERE_API_KEY` |
 | ASR        | faster-whisper → null passthrough | WhisperX align | `HUGGINGFACE_TOKEN` (diarization) |
 | TTS        | Kokoro-82M → silent/sine fallback | — | — |
 | Tracing    | in-process spans | Phoenix / Langfuse | `LANGFUSE_*` |

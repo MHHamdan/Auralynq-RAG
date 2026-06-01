@@ -124,3 +124,45 @@ class AnthropicLLM(LLM):  # pragma: no cover - paid path
             max_tokens=max_tokens or 1024,
         ) as stream:
             yield from stream.text_stream
+
+
+class CohereLLM(LLM):  # pragma: no cover - paid path
+    name = "cohere"
+
+    def __init__(self, api_key: str, model: str = "command-r-08-2024") -> None:
+        import cohere
+
+        # Cohere's v2 client exposes a Chat API with role-based messages.
+        self._client = cohere.ClientV2(api_key=api_key)
+        self.model = model
+
+    def _messages(self, prompt: str, system: str | None) -> list[dict]:
+        msgs: list[dict] = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.append({"role": "user", "content": prompt})
+        return msgs
+
+    def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
+        resp = self._client.chat(
+            model=self.model,
+            messages=self._messages(prompt, system),
+            temperature=temperature if temperature is not None else 0.1,
+            max_tokens=max_tokens or 1024,
+        )
+        # v2 returns message.content as a list of typed blocks.
+        return "".join(
+            block.text for block in (resp.message.content or []) if getattr(block, "text", None)
+        ).strip()
+
+    def stream(self, prompt, *, system=None, temperature=None, max_tokens=None) -> Iterator[str]:
+        for event in self._client.chat_stream(
+            model=self.model,
+            messages=self._messages(prompt, system),
+            temperature=temperature if temperature is not None else 0.1,
+            max_tokens=max_tokens or 1024,
+        ):
+            if event.type == "content-delta":
+                delta = event.delta.message.content.text
+                if delta:
+                    yield delta

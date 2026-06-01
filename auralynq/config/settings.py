@@ -49,7 +49,7 @@ class RetrievalSettings(BaseSettings):
 
 
 class LLMSettings(BaseSettings):
-    provider: Literal["auto", "ollama", "openai", "anthropic", "extractive"] = "auto"
+    provider: Literal["auto", "ollama", "openai", "anthropic", "cohere", "extractive"] = "auto"
     model: str = "llama3.2:3b"
     base_url: str = "http://localhost:11434"
     temperature: float = 0.1

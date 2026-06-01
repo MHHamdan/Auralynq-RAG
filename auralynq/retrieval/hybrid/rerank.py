@@ -81,18 +81,41 @@ class BGEReranker(Reranker):  # pragma: no cover - heavy optional path
 class CohereReranker(Reranker):  # pragma: no cover - paid path
     name = "cohere"
 
-    def __init__(self, api_key: str, model: str = "rerank-english-v3.0") -> None:
+    def __init__(self, api_key: str, model: str = "rerank-v3.5") -> None:
         import cohere
 
-        self._client = cohere.Client(api_key)
+        self._client = cohere.ClientV2(api_key)
         self._model = model
+        self._lexical = LexicalReranker()  # call-time fallback
 
     def score(self, query: str, texts: list[str]) -> list[float]:
-        resp = self._client.rerank(
-            query=query, documents=texts, model=self._model, top_n=len(texts)
+        try:
+            resp = self._client.rerank(
+                query=query, documents=texts, model=self._model, top_n=len(texts)
+            )
+            ordered = sorted(resp.results, key=lambda r: r.index)
+            return [r.relevance_score for r in ordered]
+        except Exception as exc:  # provider error must not break retrieval
+            _log.warning("rerank.cohere_runtime_fallback_lexical", error=str(exc)[:160])
+            return self._lexical.score(query, texts)
+
+
+# Cohere's hosted reranker uses its own model ids, not a local BGE checkpoint.
+# If the configured model looks like a local HF reranker, fall back to Cohere's
+# default so a COHERE_API_KEY doesn't 404 on `BAAI/bge-reranker-*`.
+_COHERE_DEFAULT_RERANK = "rerank-v3.5"
+
+
+def _cohere_rerank_model(configured: str) -> str:
+    if "/" in configured or configured.lower().startswith(("bge", "baai")):
+        _log.info(
+            "rerank.model_defaulted",
+            provider="cohere",
+            model=_COHERE_DEFAULT_RERANK,
+            ignored=configured,
         )
-        ordered = sorted(resp.results, key=lambda r: r.index)
-        return [r.relevance_score for r in ordered]
+        return _COHERE_DEFAULT_RERANK
+    return configured
 
 
 def build_reranker(provider: str | None = None) -> Reranker:
@@ -107,7 +130,7 @@ def build_reranker(provider: str | None = None) -> Reranker:
             provider = "lexical"
     try:
         if provider == "cohere":
-            return CohereReranker(s.cohere_api_key, s.rerank.model)
+            return CohereReranker(s.cohere_api_key, _cohere_rerank_model(s.rerank.model))
         if provider == "bge":
             return BGEReranker(s.rerank.model)
         if provider == "none":

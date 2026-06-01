@@ -30,6 +30,7 @@ def _ollama_reachable(base_url: str) -> bool:
 _PROVIDER_DEFAULT_MODEL = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-3-5-haiku-latest",
+    "cohere": "command-r-08-2024",
 }
 _OLLAMA_MODEL_HINTS = ("llama", "qwen", "mistral", "gemma", "phi", "deepseek", ":")
 
@@ -54,6 +55,8 @@ def build_llm(provider: str | None = None) -> LLM:
             provider = "anthropic"
         elif s.openai_api_key and importlib.util.find_spec("openai"):
             provider = "openai"
+        elif s.cohere_api_key and importlib.util.find_spec("cohere"):
+            provider = "cohere"
         elif _ollama_reachable(s.llm.base_url):
             provider = "ollama"
         else:
@@ -80,6 +83,11 @@ def build_llm(provider: str | None = None) -> LLM:
             return ResilientLLM(
                 AnthropicLLM(s.anthropic_api_key, _model_for("anthropic", s.llm.model))
             )
+        if provider == "cohere":
+            from auralynq.llm.providers import CohereLLM
+            from auralynq.llm.resilient import ResilientLLM
+
+            return ResilientLLM(CohereLLM(s.cohere_api_key, _model_for("cohere", s.llm.model)))
     except Exception as exc:  # construction failure (e.g. missing sdk) → extractive
         _log.warning("llm.fallback_extractive", error=str(exc))
 
@@ -95,6 +103,8 @@ def resolved_provider() -> str:
         return "anthropic"
     if s.openai_api_key and importlib.util.find_spec("openai"):
         return "openai"
+    if s.cohere_api_key and importlib.util.find_spec("cohere"):
+        return "cohere"
     if _ollama_reachable(s.llm.base_url):
         return "ollama"
     return "extractive"

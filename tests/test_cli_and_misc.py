@@ -101,3 +101,50 @@ def test_resilient_llm_falls_back_on_runtime_error():
     # streaming also degrades cleanly
     streamed = "".join(r.stream_answer("What is the capital of France?", ctx))
     assert "[1]" in streamed
+
+
+def test_llm_model_defaulting_for_cohere():
+    from auralynq.llm.factory import _model_for
+
+    assert _model_for("cohere", "llama3.2:3b") == "command-r-08-2024"
+    assert _model_for("cohere", "command-r-plus") == "command-r-plus"
+
+
+def test_llm_auto_resolves_cohere_when_only_cohere_key(monkeypatch):
+    """With only a Cohere key + sdk present, auto resolution selects cohere."""
+    import sys
+    import types
+
+    from auralynq.config import reload_settings
+
+    # The conftest blanks all secret envs; set just Cohere for this test.
+    monkeypatch.setenv("AURALYNQ_LLM__PROVIDER", "auto")
+    monkeypatch.setenv("COHERE_API_KEY", "test-cohere-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    reload_settings()
+
+    # Stub the optional `cohere` SDK so importlib.util.find_spec() sees it without
+    # installing it. find_spec requires a real __spec__ on the module object.
+    import importlib.machinery
+    import importlib.util
+
+    if importlib.util.find_spec("cohere") is None:
+        fake = types.ModuleType("cohere")
+        fake.__spec__ = importlib.machinery.ModuleSpec("cohere", loader=None)
+        fake.ClientV2 = lambda api_key: object()  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "cohere", fake)
+
+    from auralynq.llm.factory import resolved_provider
+
+    assert resolved_provider() == "cohere"
+
+
+def test_cohere_rerank_model_defaulting():
+    """A local BGE reranker name must not be sent to Cohere's hosted reranker."""
+    from auralynq.retrieval.hybrid.rerank import _cohere_rerank_model
+
+    assert _cohere_rerank_model("BAAI/bge-reranker-v2-m3") == "rerank-v3.5"
+    assert _cohere_rerank_model("bge-reranker-large") == "rerank-v3.5"
+    assert _cohere_rerank_model("rerank-v3.5") == "rerank-v3.5"
+    assert _cohere_rerank_model("rerank-english-v3.0") == "rerank-english-v3.0"

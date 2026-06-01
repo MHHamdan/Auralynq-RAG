@@ -18,7 +18,10 @@ RUN apt-get update \
 # extra's silero-vad); faster-whisper uses CTranslate2 and its own bundled VAD.
 COPY pyproject.toml README.md ./
 COPY auralynq ./auralynq
-RUN pip install -e ".[ingest,eval,vector]" "faster-whisper>=1.0" "soundfile>=0.12"
+# Commercial LLM SDKs (openai/anthropic/cohere) are included so the provider
+# abstraction can use whichever account has active billing; all are optional at
+# runtime and degrade to the offline extractive answerer (ADR-0003).
+RUN pip install -e ".[ingest,eval,vector,llm]" "faster-whisper>=1.0" "soundfile>=0.12"
 
 COPY scripts ./scripts
 

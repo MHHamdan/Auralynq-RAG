@@ -50,6 +50,8 @@ voice = [
   "silero-vad>=5.1",
 ]
 agent = ["langgraph>=0.2", "langchain-core>=0.2"]
+# Commercial LLM provider SDKs (optional; auto-detected, with offline fallback).
+llm = ["openai>=1.30", "anthropic>=0.30", "cohere>=5.5"]
 eval = ["ragas>=0.1.9", "jiwer>=3.0", "datasets>=2.19", "scikit-learn>=1.4"]
 telemetry = [
   "opentelemetry-api>=1.25",
@@ -69,7 +71,7 @@ dev = [
   "pre-commit>=3.7",
 ]
 all = [
-  "auralynq[embeddings,vector,ingest,voice,agent,eval,telemetry,mcp]",
+  "auralynq[embeddings,vector,ingest,voice,agent,llm,eval,telemetry,mcp]",
 ]
 
 [project.scripts]
