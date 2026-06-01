@@ -234,8 +234,20 @@ Claude Desktop config (stdio):
 ```
 
 Transport is selectable via `--transport {stdio,streamable-http,sse}` or
-`AURALYNQ_MCP_TRANSPORT`. For public exposure, front the HTTP transport with the
-Caddy TLS proxy (ADR-0013). See [ADR-0015](DECISIONS.md).
+`AURALYNQ_MCP_TRANSPORT`. See [ADR-0015](DECISIONS.md).
+
+**Auth** ([ADR-0016](DECISIONS.md)): the HTTP transports take a bearer token via
+`AURALYNQ_MCP_API_KEY` (falls back to `AURALYNQ_SERVE__API_KEY`). Empty = open
+(stdio/local); when set, remote clients must send `Authorization: Bearer <key>`:
+
+```bash
+AURALYNQ_MCP_API_KEY=$(openssl rand -hex 24) \
+  auralynq-mcp --transport streamable-http      # 401 without the token
+# client: streamablehttp_client(url, headers={"Authorization": f"Bearer {key}"})
+```
+
+For public exposure, front the HTTP transport with the Caddy TLS proxy (ADR-0013)
+so the token travels over HTTPS.
 
 ## 📊 Benchmarks
 

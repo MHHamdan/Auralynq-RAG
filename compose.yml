@@ -149,6 +149,10 @@ services:
       - COHERE_API_KEY=${COHERE_API_KEY:-}
       - AURALYNQ_MCP_HOST=0.0.0.0
       - AURALYNQ_MCP_PORT=8765
+      # Bearer auth on the HTTP MCP surface: dedicated key wins, else the API key.
+      # Empty == open (local/demo). See ADR-0016.
+      - AURALYNQ_MCP_API_KEY=${AURALYNQ_MCP_API_KEY:-}
+      - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
       - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://auralynq-qdrant:6333}
       - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
       - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
