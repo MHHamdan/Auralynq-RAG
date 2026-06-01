@@ -273,3 +273,30 @@ without duplicating logic.
 loses client compatibility); HTTP-only (breaks the zero-config local Claude Desktop
 flow); embedding MCP in the FastAPI app (couples two servers with different
 lifecycles and auth models).
+
+---
+
+## ADR-0016 — Bearer-token auth for the MCP HTTP transports
+
+**Context.** ADR-0015 made MCP remotely callable over HTTP. An open HTTP MCP
+endpoint exposes the full ingest/search/agent toolset to anyone who can reach it —
+unacceptable for public deployment.
+
+**Decision.** Add an ASGI `MCPAuthMiddleware` wrapped around FastMCP's
+`streamable_http_app()` / `sse_app()` (served via uvicorn in `_serve_http`). It
+requires `Authorization: Bearer <key>` when a key is configured, returning a
+structured 401 otherwise; comparison is constant-time (`hmac.compare_digest`).
+Key resolution: `AURALYNQ_MCP_API_KEY` (dedicated) wins, else
+`AURALYNQ_SERVE__API_KEY` (reuse the HTTP API key). Empty ⇒ open. The **stdio
+transport is never gated** (it is local — the client spawns the process), so the
+zero-config Claude Desktop flow is unaffected.
+
+**Rationale.** Mirrors the HTTP API's auth model (ADR-0011) for consistency; one
+env var turns the remote MCP microservice from open to authenticated with no code
+change; constant-time compare avoids timing leaks. Combined with the Caddy TLS
+proxy (ADR-0013) the token travels encrypted.
+
+**Alternatives rejected.** OAuth/JWT (over-engineered for a single-tenant tool;
+can layer behind the same middleware later); gating stdio (breaks local clients);
+relying only on network isolation (defense-in-depth — auth + internal binding +
+TLS are complementary).

@@ -67,6 +67,26 @@ def _resolve_transport(argv: list[str]) -> str:
     return transport
 
 
+def _serve_http(server, transport: str) -> None:
+    """Serve an HTTP transport with bearer-token auth wrapped around the ASGI app.
+
+    stdio never reaches here (handled in main). For streamable-http / sse we take
+    FastMCP's Starlette app, wrap it with MCPAuthMiddleware (no-op when no key is
+    set), and run uvicorn on the configured host/port (ADR-0016).
+    """
+    import uvicorn
+
+    from auralynq.mcp_server.auth import MCPAuthMiddleware, resolve_mcp_api_key
+
+    app = server.sse_app() if transport == "sse" else server.streamable_http_app()
+    api_key = resolve_mcp_api_key()
+    app.add_middleware(MCPAuthMiddleware, api_key=api_key)
+    host = os.getenv("AURALYNQ_MCP_HOST", "0.0.0.0")
+    port = int(os.getenv("AURALYNQ_MCP_PORT", "8765"))
+    _log.info("mcp.http", transport=transport, host=host, port=port, auth=bool(api_key))
+    uvicorn.run(app, host=host, port=port, log_level="warning")
+
+
 def main() -> None:
     configure_logging()
     transport = _resolve_transport(sys.argv[1:])
@@ -78,7 +98,10 @@ def main() -> None:
         )
         raise SystemExit(1) from None
     _log.info("mcp.start", tools=7, transport=transport)
-    server.run(transport=transport)
+    if transport == "stdio":
+        server.run(transport="stdio")
+    else:
+        _serve_http(server, transport)
 
 
 if __name__ == "__main__":  # pragma: no cover
