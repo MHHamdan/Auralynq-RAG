@@ -74,3 +74,51 @@ def test_openai_embedder_dense_plus_derived_sparse(monkeypatch):
     q = emb.embed_query("flow based pruning")
     assert q.dense.shape == (4,)
     assert q.sparse
+
+
+def test_resilient_embedder_degrades_on_runtime_error():
+    """A primary embedder that raises at request time must degrade to hashing,
+    stay degraded (sticky), and keep a consistent dimension — not crash."""
+    import numpy as np
+    from auralynq.embeddings.base import Embedder
+    from auralynq.embeddings.resilient import ResilientEmbedder
+
+    class _Boom(Embedder):
+        name = "boom"
+        dim = 1536
+
+        def embed(self, texts):
+            raise RuntimeError("billing_not_active")
+
+    r = ResilientEmbedder(_Boom(), fallback_dim=64)
+    batch = r.embed(["paris is the capital of france", "the seine flows through paris"])
+    assert isinstance(batch.dense, np.ndarray)
+    assert batch.dense.shape == (2, 64)  # fell back to hashing dim
+    assert r.last_fallback == "RuntimeError"
+    assert r.name == "boom->hash"
+    assert r.dim == 64
+    # query path uses the same (fallback) space, dimension-consistent
+    q = r.embed_query("capital of france")
+    assert q.dense.shape == (64,)
+
+
+def test_resilient_embedder_passthrough_when_primary_ok():
+    import numpy as np
+    from auralynq.embeddings.base import Embedder, EmbeddingBatch
+    from auralynq.embeddings.resilient import ResilientEmbedder
+
+    class _Good(Embedder):
+        name = "good"
+        dim = 8
+
+        def embed(self, texts):
+            return EmbeddingBatch(
+                dense=np.ones((len(texts), 8), dtype=np.float32),
+                sparse=[{1: 1.0} for _ in texts],
+            )
+
+    r = ResilientEmbedder(_Good(), fallback_dim=64)
+    batch = r.embed(["x", "y"])
+    assert batch.dense.shape == (2, 8)  # primary used, not fallback
+    assert r.last_fallback is None
+    assert r.name == "good"

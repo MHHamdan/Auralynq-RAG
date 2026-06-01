@@ -29,12 +29,20 @@ def build_embedder(provider: str | None = None) -> Embedder:
         else:
             provider = "hash"
 
+    # Networked/commercial embedders are wrapped so a request-time failure (bad
+    # key, inactive billing/429, rate limit, network blip) degrades to the hashing
+    # embedder instead of crashing retrieval (ADR-0003).
+    fallback_dim = min(s.embedding.dim, 256)
     if provider == "bge":
         try:
             from auralynq.embeddings.bge import BGEM3Embedder
+            from auralynq.embeddings.resilient import ResilientEmbedder
 
-            return BGEM3Embedder(
-                model=s.embedding.model, device=s.embedding.device, dim=s.embedding.dim
+            return ResilientEmbedder(
+                BGEM3Embedder(
+                    model=s.embedding.model, device=s.embedding.device, dim=s.embedding.dim
+                ),
+                fallback_dim=fallback_dim,
             )
         except Exception as exc:  # pragma: no cover - heavy path
             _log.warning("embeddings.bge_failed_fallback_hash", error=str(exc))
@@ -43,14 +51,17 @@ def build_embedder(provider: str | None = None) -> Embedder:
     if provider == "openai":  # pragma: no cover - paid path
         try:
             from auralynq.embeddings.openai_embed import OpenAIEmbedder
+            from auralynq.embeddings.resilient import ResilientEmbedder
 
-            return OpenAIEmbedder(api_key=s.openai_api_key)
+            return ResilientEmbedder(
+                OpenAIEmbedder(api_key=s.openai_api_key), fallback_dim=fallback_dim
+            )
         except Exception as exc:
             _log.warning("embeddings.openai_failed_fallback_hash", error=str(exc))
             provider = "hash"
 
     _log.info("embeddings.using", provider="hash")
-    return HashingEmbedder(dim=min(s.embedding.dim, 256))
+    return HashingEmbedder(dim=fallback_dim)
 
 
 @functools.lru_cache(maxsize=1)
