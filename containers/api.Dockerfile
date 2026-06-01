@@ -25,6 +25,12 @@ RUN pip install -e ".[ingest,eval,vector,llm,mcp]" "faster-whisper>=1.0" "soundf
 
 COPY scripts ./scripts
 
+# OCI image metadata (build_images.sh / CI also inject version + revision).
+LABEL org.opencontainers.image.title="auralynq-api" \
+      org.opencontainers.image.description="Auralynq API/worker/MCP — agentic voice RAG with PathRAG" \
+      org.opencontainers.image.source="https://github.com/MHHamdan/Auralynq" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
 # Non-root user (rootless containers map this safely). Create the data/reports
 # mountpoints owned by the runtime user *before* declaring volumes so Podman
 # initializes named volumes with the correct (writable) ownership.

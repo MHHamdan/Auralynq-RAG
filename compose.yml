@@ -28,7 +28,7 @@ services:
       args:
         # Bakes a self-signed cert with this host as a SAN (IP or domain).
         AURALYNQ_CERT_HOST: ${AURALYNQ_CERT_HOST:-localhost}
-    image: auralynq-caddy:latest
+    image: ${AURALYNQ_IMAGE_PREFIX:-auralynq-}caddy:${AURALYNQ_IMAGE_TAG:-0.1.0}
     container_name: auralynq-caddy
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
@@ -93,7 +93,7 @@ services:
     build:
       context: .
       dockerfile: containers/api.Dockerfile
-    image: auralynq-api:latest
+    image: ${AURALYNQ_IMAGE_PREFIX:-auralynq-}api:${AURALYNQ_IMAGE_TAG:-0.1.0}
     container_name: auralynq-api
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
@@ -135,7 +135,7 @@ services:
   # so remote MCP clients (Claude Desktop, IDEs, agents) can call them — not just
   # local stdio. Internal-only (loopback publish); front with Caddy for public TLS.
   mcp:
-    image: auralynq-api:latest
+    image: ${AURALYNQ_IMAGE_PREFIX:-auralynq-}api:${AURALYNQ_IMAGE_TAG:-0.1.0}
     container_name: auralynq-mcp
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
@@ -172,7 +172,7 @@ services:
     build:
       context: .
       dockerfile: containers/api.Dockerfile
-    image: auralynq-api:latest
+    image: ${AURALYNQ_IMAGE_PREFIX:-auralynq-}api:${AURALYNQ_IMAGE_TAG:-0.1.0}
     container_name: auralynq-worker
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
@@ -203,7 +203,7 @@ services:
       args:
         # Same-origin proxy path baked into the bundle (no IP, no secret).
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/api}
-    image: auralynq-web:latest
+    image: ${AURALYNQ_IMAGE_PREFIX:-auralynq-}web:${AURALYNQ_IMAGE_TAG:-0.1.0}
     container_name: auralynq-web
     restart: unless-stopped
     security_opt: ["no-new-privileges"]

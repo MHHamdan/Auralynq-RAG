@@ -300,3 +300,31 @@ proxy (ADR-0013) the token travels encrypted.
 can layer behind the same middleware later); gating stdio (breaks local clients);
 relying only on network isolation (defense-in-depth — auth + internal binding +
 TLS are complementary).
+
+---
+
+## ADR-0017 — Versioned container images + GHCR registry
+
+**Context.** "Serve production-ready around the world" needs deployable, pinnable,
+traceable images — not a single mutable `:latest`. The repo lives on GitHub.
+
+**Decision.** Publish three OCI-labelled images (`auralynq-api`, `auralynq-web`,
+`auralynq-caddy`) to **GitHub Container Registry** (`ghcr.io/<owner>/…`). The
+version is the single source `auralynq.__version__`; every build carries four
+tags: **`X.Y.Z`** (immutable release), **`X.Y`** (latest patch of a minor),
+**`<git-sha>`** (exact provenance), and **`latest`** (convenience). Tooling:
+`scripts/image_env.sh` (shared config), `scripts/build_images.sh`,
+`scripts/push_images.sh`, and `make images|push|version`. The authoritative
+publish path is CI: `.github/workflows/release.yml` builds + pushes on a `v*` git
+tag using the workflow's `GITHUB_TOKEN` (`packages: write`) — no manual login.
+`compose.yml` references `${AURALYNQ_IMAGE_PREFIX:-auralynq-}<svc>:${AURALYNQ_IMAGE_TAG:-X.Y.Z}`
+so it runs locally-built images by default and a pinned GHCR version when set.
+
+**Rationale.** Immutable + minor + sha + latest covers reproducible deploys,
+easy patching, exact provenance, and convenience. GHCR is zero-config from GitHub
+Actions. The single-source version + one tag scheme prevents drift; OCI labels
+make images self-describing (source, revision, license).
+
+**Alternatives rejected.** Bare `:latest` only (no rollback/pinning); Docker Hub
+(extra account/secret vs. GHCR's built-in token); a separate VERSION file (drifts
+from the package version); baking secrets into images (they stay in env/.env).

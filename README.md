@@ -164,6 +164,34 @@ the server IP.
 - `podman-compose` (v1) pins image IDs across partial `up`s — after rebuilding an
   image, do a full `down` then `make stack-up`.
 
+## 📦 Container images & releases
+
+Three versioned, OCI-labelled images — `auralynq-api`, `auralynq-web`,
+`auralynq-caddy` — published to **GHCR** ([ADR-0017](DECISIONS.md)). The version is
+the single source `auralynq.__version__`; every build is tagged
+**`X.Y.Z`**, **`X.Y`**, **`<git-sha>`** and **`latest`** (never bare-`latest`-only).
+
+```bash
+make version                 # show resolved version + tag set
+make images                  # build all 3 images, tagged + OCI-labelled
+make push                    # push to ghcr.io/<owner>/* (needs `podman login ghcr.io`)
+```
+
+**CI publishes automatically** on a version tag — push `vX.Y.Z` and
+`.github/workflows/release.yml` builds + pushes all images to GHCR with
+`packages: write` (no secrets needed beyond `GITHUB_TOKEN`):
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Deploy a pinned version (instead of locally-built images) by pointing compose at
+the registry:
+
+```bash
+AURALYNQ_IMAGE_PREFIX=ghcr.io/<owner>/auralynq- AURALYNQ_IMAGE_TAG=0.1.0 make stack-up
+```
+
 ## ⚙️ Configuration
 
 All config is via env vars (prefix `AURALYNQ_`, nested with `__`). See [`.env.example`](.env.example).
