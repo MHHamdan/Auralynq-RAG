@@ -192,6 +192,25 @@ the registry:
 AURALYNQ_IMAGE_PREFIX=ghcr.io/<owner>/auralynq- AURALYNQ_IMAGE_TAG=0.1.0 make stack-up
 ```
 
+## 🧩 Services & scaling
+
+Auralynq runs as composable services from one image set — `web`, `api`, `mcp`,
+`worker` (+ `qdrant`, `phoenix`, `caddy`). `api`/`mcp`/`worker` are the same image
+with different entrypoints; the stateless tier scales horizontally against a single
+Qdrant. See [`docs/SERVICES.md`](docs/SERVICES.md) for the full topology.
+
+- **Local / single host:** `make stack-up` (Podman Compose).
+- **Cluster / production:** Kubernetes manifests in [`deploy/k8s`](deploy/k8s)
+  ([ADR-0018](DECISIONS.md)) — per-service Deployments+Services, HPA autoscaling for
+  `api`/`mcp`/`web`, a Qdrant StatefulSet, ConfigMap/Secret, and an Ingress (web is
+  the only public surface):
+
+  ```bash
+  kubectl -n auralynq create secret generic auralynq-secrets \
+    --from-literal=AURALYNQ_SERVE__API_KEY=... --from-literal=COHERE_API_KEY=...
+  kubectl apply -k deploy/k8s          # images pinned centrally in kustomization.yaml
+  ```
+
 ## ⚙️ Configuration
 
 All config is via env vars (prefix `AURALYNQ_`, nested with `__`). See [`.env.example`](.env.example).

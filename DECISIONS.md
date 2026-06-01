@@ -328,3 +328,36 @@ make images self-describing (source, revision, license).
 **Alternatives rejected.** Bare `:latest` only (no rollback/pinning); Docker Hub
 (extra account/secret vs. GHCR's built-in token); a separate VERSION file (drifts
 from the package version); baking secrets into images (they stay in env/.env).
+
+---
+
+## ADR-0018 — Microservice split: one image, role entrypoints, k8s for scaling
+
+**Context.** The roadmap calls for "independently scalable microservices, served
+worldwide". The services already run as separate containers (api/mcp/worker/web +
+qdrant/phoenix/caddy), but podman-compose 1.5 on this host can't do per-service
+profiles or isolated subset deploys (verified: `up <svc>` pulls the whole
+depends_on graph; `COMPOSE_PROFILES` is ignored), and a single-host compose file
+isn't where independent autoscaling happens anyway.
+
+**Decision.** Split by **process/role over one shared image**, not by duplicated
+code or repos: `api`, `mcp`, and `worker` are the same `auralynq-api` image with
+different entrypoints (`uvicorn …app` / `python -m …mcp_server.server` /
+`python -m …serving.worker`); `web` is its own image. Ship **Kubernetes manifests**
+(`deploy/k8s`, kustomize) as the production scaling path: each service is its own
+Deployment+Service, api/mcp/web autoscale via HPA against a single Qdrant
+StatefulSet, the web UI is the only public surface (Ingress+TLS), and config/secrets
+are a ConfigMap+Secret. Compose remains the local/single-host mode. Topology +
+scaling rules are documented in `docs/SERVICES.md`.
+
+**Rationale.** One image = one build/test/provenance surface; roles diverge only
+by args + env. k8s is where "independently scalable" is real (per-service replicas,
+HPA, rolling updates), and the GHCR images (ADR-0017) make `kubectl apply -k`
+deployable anywhere. Stateless-against-Qdrant api/mcp scale freely; the one
+stateful tier (Qdrant) is isolated. Honest about the boundary: in-memory vector
+backend is NOT multi-replica-safe — k8s config defaults to the Qdrant backend.
+
+**Alternatives rejected.** Separate repos per service (duplicated core, version
+skew, against the "one repo, keep updating" goal); per-service images for
+api/mcp/worker (3× build/scan for identical code); compose profiles (broken on
+podman-compose 1.5); baking scaling into compose (single-host; no autoscaling).
