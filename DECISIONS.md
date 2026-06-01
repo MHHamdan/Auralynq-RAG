@@ -186,3 +186,62 @@ breaking the UI when auth is on (fails the "UI reachable" goal); binding interna
 services to `127.0.0.1` only (the rootless API can't reach host loopback — no working
 inter-container DNS on this Podman 3.4/CNI host); fixing DNS (dnsname/aardvark not
 available here).
+
+---
+
+## ADR-0013 — TLS reverse proxy (Caddy), single public HTTPS port
+
+**Context.** The hardened stack (ADR-0012) exposed plaintext HTTP on the API/UI
+ports. Production remote access needs TLS, ideally a single public entrypoint.
+
+**Decision.** Add a **Caddy** reverse-proxy service as the ONLY container published
+on `0.0.0.0` (default `:8443`). It terminates TLS and forwards to the web container
+(`auralynq-web:3000`), which serves the UI and proxies `/api/*` to the API. web,
+api, qdrant, phoenix only bind to `${AURALYNQ_BIND_INTERNAL:-127.0.0.1}` (loopback)
+plus the shared container network. TLS uses a **self-signed cert baked into the
+Caddy image** (`containers/caddy.Dockerfile`) with the server IP + localhost as
+SANs, served via an explicit `tls /certs/site.crt /certs/site.key` directive —
+reliable for an IP / no-domain host (Caddy's on-demand internal-CA issuance is
+unreliable for bare-IP sites). HTTP/3 is disabled (rootless can't size the QUIC
+UDP buffer). `flush_interval -1` keeps SSE streaming + WebSocket voice unbuffered.
+
+**Rationale.** One public TLS port; the browser only ever talks to Caddy; the API
+key never leaves the server (web `/api` proxy injects it). For a real domain, set
+`AURALYNQ_SITE_ADDRESS=https://your.domain` + `AURALYNQ_TLS=internal` (or ACME).
+
+**Alternatives rejected.** `tls internal` for a bare-IP site (handshake fails — no
+leaf cert for IP SNI); HTTP/3 (broken UDP buffer on rootless); terminating TLS in
+the app (re-implements a proxy, no cert automation).
+
+---
+
+## ADR-0014 — No-sudo fix for rootless container DNS (CNI 0.4.0 + dnsname)
+
+**Context.** This host runs **rootless Podman 3.4 with CNI**. Two defects broke
+inter-container networking: (1) podman generates network conflists with
+`cniVersion: 1.0.0`, but the installed **`firewall` CNI plugin only supports
+≤0.4.0**, so it fails validation and collapses the plugin chain; (2) the default
+`podman` network ships **without the `dnsname` plugin**, so there is no container
+DNS at all. Earlier ADR-0012 worked around this with brittle bridge-IP wiring and
+shared network namespaces. A proper fix via podman 4 / netavark needs root — but
+the whole point of rootless Podman is to avoid sudo.
+
+**Decision.** Fix it **without sudo** by rewriting the user-owned CNI conflists in
+`~/.config/cni/net.d/`: pin `cniVersion` to `0.4.0` (which `firewall`, `bridge` and
+`dnsname` all support) and append the `dnsname` plugin if absent. `scripts/stack_up.sh`
+does this idempotently before `up`. With DNS restored, all services share
+podman-compose's default network and address peers by **container_name**
+(`auralynq-qdrant` / `auralynq-api` / `auralynq-web`) — eliminating the bridge-IP
+guessing and shared-netns hacks. `dnsname` requires the `dnsmasq` binary (present)
+and the plugin binary at `/usr/lib/cni/dnsname` (present; the rootless plugin dir
+is set in `~/.config/containers/containers.conf`).
+
+**Rationale.** Pure user-space, persists across `down`/`up`, and restores the
+clean service-name networking Podman is supposed to provide. Supersedes the
+bridge-IP workaround noted in ADR-0012.
+
+**Alternatives rejected.** podman 4 + netavark (needs root); `external` networks in
+compose (podman-compose 1.5.0 ignores them — attaches to the default net anyway);
+shared network namespace for every service (couples lifecycles, can't publish
+per-container ports); service-name aliases (dnsname resolves container_name, not
+the compose service name, on this version).

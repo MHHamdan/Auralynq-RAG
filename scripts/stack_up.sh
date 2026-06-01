@@ -1,48 +1,58 @@
 #!/usr/bin/env bash
-# Bring up the Auralynq stack with a hardened, rootless-Podman-correct network
-# posture (ADR-0012). On this host the CNI `firewall` plugin is broken (needs
-# root to fix), which disables container DNS and gateway binds. We therefore:
-#   * publish Qdrant + Phoenix to 127.0.0.1 only (host loopback; NOT the public
-#     NIC — verified unreachable from the external IP),
-#   * reach Qdrant from the API/worker by its container *bridge IP* (the only
-#     reliable container->container path here), resolved at start time,
-#   * publish only the Web UI + API on 0.0.0.0 (public surface).
+# Bring up the Auralynq stack (rootless Podman, no sudo). See ADR-0012/0013/0014.
+#
+# Networking: this host's CNI generates conflists with cniVersion 1.0.0, but the
+# installed `firewall` plugin only supports up to 0.4.0 — so the network silently
+# loses container DNS. The default `podman` network also ships without the
+# `dnsname` plugin. We fix BOTH without sudo by rewriting the relevant conflist(s)
+# under ~/.config/cni/net.d to cniVersion 0.4.0 + ensuring the dnsname plugin is
+# present. With DNS working, services reach peers by container_name
+# (auralynq-qdrant / auralynq-api / auralynq-web) — see ADR-0014.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 COMPOSE="$(./scripts/check_container_runtime.sh)"
 CF="compose.yml"
+CNI_DIR="${HOME}/.config/cni/net.d"
 
-echo "→ starting internal services (qdrant, phoenix)…"
-$COMPOSE -f "$CF" up -d qdrant phoenix
+# Patch a CNI conflist in place: pin cniVersion 0.4.0 and append dnsname if absent.
+patch_conflist() {
+  local f="$1"
+  [ -f "$f" ] || return 0
+  python3 - "$f" <<'PY'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+changed = False
+if d.get("cniVersion") != "0.4.0":
+    d["cniVersion"] = "0.4.0"; changed = True
+types = [pl.get("type") for pl in d.get("plugins", [])]
+if "dnsname" not in types:
+    d.setdefault("plugins", []).append(
+        {"type": "dnsname", "domainName": "dns.podman", "capabilities": {"aliases": True}})
+    changed = True
+if changed:
+    json.dump(d, open(p, "w"), indent=2)
+    print(f"  patched {p} -> 0.4.0 + dnsname")
+PY
+}
 
-# Wait for Qdrant to answer on its loopback publish, then resolve bridge IPs.
-http_port="$(grep -E '^AURALYNQ_QDRANT_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2)"; http_port="${http_port:-6333}"
-bind_internal="$(grep -E '^AURALYNQ_BIND_INTERNAL=' .env 2>/dev/null | cut -d= -f2)"; bind_internal="${bind_internal:-127.0.0.1}"
-
-echo -n "→ waiting for Qdrant"
-for _ in $(seq 1 30); do
-  if curl -fsS "http://${bind_internal}:${http_port}/readyz" >/dev/null 2>&1; then echo " ✓"; break; fi
-  echo -n "."; sleep 1
+echo "→ ensuring rootless CNI networks have DNS (no sudo)…"
+# The default podman network (used by podman-compose) + any project network.
+shopt -s nullglob
+for f in "${CNI_DIR}"/87-podman.conflist "${CNI_DIR}"/*podman*.conflist "${CNI_DIR}"/auralynq*.conflist; do
+  patch_conflist "$f"
 done
+shopt -u nullglob
 
-ip_of() { podman inspect "$1" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null; }
-QIP="$(ip_of auralynq-qdrant)"
-PIP="$(ip_of auralynq-phoenix)"
-if [ -z "$QIP" ]; then echo "✗ could not resolve auralynq-qdrant bridge IP" >&2; exit 1; fi
+bind_internal="$(grep -E '^AURALYNQ_BIND_INTERNAL=' .env 2>/dev/null | cut -d= -f2)"; bind_internal="${bind_internal:-127.0.0.1}"
+https_port="$(grep -E '^AURALYNQ_HTTPS_PORT=' .env 2>/dev/null | cut -d= -f2)"; https_port="${https_port:-8443}"
 
-# API/worker reach Qdrant by bridge IP:6333 (container-internal port, no publish
-# dependency); Phoenix OTLP likewise by bridge IP:4317 when available.
-export AURALYNQ_VECTOR_URL="http://${QIP}:6333"
-export AURALYNQ_VECTOR_BACKEND="qdrant"
-[ -n "$PIP" ] && export AURALYNQ_OTLP_ENDPOINT="http://${PIP}:4317" || export AURALYNQ_OTLP_ENDPOINT=""
-echo "→ qdrant bridge IP = ${QIP}  (api will use ${AURALYNQ_VECTOR_URL})"
+echo "→ starting stack…"
+$COMPOSE -f "$CF" up -d
 
-echo "→ starting api, worker, web…"
-$COMPOSE -f "$CF" up -d api worker web
-
-echo "✓ stack up:"
-echo "    Web UI  : http://<SERVER_IP>:${AURALYNQ_WEB_PORT:-3000}   (public)"
-echo "    API     : http://<SERVER_IP>:${AURALYNQ_API_PORT:-8000}   (public)"
-echo "    Qdrant  : ${bind_internal}:${http_port}                    (internal only)"
-echo "    Phoenix : ${bind_internal}:6006                            (internal only)"
+echo "✓ stack up (services resolve peers by container_name via dnsname):"
+echo "    HTTPS   : https://<SERVER_IP>:${https_port}   (public — Caddy TLS proxy)"
+echo "    web/api : internal (${bind_internal} loopback), fronted by Caddy"
+echo "    Qdrant  : internal (${bind_internal} loopback)"
+echo "    Phoenix : internal (${bind_internal} loopback)"

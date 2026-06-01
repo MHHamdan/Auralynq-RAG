@@ -1,24 +1,63 @@
-# Auralynq stack — Podman-compatible. `make stack-up`.
-# Rootless-friendly: no privileged ports, named volumes, no host networking.
+# Auralynq stack — Podman-compatible, rootless, no sudo. `make stack-up`.
 #
-# Security posture (see DECISIONS ADR-0012):
-#   * Public:   web UI + API only.
-#   * Internal: Qdrant + Phoenix bind to ${AURALYNQ_BIND_INTERNAL:-127.0.0.1}
-#               (the podman bridge gateway on this host) — reachable by containers
-#               and host tooling, NOT from the external NIC.
+# Security posture (ADR-0012/0013/0014):
+#   * Public:   the Caddy TLS proxy ONLY (one HTTPS port on 0.0.0.0). All other
+#               services additionally bind their dev ports to
+#               ${AURALYNQ_BIND_INTERNAL:-127.0.0.1} (host loopback, off the
+#               external NIC) for host tooling/debugging.
+#   * Routing:  all services share podman-compose's default network and address
+#               peers by container_name (auralynq-qdrant/-api/-web).
+#               scripts/stack_up.sh pins that network's CNI conflist to 0.4.0 and
+#               adds the dnsname plugin so container DNS works without sudo
+#               (the firewall plugin only validates <=0.4.0) — see ADR-0014.
 #   * API auth: AURALYNQ_SERVE__API_KEY (empty == open). The browser never holds
 #               the key — the web container proxies /api/* with the bearer header.
 #   * Least privilege: api/worker run as the image's non-root user +
 #               no-new-privileges; all services restart unless-stopped + healthcheck.
 name: auralynq
 
+# No explicit networks block: podman-compose places all services on its default
+# network, where the dnsname plugin resolves peers by their container_name
+# (auralynq-qdrant / auralynq-api / auralynq-web). scripts/stack_up.sh ensures
+# that default network's CNI conflist is 0.4.0 + has dnsname (see ADR-0014).
 services:
+  caddy:
+    build:
+      context: .
+      dockerfile: containers/caddy.Dockerfile
+      args:
+        # Bakes a self-signed cert with this host as a SAN (IP or domain).
+        AURALYNQ_CERT_HOST: ${AURALYNQ_CERT_HOST:-localhost}
+    image: auralynq-caddy:latest
+    container_name: auralynq-caddy
+    restart: unless-stopped
+    security_opt: ["no-new-privileges"]
+    # The ONLY service published on the external NIC; reaches `web` by name.
+    ports:
+      - "${AURALYNQ_HTTPS_PORT:-8443}:8443"
+    environment:
+      - AURALYNQ_SITE_ADDRESS=${AURALYNQ_SITE_ADDRESS:-:8443}
+      - AURALYNQ_TLS=${AURALYNQ_TLS:-/certs/site.crt /certs/site.key}
+      - AURALYNQ_WEB_UPSTREAM=${AURALYNQ_WEB_UPSTREAM:-http://auralynq-web:3000}
+    volumes:
+      - ./containers/Caddyfile:/etc/caddy/Caddyfile:ro,Z
+      - auralynq-caddy-data:/data
+      - auralynq-caddy-config:/config
+    depends_on:
+      - web
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:8443 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   qdrant:
     image: docker.io/qdrant/qdrant:v1.12.1
     container_name: auralynq-qdrant
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
-    # Internal-only: bound to the bridge gateway, not 0.0.0.0.
+    # Internal: loopback publish for host tooling; reachable in-cluster as qdrant:6333.
     ports:
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_QDRANT_HTTP_PORT:-6333}:6333"
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_QDRANT_GRPC_PORT:-6334}:6334"
@@ -36,7 +75,6 @@ services:
     container_name: auralynq-phoenix
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
-    # Internal-only: UI + OTLP collector bound to the bridge gateway.
     ports:
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:6006:6006"
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:4317:4317"
@@ -58,13 +96,11 @@ services:
     image: auralynq-api:latest
     container_name: auralynq-api
     restart: unless-stopped
-    # Least privilege: run as the image's non-root `auralynq` user (uid 10001),
-    # and forbid privilege escalation.
     security_opt: ["no-new-privileges"]
     command: ["uvicorn", "auralynq.serving.app:app", "--host", "0.0.0.0", "--port", "8000"]
-    # Public surface.
+    # Internal: loopback publish for host tooling; reachable in-cluster as api:8000.
     ports:
-      - "${AURALYNQ_API_PORT:-8000}:8000"
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_API_PORT:-8000}:8000"
     environment:
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -72,10 +108,11 @@ services:
       - COHERE_API_KEY=${COHERE_API_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
-      - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://qdrant:6333}
+      # In-cluster service-name addressing (container DNS via the pinned network).
+      - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://auralynq-qdrant:6333}
       - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
       - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
-      - AURALYNQ_TELEMETRY__OTLP_ENDPOINT=${AURALYNQ_OTLP_ENDPOINT:-}
+      - AURALYNQ_TELEMETRY__OTLP_ENDPOINT=${AURALYNQ_OTLP_ENDPOINT:-http://auralynq-phoenix:4317}
       - AURALYNQ_DATA_DIR=/app/data
       - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
       - AURALYNQ_SERVE__CORS_ORIGINS=${AURALYNQ_SERVE__CORS_ORIGINS:-["http://localhost:3000"]}
@@ -108,7 +145,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - COHERE_API_KEY=${COHERE_API_KEY:-}
-      - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://qdrant:6333}
+      - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://auralynq-qdrant:6333}
       - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
       - AURALYNQ_DATA_DIR=/app/data
     volumes:
@@ -133,13 +170,13 @@ services:
     container_name: auralynq-web
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
-    # Public surface.
+    # Internal: loopback publish for host tooling; Caddy reaches it as web:3000.
     ports:
-      - "${AURALYNQ_WEB_PORT:-3000}:3000"
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_WEB_PORT:-3000}:3000"
     environment:
-      # Server-side only (never sent to the browser): where the proxy forwards to,
-      # and the bearer token it injects.
-      - AURALYNQ_API_INTERNAL=${AURALYNQ_API_INTERNAL:-http://api:8000}
+      # Server-side only (never sent to the browser): the /api proxy forwards here
+      # (by service name) and injects the bearer token.
+      - AURALYNQ_API_INTERNAL=${AURALYNQ_API_INTERNAL:-http://auralynq-api:8000}
       - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
     depends_on:
       - api
@@ -155,3 +192,5 @@ volumes:
   auralynq-phoenix:
   auralynq-data:
   auralynq-reports:
+  auralynq-caddy-data:
+  auralynq-caddy-config:
