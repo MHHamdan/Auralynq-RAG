@@ -49,6 +49,18 @@ runtime-check: ## Verify Podman Compose is available
 stack-build: ## Build container images via Podman Compose
 	$(COMPOSE) -f $(COMPOSE_FILE) build
 
+.PHONY: images
+images: ## Build versioned images (X.Y.Z, X.Y, git-sha, latest) + OCI labels
+	./scripts/build_images.sh
+
+.PHONY: push
+push: ## Push versioned images to the registry (GHCR; needs `registry login`)
+	./scripts/push_images.sh
+
+.PHONY: version
+version: ## Print the resolved image version + tags
+	@bash -c 'source scripts/image_env.sh; echo "version: $$AURALYNQ_VERSION"; echo "tags   : $$(image_tags)"; echo "registry: $$AURALYNQ_REGISTRY/$$AURALYNQ_IMAGE_NAMESPACE"'
+
 .PHONY: stack-up
 stack-up: ## Start Qdrant, API, worker, web UI, Phoenix (hardened ordering)
 	./scripts/stack_up.sh

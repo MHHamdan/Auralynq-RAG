@@ -8,6 +8,11 @@
 # (the explicit cert is simply ignored when a public domain is configured).
 FROM docker.io/library/caddy:2.8-alpine
 
+LABEL org.opencontainers.image.title="auralynq-caddy" \
+      org.opencontainers.image.description="Auralynq TLS reverse proxy (Caddy) — single public HTTPS entrypoint" \
+      org.opencontainers.image.source="https://github.com/MHHamdan/Auralynq" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
 ARG AURALYNQ_CERT_HOST=localhost
 RUN apk add --no-cache openssl \
     && mkdir -p /certs \

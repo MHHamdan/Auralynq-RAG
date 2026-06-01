@@ -18,6 +18,10 @@ RUN npm run build
 
 FROM docker.io/library/node:20-alpine AS runner
 WORKDIR /app
+LABEL org.opencontainers.image.title="auralynq-web" \
+      org.opencontainers.image.description="Auralynq web UI (Next.js) — chat, voice, trace, evidence" \
+      org.opencontainers.image.source="https://github.com/MHHamdan/Auralynq" \
+      org.opencontainers.image.licenses="Apache-2.0"
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
 RUN addgroup -g 10001 web && adduser -u 10001 -G web -S web
 COPY --from=builder /app/public ./public
