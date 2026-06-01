@@ -66,3 +66,38 @@ def test_diarize_heuristic_alternates_on_pause():
     segs = [ASRSegment(0.0, 1.0, "a"), ASRSegment(3.0, 4.0, "b")]  # >1s gap
     out = _heuristic(segs)
     assert out[0].speaker != out[1].speaker
+
+
+def test_llm_model_defaulting_for_commercial_providers():
+    """Ollama-style model tags must not leak into OpenAI/Anthropic (would 404)."""
+    from auralynq.llm.factory import _model_for
+
+    # Ollama-looking tag -> provider default
+    assert _model_for("openai", "llama3.2:3b") == "gpt-4o-mini"
+    assert _model_for("anthropic", "llama3.2:3b") == "claude-3-5-haiku-latest"
+    # An explicit provider-appropriate model is respected
+    assert _model_for("openai", "gpt-4o") == "gpt-4o"
+    assert _model_for("anthropic", "claude-3-5-sonnet-latest") == "claude-3-5-sonnet-latest"
+    # Unknown provider passes through unchanged
+    assert _model_for("ollama", "llama3.2:3b") == "llama3.2:3b"
+
+
+def test_resilient_llm_falls_back_on_runtime_error():
+    """A provider that raises at request time must degrade to extractive, not crash."""
+    from auralynq.llm.base import LLM, Context
+    from auralynq.llm.resilient import ResilientLLM
+
+    class _Boom(LLM):
+        name = "boom"
+
+        def generate(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            raise RuntimeError("billing_not_active")
+
+    r = ResilientLLM(_Boom())
+    ctx = [Context(marker=1, text="Paris is the capital of France.", source="geo.md")]
+    out = r.answer("What is the capital of France?", ctx)
+    assert out and "[1]" in out  # extractive fallback produced a cited answer
+    assert r.last_fallback == "RuntimeError"
+    # streaming also degrades cleanly
+    streamed = "".join(r.stream_answer("What is the capital of France?", ctx))
+    assert "[1]" in streamed

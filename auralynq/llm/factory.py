@@ -23,6 +23,28 @@ def _ollama_reachable(base_url: str) -> bool:
         return False
 
 
+# Sensible per-provider default models. The global default (llama3.2:3b) targets
+# Ollama; if the resolved provider is a commercial API and the configured model
+# still looks like an Ollama tag, fall back to that provider's default so an
+# OPENAI/ANTHROPIC key doesn't 404 on a local model name.
+_PROVIDER_DEFAULT_MODEL = {
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-3-5-haiku-latest",
+}
+_OLLAMA_MODEL_HINTS = ("llama", "qwen", "mistral", "gemma", "phi", "deepseek", ":")
+
+
+def _model_for(provider: str, configured: str) -> str:
+    default = _PROVIDER_DEFAULT_MODEL.get(provider)
+    if default is None:
+        return configured
+    looks_like_ollama = any(h in configured.lower() for h in _OLLAMA_MODEL_HINTS)
+    if looks_like_ollama:
+        _log.info("llm.model_defaulted", provider=provider, model=default, ignored=configured)
+        return default
+    return configured
+
+
 def build_llm(provider: str | None = None) -> LLM:
     s = get_settings()
     provider = provider or s.llm.provider
@@ -37,20 +59,28 @@ def build_llm(provider: str | None = None) -> LLM:
         else:
             provider = "extractive"
 
+    # Networked/commercial providers are wrapped so a request-time failure (bad
+    # key, inactive billing, rate limit, network blip) degrades to extractive
+    # instead of 500-ing the query (ADR-0003).
     try:
         if provider == "ollama":
             from auralynq.llm.providers import OllamaLLM
+            from auralynq.llm.resilient import ResilientLLM
 
-            return OllamaLLM(s.llm.model, s.llm.base_url)
+            return ResilientLLM(OllamaLLM(s.llm.model, s.llm.base_url))
         if provider == "openai":
             from auralynq.llm.providers import OpenAILLM
+            from auralynq.llm.resilient import ResilientLLM
 
-            return OpenAILLM(s.openai_api_key, s.llm.model)
+            return ResilientLLM(OpenAILLM(s.openai_api_key, _model_for("openai", s.llm.model)))
         if provider == "anthropic":
             from auralynq.llm.providers import AnthropicLLM
+            from auralynq.llm.resilient import ResilientLLM
 
-            return AnthropicLLM(s.anthropic_api_key, s.llm.model)
-    except Exception as exc:  # pragma: no cover
+            return ResilientLLM(
+                AnthropicLLM(s.anthropic_api_key, _model_for("anthropic", s.llm.model))
+            )
+    except Exception as exc:  # construction failure (e.g. missing sdk) → extractive
         _log.warning("llm.fallback_extractive", error=str(exc))
 
     _log.info("llm.using", provider="extractive")

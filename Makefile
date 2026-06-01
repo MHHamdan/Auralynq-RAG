@@ -50,9 +50,8 @@ stack-build: ## Build container images via Podman Compose
 	$(COMPOSE) -f $(COMPOSE_FILE) build
 
 .PHONY: stack-up
-stack-up: ## Start Qdrant, API, worker, web UI, Phoenix
-	$(COMPOSE) -f $(COMPOSE_FILE) up -d
-	@echo "✓ stack up: API :8000  UI :3000  Qdrant :6333  Phoenix :6006"
+stack-up: ## Start Qdrant, API, worker, web UI, Phoenix (hardened ordering)
+	./scripts/stack_up.sh
 
 .PHONY: stack-down
 stack-down: ## Stop the stack

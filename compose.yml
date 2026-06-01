@@ -1,35 +1,55 @@
 # Auralynq stack — Podman-compatible. `make stack-up`.
 # Rootless-friendly: no privileged ports, named volumes, no host networking.
+#
+# Security posture (see DECISIONS ADR-0012):
+#   * Public:   web UI + API only.
+#   * Internal: Qdrant + Phoenix bind to ${AURALYNQ_BIND_INTERNAL:-127.0.0.1}
+#               (the podman bridge gateway on this host) — reachable by containers
+#               and host tooling, NOT from the external NIC.
+#   * API auth: AURALYNQ_SERVE__API_KEY (empty == open). The browser never holds
+#               the key — the web container proxies /api/* with the bearer header.
+#   * Least privilege: api/worker run as the image's non-root user +
+#               no-new-privileges; all services restart unless-stopped + healthcheck.
 name: auralynq
 
 services:
   qdrant:
     image: docker.io/qdrant/qdrant:v1.12.1
     container_name: auralynq-qdrant
-    # Host ports are configurable to avoid clashes with other local stacks
-    # (defaults 6333/6334). In-cluster, the API always reaches Qdrant at
-    # qdrant:6333 over the compose network regardless of the host mapping.
+    restart: unless-stopped
+    security_opt: ["no-new-privileges"]
+    # Internal-only: bound to the bridge gateway, not 0.0.0.0.
     ports:
-      - "${AURALYNQ_QDRANT_HTTP_PORT:-6333}:6333"
-      - "${AURALYNQ_QDRANT_GRPC_PORT:-6334}:6334"
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_QDRANT_HTTP_PORT:-6333}:6333"
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - auralynq-qdrant:/qdrant/storage
     healthcheck:
-      test: ["CMD", "sh", "-c", "true"]
-      interval: 10s
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333' 2>/dev/null || exit 1"]
+      interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 20s
 
   phoenix:
     image: docker.io/arizephoenix/phoenix:latest
     container_name: auralynq-phoenix
+    restart: unless-stopped
+    security_opt: ["no-new-privileges"]
+    # Internal-only: UI + OTLP collector bound to the bridge gateway.
     ports:
-      - "6006:6006"
-      - "4317:4317"
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:6006:6006"
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:4317:4317"
     environment:
       - PHOENIX_WORKING_DIR=/data
     volumes:
       - auralynq-phoenix:/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:6006')\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   api:
     build:
@@ -37,30 +57,41 @@ services:
       dockerfile: containers/api.Dockerfile
     image: auralynq-api:latest
     container_name: auralynq-api
-    # Run as container-root so writes to the bind-mounted ./data land owned by the
-    # host user (rootless Podman maps container uid 0 -> the invoking host user).
-    # This is safe under rootless Podman (container root is an unprivileged host uid).
-    user: "0:0"
+    restart: unless-stopped
+    # Least privilege: run as the image's non-root `auralynq` user (uid 10001),
+    # and forbid privilege escalation.
+    security_opt: ["no-new-privileges"]
     command: ["uvicorn", "auralynq.serving.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Public surface.
     ports:
       - "${AURALYNQ_API_PORT:-8000}:8000"
     environment:
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - COHERE_API_KEY=${COHERE_API_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://qdrant:6333}
       - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
-      - AURALYNQ_TELEMETRY__OTLP_ENDPOINT=http://phoenix:4317
+      - AURALYNQ_TELEMETRY__OTLP_ENDPOINT=${AURALYNQ_OTLP_ENDPOINT:-}
       - AURALYNQ_DATA_DIR=/app/data
-      # Browser origin(s) allowed by CORS. Override for a remote server, e.g.
-      # AURALYNQ_SERVE__CORS_ORIGINS='["http://<SERVER_IP>:3300"]'
+      - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
       - AURALYNQ_SERVE__CORS_ORIGINS=${AURALYNQ_SERVE__CORS_ORIGINS:-["http://localhost:3000"]}
     volumes:
-      # Podman-managed named volume avoids rootless bind-mount ownership clashes.
-      # Seed it with: podman exec auralynq-api auralynq data && ... index
+      # Podman-managed named volumes initialize with the image's (non-root) owner,
+      # so the non-root runtime user can write without host-ownership clashes.
       - auralynq-data:/app/data
-      - ./reports:/app/reports
+      - auralynq-reports:/app/reports
     depends_on:
       - qdrant
       - phoenix
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   worker:
     build:
@@ -68,10 +99,14 @@ services:
       dockerfile: containers/api.Dockerfile
     image: auralynq-api:latest
     container_name: auralynq-worker
-    user: "0:0"  # see api service note (rootless bind-mount write access)
+    restart: unless-stopped
+    security_opt: ["no-new-privileges"]
     command: ["python", "-m", "auralynq.serving.worker"]
     environment:
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - COHERE_API_KEY=${COHERE_API_KEY:-}
       - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://qdrant:6333}
       - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
       - AURALYNQ_DATA_DIR=/app/data
@@ -79,25 +114,43 @@ services:
       - auralynq-data:/app/data
     depends_on:
       - qdrant
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f auralynq.serving.worker || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   web:
     build:
       context: ./web
       dockerfile: ../containers/web.Dockerfile
       args:
-        # Baked into the client bundle. Override for a remote server:
-        # NEXT_PUBLIC_API_BASE=http://<SERVER_IP>:8000
-        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+        # Same-origin proxy path baked into the bundle (no IP, no secret).
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/api}
     image: auralynq-web:latest
     container_name: auralynq-web
+    restart: unless-stopped
+    security_opt: ["no-new-privileges"]
+    # Public surface.
     ports:
       - "${AURALYNQ_WEB_PORT:-3000}:3000"
     environment:
-      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+      # Server-side only (never sent to the browser): where the proxy forwards to,
+      # and the bearer token it injects.
+      - AURALYNQ_API_INTERNAL=${AURALYNQ_API_INTERNAL:-http://api:8000}
+      - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
     depends_on:
       - api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   auralynq-qdrant:
   auralynq-phoenix:
   auralynq-data:
+  auralynq-reports:

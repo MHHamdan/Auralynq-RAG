@@ -23,6 +23,23 @@ def _isolated_env(tmp_path, monkeypatch):
     # Silence logs in tests (also avoids structlog's cached stream being closed
     # across repeated in-process CLI invocations under CliRunner).
     monkeypatch.setenv("AURALYNQ_LOG_LEVEL", "CRITICAL")
+    # Neutralize any secrets/overrides a populated `.env` would inject, so the
+    # offline suite is deterministic on a developer/CI machine *and* on a
+    # configured server (auth open, no commercial providers, default CORS).
+    monkeypatch.setenv("AURALYNQ_SERVE__API_KEY", "")
+    for _secret in (
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "COHERE_API_KEY",
+        "HUGGINGFACE_TOKEN",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+    ):
+        monkeypatch.delenv(_secret, raising=False)
+        monkeypatch.setenv(_secret, "")
+    # Ignore a host `.env` entirely during tests (env vars above are the source
+    # of truth). pydantic-settings will skip a non-existent file.
+    monkeypatch.setenv("AURALYNQ_DOTENV_DISABLED", "1")
     reload_settings()
     seed_everything(42)
     # reset cached singletons that read settings

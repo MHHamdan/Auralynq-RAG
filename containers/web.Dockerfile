@@ -11,7 +11,7 @@ COPY . .
 # NEXT_PUBLIC_* vars are inlined into the client bundle at build time, so the
 # API base must be known here. Override per-deployment, e.g. for a remote server:
 #   --build-arg NEXT_PUBLIC_API_BASE=http://<server-ip>:8000
-ARG NEXT_PUBLIC_API_BASE=http://localhost:8000
+ARG NEXT_PUBLIC_API_BASE=/api
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build

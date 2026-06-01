@@ -148,3 +148,41 @@ compare avoids timing leaks.
 **Alternatives rejected.** Always-on auth (breaks the $0 demo), per-route decorators
 (scattered, easy to miss an endpoint), full OAuth/JWT (over-engineered for a
 single-tenant local-first tool; can layer on later behind the same middleware).
+
+---
+
+## ADR-0012 — Deployment hardening for remote/server exposure
+
+**Context.** The stack is run on a remote server reachable by browsers on other
+machines, with all ports bound to `0.0.0.0`. The earlier setup ran api/worker as
+container-root, exposed Qdrant + Phoenix publicly with no auth, had no restart
+policies/healthchecks, and (for rootless DNS reasons) reached Qdrant via the host
+gateway. Enabling API auth naively would either break the browser UI or leak the
+key into the client bundle.
+
+**Decision.**
+- **Network surface:** only the **web UI** and **API** publish on `0.0.0.0`.
+  **Qdrant and Phoenix** bind to `${AURALYNQ_BIND_INTERNAL:-127.0.0.1}` — on this
+  host the podman bridge gateway (`10.88.0.1`/cni-podman0), reachable by containers
+  (via `host.containers.internal`) and host tooling, but **not** from the external
+  NIC. Default `127.0.0.1` keeps a clean host secure out of the box.
+- **API auth:** `AURALYNQ_SERVE__API_KEY` (empty == open). The browser never holds
+  the key: the **web container runs a same-origin `/api/*` proxy** (Next.js route
+  handler) that injects `Authorization: Bearer` server-side and streams responses.
+  So `NEXT_PUBLIC_API_BASE=/api` — no IP and no secret are baked into the bundle.
+- **Least privilege:** api/worker drop the `user: "0:0"` override and run as the
+  image's non-root `auralynq` (uid 10001); all services get
+  `security_opt: ["no-new-privileges"]`, `restart: unless-stopped`, and
+  healthchecks. Named volumes (`auralynq-data`, `auralynq-reports`) initialize with
+  the image's non-root owner so writes succeed without host-ownership clashes.
+
+**Rationale.** Satisfies "expose only UI+API", "enable API auth", and "never expose
+secrets" simultaneously; the proxy also removes CORS as an attack surface (browser
+calls are same-origin). Restart + healthchecks give crash recovery. TLS / public
+reverse proxy is intentionally deferred to a separate step.
+
+**Alternatives rejected.** Baking the key into the browser bundle (leaks the secret);
+breaking the UI when auth is on (fails the "UI reachable" goal); binding internal
+services to `127.0.0.1` only (the rootless API can't reach host loopback — no working
+inter-container DNS on this Podman 3.4/CNI host); fixing DNS (dnsname/aardvark not
+available here).

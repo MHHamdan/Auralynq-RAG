@@ -10,7 +10,7 @@ WORKDIR /app
 
 # System deps for audio + parsing (kept minimal). ffmpeg powers audio decode.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg libsndfile1 curl \
+    && apt-get install -y --no-install-recommends ffmpeg libsndfile1 curl procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies first for layer caching. faster-whisper + soundfile give

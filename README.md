@@ -105,51 +105,56 @@ and Phoenix traces at **http://localhost:6006**.
 
 ## 🌐 Remote / server deployment
 
-Running the stack on a remote server (accessed from a browser on another machine)
-needs three things, because the web bundle and CORS are origin-specific. Put your
-deployment values in a git-ignored `.env` (read by `podman-compose` for `${...}`
-substitution); the committed defaults stay `localhost`.
-
-Replace `<SERVER_IP>` with your server's address (e.g. its LAN IP or hostname):
+The stack is **hardened for remote exposure** ([ADR-0012](DECISIONS.md)): only the
+**Web UI** and **API** are published on `0.0.0.0`; **Qdrant + Phoenix bind to
+localhost only** (off the external NIC); the API requires a **bearer token**; and
+the browser never holds the key — the web container runs a same-origin `/api/*`
+proxy that injects it server-side. Put deployment values in a git-ignored `.env`
+(read by `podman-compose` for `${...}` substitution); committed defaults stay safe.
 
 ```bash
-# .env  (git-ignored; consumed by podman-compose)
-# --- public address baked into the web bundle + allowed by CORS ---
-NEXT_PUBLIC_API_BASE=http://<SERVER_IP>:8000          # web build arg + runtime
+# .env  (git-ignored; consumed by podman-compose — never committed)
+# --- API auth: generate once, e.g. `openssl rand -hex 32` (do NOT commit) ---
+AURALYNQ_SERVE__API_KEY=<random-secret>
+# --- browser uses the same-origin proxy; no IP/secret baked into the bundle ---
+NEXT_PUBLIC_API_BASE=/api
 AURALYNQ_SERVE__CORS_ORIGINS=["http://<SERVER_IP>:3300"]
-
-# --- host ports (override if the defaults clash with other stacks) ---
+# --- host ports (override if defaults clash with other stacks) ---
 AURALYNQ_API_PORT=8000
 AURALYNQ_WEB_PORT=3300
 AURALYNQ_QDRANT_HTTP_PORT=6533
 AURALYNQ_QDRANT_GRPC_PORT=6534
-
-# --- rootless Podman: if inter-container DNS is unavailable, reach Qdrant via
-#     the host gateway + its published port instead of the service name ---
-AURALYNQ_VECTOR_URL=http://host.containers.internal:6533
+# --- internal services bind here (loopback = off the public NIC) ---
+AURALYNQ_BIND_INTERNAL=127.0.0.1
+# --- optional commercial providers (auto-detected; runtime errors degrade to
+#     the offline extractive answerer, never a 500) ---
+OPENAI_API_KEY=<...>        # ANTHROPIC_API_KEY / COHERE_API_KEY / HUGGINGFACE_TOKEN
 ```
 
 ```bash
-# NEXT_PUBLIC_* is inlined at build time, so the web image must be (re)built with it:
-podman-compose build web          # picks up NEXT_PUBLIC_API_BASE from .env
-podman-compose up -d              # full down/up if you changed images: down && up -d
+# Build images with the proxy baked in, then bring up the hardened stack:
+podman-compose build              # web bakes NEXT_PUBLIC_API_BASE=/api
+make stack-up                     # orders qdrant/phoenix first, wires the API to
+                                  # Qdrant by container IP (rootless-DNS-safe)
 
-# seed data + build the index inside the API container (writes to the named volume):
+# Seed data + build the index inside the API container (writes the named volume):
 podman exec auralynq-api auralynq data --sample
 podman exec auralynq-api auralynq index --input /app/data/corpus
 ```
 
-Then browse to **http://&lt;SERVER_IP&gt;:3300** (UI), **http://&lt;SERVER_IP&gt;:8000/docs**
-(API), **http://&lt;SERVER_IP&gt;:6006** (Phoenix). Ensure the server firewall allows
-those ports.
+Then browse to **http://&lt;SERVER_IP&gt;:3300** (UI) — chat/voice/trace all work
+through the proxy with no client-side key. The API is at
+**http://&lt;SERVER_IP&gt;:8000/docs** (send `Authorization: Bearer <key>`).
+**Qdrant (`:6533`) and Phoenix (`:6006`) are intentionally NOT reachable from the
+server IP** — only on the host's loopback. Open only `3300` + `8000` in the firewall.
 
 **Notes**
 - Voice from the browser mic needs a real ASR engine in the API image; it ships
   faster-whisper (the base model downloads on the first `/voice` request).
-- For TLS / a single public port, front the stack with a reverse proxy (Caddy/Nginx)
-  and set `NEXT_PUBLIC_API_BASE`/CORS to the public `https://` origin.
-- `podman-compose` (v1) ignores some directives and pins image IDs across partial
-  `up`s — after rebuilding an image, do a full `down && up -d`.
+- TLS / single public port is a **separate future step**: front UI+API with a
+  reverse proxy (Caddy/Nginx) on 443 and update `AURALYNQ_SERVE__CORS_ORIGINS`.
+- `podman-compose` (v1) pins image IDs across partial `up`s — after rebuilding an
+  image, do a full `down` then `make stack-up`.
 
 ## ⚙️ Configuration
 
@@ -178,6 +183,12 @@ to require `Authorization: Bearer <key>` on every endpoint except `/health` and
 AURALYNQ_SERVE__API_KEY=$(openssl rand -hex 24) make serve
 curl -H "Authorization: Bearer <key>" localhost:8000/query -d '{"question":"..."}'
 ```
+
+In the Podman stack the browser **never holds the key**: the web container runs a
+same-origin `/api/*` proxy that injects the bearer token server-side, so
+`NEXT_PUBLIC_API_BASE=/api` keeps both the key and the server IP out of the
+client bundle. See [ADR-0012](DECISIONS.md) for the full deployment-hardening
+posture (internal-only Qdrant/Phoenix, non-root containers, restart + healthchecks).
 
 ## 🔌 Providers
 

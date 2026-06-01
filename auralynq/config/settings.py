@@ -8,6 +8,7 @@ Only ``HUGGINGFACE_TOKEN`` is ever required, and only for gated HF assets.
 from __future__ import annotations
 
 import functools
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -140,7 +141,14 @@ class Settings(BaseSettings):
 
 @functools.lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return a cached :class:`Settings` instance (read once per process)."""
+    """Return a cached :class:`Settings` instance (read once per process).
+
+    Set ``AURALYNQ_DOTENV_DISABLED=1`` to skip reading a host ``.env`` entirely —
+    used by the test suite so a populated server ``.env`` can't leak secrets/auth
+    into deterministic offline tests.
+    """
+    if os.getenv("AURALYNQ_DOTENV_DISABLED") == "1":
+        return Settings(_env_file=None)  # type: ignore[call-arg]
     return Settings()
 
 
