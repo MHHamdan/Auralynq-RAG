@@ -15,7 +15,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-_PUBLIC_PATHS = frozenset({"/health", "/metrics", "/docs", "/openapi.json", "/redoc"})
+_PUBLIC_PATHS = frozenset(
+    {"/health", "/ready", "/version", "/metrics", "/docs", "/openapi.json", "/redoc"}
+)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

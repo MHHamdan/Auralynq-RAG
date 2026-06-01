@@ -21,7 +21,7 @@ COPY auralynq ./auralynq
 # Commercial LLM SDKs (openai/anthropic/cohere) are included so the provider
 # abstraction can use whichever account has active billing; all are optional at
 # runtime and degrade to the offline extractive answerer (ADR-0003).
-RUN pip install -e ".[ingest,eval,vector,llm]" "faster-whisper>=1.0" "soundfile>=0.12"
+RUN pip install -e ".[ingest,eval,vector,llm,mcp]" "faster-whisper>=1.0" "soundfile>=0.12"
 
 COPY scripts ./scripts
 

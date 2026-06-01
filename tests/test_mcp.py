@@ -53,3 +53,19 @@ def test_ingest_documents_tool(tmp_path):
     (tmp_path / "x.md").write_text("# X\n\nAuralynq indexes Qdrant vectors.", encoding="utf-8")
     out = ingest_documents(str(tmp_path))
     assert out["documents"] >= 1
+
+
+def test_mcp_transport_resolution(monkeypatch):
+    from auralynq.mcp_server.server import _resolve_transport
+
+    monkeypatch.delenv("AURALYNQ_MCP_TRANSPORT", raising=False)
+    assert _resolve_transport([]) == "stdio"  # default
+    assert _resolve_transport(["--transport", "streamable-http"]) == "streamable-http"
+    monkeypatch.setenv("AURALYNQ_MCP_TRANSPORT", "sse")
+    assert _resolve_transport([]) == "sse"  # env honored
+    # CLI flag overrides env
+    assert _resolve_transport(["--transport", "stdio"]) == "stdio"
+    import pytest
+
+    with pytest.raises(SystemExit):
+        _resolve_transport(["--transport", "carrier-pigeon"])
