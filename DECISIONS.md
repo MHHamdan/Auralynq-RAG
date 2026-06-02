@@ -389,3 +389,38 @@ Complements (does not replace) the in-process trace and Phoenix mirror.
 exporting inline inside each node (couples the agent to a vendor, multiplies
 failure surface); replacing the in-process tracer (loses the UI trace panel + the
 always-on local record).
+
+## ADR-0020 — Client-side API failover at the web proxy (local-primary, remote-backup)
+
+**Context.** Auralynq can run as a full stack on a laptop with all real provider
+keys, while a remote server (reached at `https://<server>:8443`) stays available
+as a backup. We want the laptop UI to keep answering when the laptop's own API
+container is down or wedged — without the user switching URLs or losing the
+same-origin/secret-injection model (ADR-0012).
+
+**Decision.** The Next.js `/api/[...path]` proxy gained an ordered-upstream
+failover policy (`web/lib/failover.ts`, pure + unit-tested): try the
+local/primary backend (`AURALYNQ_API_INTERNAL`) first; if it is unreachable
+(connection error or time-to-first-byte over `AURALYNQ_API_PRIMARY_TIMEOUT_MS`,
+default 12s) or returns a gateway-class status (502/503/504), replay the same
+request against `AURALYNQ_API_FALLBACK` (e.g. `https://<server>:8443/api`). When a
+fallback is configured the request body is buffered so it can be replayed; with no
+fallback the proxy streams the body untouched (unchanged behavior). The
+self-signed fallback cert is trusted via an `undici` `Agent`
+(`connect.rejectUnauthorized:false`) passed as the global-`fetch` dispatcher,
+enabled only when `AURALYNQ_API_FALLBACK_INSECURE_TLS=1`. The chosen upstream is
+reported in the `x-auralynq-upstream: primary|fallback|none` response header.
+
+**Rationale.** Failover belongs at the proxy: it already terminates the
+same-origin contract and holds the bearer token, so streaming (SSE) and auth keep
+working transparently. Only gateway-class statuses trigger failover — a 4xx/500
+means the backend is up and answering, so failing over would mask real bugs.
+Bounding only time-to-first-byte (not the whole stream) lets long LLM responses
+flow while still escaping a hung backend. Empty `AURALYNQ_API_FALLBACK` is a
+no-op, so server deployments are unaffected.
+
+**Alternatives rejected.** DNS/round-robin or an external LB (heavier, loses the
+secret-injection proxy); client-side (browser) failover (would expose the backup
+URL + key to the browser, breaking ADR-0012); failing over on any 5xx (masks
+application errors); `NODE_TLS_REJECT_UNAUTHORIZED=0` (disables TLS verification
+process-wide instead of only for the one self-signed fallback).
