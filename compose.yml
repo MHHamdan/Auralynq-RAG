@@ -215,6 +215,12 @@ services:
       # (by service name) and injects the bearer token.
       - AURALYNQ_API_INTERNAL=${AURALYNQ_API_INTERNAL:-http://auralynq-api:8000}
       - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
+      # Optional failover (ADR-0020): if the local API is unreachable, the proxy
+      # replays the request against this remote backup (e.g. https://<server>:8443/api).
+      # Empty = single upstream, no failover (default).
+      - AURALYNQ_API_FALLBACK=${AURALYNQ_API_FALLBACK:-}
+      - AURALYNQ_API_FALLBACK_INSECURE_TLS=${AURALYNQ_API_FALLBACK_INSECURE_TLS:-0}
+      - AURALYNQ_API_PRIMARY_TIMEOUT_MS=${AURALYNQ_API_PRIMARY_TIMEOUT_MS:-12000}
     depends_on:
       - api
     healthcheck:

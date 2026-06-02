@@ -105,6 +105,74 @@ this is a no-op.
 
 ---
 
+## 1b. Laptop = full stack + all your APIs, server as automatic backup
+
+Run the complete Podman stack on your laptop with your own provider keys, and have
+the UI **transparently fail over to the remote server** when the laptop's own API
+is down (ADR-0020). Because it's your laptop, `localhost` works in the browser.
+
+```bash
+git clone https://github.com/MHHamdan/Auralynq.git && cd Auralynq
+
+cat > .env <<'EOF'
+# --- browser reaches the laptop locally ---
+AURALYNQ_HTTPS_PORT=8443
+AURALYNQ_CERT_HOST=localhost
+AURALYNQ_SITE_ADDRESS=:8443
+AURALYNQ_SERVE__CORS_ORIGINS=["https://localhost:8443"]
+NEXT_PUBLIC_API_BASE=/api
+AURALYNQ_BIND_INTERNAL=127.0.0.1
+
+# --- all your providers (real keys) ---
+AURALYNQ_LLM__PROVIDER=cohere
+COHERE_API_KEY=...
+OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+HUGGINGFACE_TOKEN=hf_...
+AURALYNQ_RERANK__PROVIDER=auto          # uses Cohere rerank when COHERE_API_KEY is set
+
+# --- API auth for the laptop's own API (any value; server re-injects its own) ---
+AURALYNQ_SERVE__API_KEY=...
+
+# --- automatic failover to the server backup ---
+AURALYNQ_API_FALLBACK=https://172.24.50.21:8443/api
+AURALYNQ_API_FALLBACK_INSECURE_TLS=1    # server uses a self-signed cert
+AURALYNQ_API_PRIMARY_TIMEOUT_MS=12000   # time-to-first-byte before failing over
+EOF
+
+make stack-up        # build + start the 7-service stack locally
+```
+
+Open **https://localhost:8443**. Every request hits the laptop's API first; if that
+container is down or wedged, the proxy replays the request against the server and
+answers anyway — no URL change, streaming and auth preserved.
+
+**Verify failover works:**
+```bash
+# normal: served locally
+curl -sk -D- -o/dev/null -X POST https://localhost:8443/api/query \
+  -H 'content-type: application/json' -d '{"question":"hi"}' | grep -i x-auralynq-upstream
+#   x-auralynq-upstream: primary
+
+podman stop auralynq-api          # simulate the laptop backend going down
+curl -sk -D- -o/dev/null -X POST https://localhost:8443/api/query \
+  -H 'content-type: application/json' -d '{"question":"hi"}' | grep -i x-auralynq-upstream
+#   x-auralynq-upstream: fallback   <-- answered by the server
+
+podman start auralynq-api         # back to local
+```
+
+> The `x-auralynq-upstream` response header (`primary` | `fallback` | `none`) tells
+> you which backend served any request. Failover triggers on a connection
+> error/timeout or a 502/503/504 — never on a 4xx/500, so real app errors aren't masked.
+>
+> Notes: the failover replays the request body, so it buffers POST bodies in the web
+> container (fine for queries; large ingests use more memory). The laptop's
+> `AURALYNQ_SERVE__API_KEY` need not match the server's — the fallback goes through
+> the server's `/api` proxy, which overwrites it with the server's own key.
+
+---
+
 ## 2. Full production stack on THIS machine (from source)
 
 ```bash
