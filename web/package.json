@@ -7,7 +7,9 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test:sse": "node lib/sse.test.mjs"
   },
   "dependencies": {
     "next": "15.5.18",
