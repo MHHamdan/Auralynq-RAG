@@ -1,4 +1,6 @@
 // Auralynq API client. Talks to the FastAPI backend.
+import { consumeSSE, parseSSEFrame } from "@/lib/sse";
+
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -75,6 +77,10 @@ export async function askStream(
     body: JSON.stringify({ question }),
     signal,
   });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`stream failed: ${r.status} ${detail.slice(0, 200)}`);
+  }
   if (!r.body) throw new Error("no stream body");
   const reader = r.body.getReader();
   const decoder = new TextDecoder();
@@ -83,17 +89,14 @@ export async function askStream(
     const { value, done } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
-    const frames = buf.split("\n\n");
-    buf = frames.pop() || "";
-    for (const frame of frames) {
-      const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
-      if (!dataLine) continue;
-      try {
-        onEvent(JSON.parse(dataLine.slice(5).trim()) as StreamEvent);
-      } catch {
-        /* ignore partial */
-      }
-    }
+    const { events, rest } = consumeSSE<StreamEvent>(buf);
+    buf = rest;
+    for (const ev of events) onEvent(ev);
+  }
+  // Flush any final buffered frame (stream may end without a trailing blank line).
+  if (buf.trim()) {
+    const ev = parseSSEFrame<StreamEvent>(buf);
+    if (ev) onEvent(ev);
   }
 }
 
