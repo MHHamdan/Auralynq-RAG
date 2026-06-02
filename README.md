@@ -78,6 +78,8 @@ See [DECISIONS.md](DECISIONS.md) for the architectural rationale.
 ## 🚀 Quickstart (Podman)
 
 > Auralynq is **Podman-first** and does **not** require Docker.
+> Full run modes — including **deploying to a different machine** — are in
+> **[RUNNING.md](RUNNING.md)**.
 
 ```bash
 # 0. (optional) only needed for gated models/datasets (e.g. diarization)
