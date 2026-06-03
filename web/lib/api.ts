@@ -30,8 +30,31 @@ export interface TraceSpan {
   events: unknown[];
 }
 
+export interface TraceStep {
+  id: number;
+  name: string;
+  label: string;
+  status: "success" | "warning" | "failed" | "skipped" | "running" | "pending";
+  duration_ms: number;
+  provider?: string | null;
+  evidence_count?: number | null;
+  warnings: string[];
+  attributes: Record<string, unknown>;
+}
+
+export interface InsufficientReason {
+  summary: string;
+  detected_entities: string[];
+  route_attempted: string;
+  retrieved_snippets: { source: string; locator: string; score: number; text: string }[];
+  why_insufficient: string;
+  suggested_questions: string[];
+  suggest_ingest: boolean;
+}
+
 export interface AnswerResult {
   answer: string;
+  status?: string;
   citations: Citation[];
   route: string;
   route_confidence: number;
@@ -40,18 +63,85 @@ export interface AnswerResult {
   seeds: string[];
   iterations: number;
   confidence: number;
+  evidence_coverage?: number;
   cached: boolean;
   elapsed_ms: number;
   trace: TraceSpan[];
+  trace_steps?: TraceStep[];
+  detected_entities?: string[];
+  suggested_questions?: string[];
+  insufficient_evidence_reason?: InsufficientReason | null;
+  warnings?: string[];
+  provider_status?: { subsystem: string; provider: string }[];
+}
+
+export interface CorpusSummary {
+  indexed: boolean;
+  indexed_document_count: number;
+  vector_count: number;
+  document_titles: string[];
+  source_types: Record<string, number>;
+  top_entities: { name: string; type: string; mentions: number; chunks: number }[];
+  entity_count: number;
+  last_indexed: string | null;
 }
 
 export type StreamEvent =
-  | { type: "meta"; route: string; confidence: number; rationale: string; seeds: string[]; path_evidence: PathEvidence[] }
+  | {
+      type: "meta";
+      route: string;
+      confidence: number;
+      rationale: string;
+      seeds: string[];
+      path_evidence: PathEvidence[];
+      detected_entities?: string[];
+      evidence_coverage?: number;
+    }
   | { type: "token"; text: string }
-  | { type: "final"; answer: string; citations: Citation[]; confidence: number; elapsed_ms: number; trace: TraceSpan[] };
+  | {
+      type: "final";
+      answer: string;
+      status?: string;
+      citations: Citation[];
+      confidence: number;
+      evidence_coverage?: number;
+      elapsed_ms: number;
+      trace: TraceSpan[];
+      trace_steps?: TraceStep[];
+      detected_entities?: string[];
+      suggested_questions?: string[];
+      insufficient_evidence_reason?: InsufficientReason | null;
+      warnings?: string[];
+    };
 
 export async function health() {
   const r = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+  return r.json();
+}
+
+export async function corpusSummary(): Promise<CorpusSummary> {
+  const r = await fetch(`${API_BASE}/corpus/summary`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`corpus summary failed: ${r.status}`);
+  return r.json();
+}
+
+export async function fetchSuggestions(
+  limit = 4,
+): Promise<{ suggestions: string[]; corpus_indexed: boolean }> {
+  const r = await fetch(`${API_BASE}/suggestions?limit=${limit}`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`suggestions failed: ${r.status}`);
+  return r.json();
+}
+
+export async function statusSummary() {
+  const r = await fetch(`${API_BASE}/status`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`status failed: ${r.status}`);
+  return r.json();
+}
+
+export async function observabilitySummary() {
+  const r = await fetch(`${API_BASE}/observability/summary`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`observability failed: ${r.status}`);
   return r.json();
 }
 

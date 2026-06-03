@@ -6,8 +6,11 @@ import {
   PathEvidence,
   StreamEvent,
   TraceSpan,
+  TraceStep,
   askStream,
+  fetchSuggestions,
   health,
+  statusSummary,
 } from "@/lib/api";
 import { Message, type Turn } from "@/components/Message";
 import { TracePanel } from "@/components/TracePanel";
@@ -15,12 +18,12 @@ import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
 import { EvalPanel } from "@/components/EvalPanel";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
-// Corpus-agnostic prompts so the suggestions stay useful whatever you've indexed.
-const SUGGESTIONS = [
-  "Summarize the key points of my documents.",
-  "What topics do the indexed sources cover?",
-  "List the main entities and how they relate.",
+// Fallback only — real suggestions are fetched from /api/suggestions (corpus-aware).
+const FALLBACK_SUGGESTIONS = [
+  "Summarize the main topics in the indexed documents.",
+  "What are the key entities and how do they relate?",
 ];
 const STORE_KEY = "auralynq.chat.v1";
 
@@ -29,12 +32,20 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [trace, setTrace] = useState<TraceSpan[]>([]);
+  const [traceSteps, setTraceSteps] = useState<TraceStep[]>([]);
   const [paths, setPaths] = useState<PathEvidence[]>([]);
   const [seeds, setSeeds] = useState<string[]>([]);
+  const [coverage, setCoverage] = useState(0);
+  const [lastConfidence, setLastConfidence] = useState(0);
+  const [lastRoute, setLastRoute] = useState("fast");
+  const [lastStatus, setLastStatus] = useState<string>("answered");
   const [tab, setTab] = useState<"trace" | "evidence" | "ingest" | "eval">("trace");
   const [showPanel, setShowPanel] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [providers, setProviders] = useState<{ subsystem: string; provider: string }[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>(FALLBACK_SUGGESTIONS);
+  const [corpusIndexed, setCorpusIndexed] = useState(true);
+  const [phoenixUrl, setPhoenixUrl] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -44,6 +55,15 @@ export default function Home() {
   useEffect(() => {
     health()
       .then((h) => setProviders(h.providers || []))
+      .catch(() => {});
+    fetchSuggestions(3)
+      .then((s) => {
+        if (s.suggestions?.length) setSuggestions(s.suggestions);
+        setCorpusIndexed(s.corpus_indexed);
+      })
+      .catch(() => {});
+    statusSummary()
+      .then((s) => setPhoenixUrl(s?.tracing?.phoenix_endpoint || null))
       .catch(() => {});
     try {
       const raw = localStorage.getItem(STORE_KEY);
@@ -91,8 +111,11 @@ export default function Home() {
   const runStream = useCallback(async (q: string) => {
     setStreaming(true);
     setTrace([]);
+    setTraceSteps([]);
     setPaths([]);
     setSeeds([]);
+    setCoverage(0);
+    setLastStatus("answered");
     const ac = new AbortController();
     abortRef.current = ac;
     try {
@@ -102,6 +125,8 @@ export default function Home() {
           if (e.type === "meta") {
             setPaths(e.path_evidence || []);
             setSeeds(e.seeds || []);
+            setCoverage(e.evidence_coverage ?? 0);
+            setLastRoute(e.route);
             setTab(e.route === "fast" ? "trace" : "evidence");
             patchLast({ route: e.route, rationale: e.rationale });
           } else if (e.type === "token") {
@@ -112,7 +137,17 @@ export default function Home() {
             });
           } else if (e.type === "final") {
             setTrace(e.trace || []);
-            patchLast({ text: e.answer, citations: e.citations });
+            setTraceSteps(e.trace_steps || []);
+            setCoverage(e.evidence_coverage ?? 0);
+            setLastConfidence(e.confidence ?? 0);
+            setLastStatus(e.status || "answered");
+            patchLast({
+              text: e.answer,
+              citations: e.citations,
+              status: e.status,
+              insufficient: e.insufficient_evidence_reason || null,
+            });
+            if (e.status === "insufficient_evidence") setTab("evidence");
           }
         },
         ac.signal,
@@ -222,6 +257,7 @@ export default function Home() {
               </span>
             ))}
           </div>
+          <ThemeToggle />
           <button
             className="btn-ghost text-sm"
             onClick={newChat}
@@ -251,13 +287,37 @@ export default function Home() {
                     Grounded, cited answers from your data — by text or voice.
                   </p>
                 </div>
-                <div className="flex flex-wrap justify-center gap-2">
-                  {SUGGESTIONS.map((s) => (
-                    <button key={s} className="btn-ghost text-sm" onClick={() => send(s)}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                {corpusIndexed ? (
+                  <div className="flex max-w-xl flex-col items-center gap-2">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">
+                      Suggested for your indexed corpus
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {suggestions.map((s) => (
+                        <button key={s} className="btn-ghost text-sm" onClick={() => send(s)}>
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="max-w-md rounded-xl border border-edge bg-ink/40 p-4 text-sm">
+                    <p className="font-medium text-slate-200">No documents indexed yet</p>
+                    <p className="mt-1 text-slate-400">
+                      Auralynq only answers from evidence you&apos;ve ingested. Open the{" "}
+                      <button
+                        className="text-brand underline"
+                        onClick={() => {
+                          setShowPanel(true);
+                          setTab("ingest");
+                        }}
+                      >
+                        Ingest tab
+                      </button>{" "}
+                      to add PDFs, docs or audio — then suggestions will appear here.
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               turns.map((t, i) => (
@@ -267,6 +327,11 @@ export default function Home() {
                     streaming={streaming}
                     isLast={i === turns.length - 1}
                     onRegenerate={t.role === "assistant" ? regenerate : undefined}
+                    onAsk={send}
+                    onIngest={() => {
+                      setShowPanel(true);
+                      setTab("ingest");
+                    }}
                   />
                 </div>
               ))
@@ -325,7 +390,7 @@ export default function Home() {
                 onClick={() => setTab(t)}
                 aria-pressed={tab === t}
                 className={`rounded-lg px-3 py-1 capitalize transition ${
-                  tab === t ? "bg-brand text-ink" : "border border-edge hover:bg-edge/40"
+                  tab === t ? "bg-brand text-[#06231e]" : "border border-edge hover:bg-edge/40"
                 }`}
               >
                 {t}
@@ -333,9 +398,30 @@ export default function Home() {
             ))}
           </div>
           <div className="scroll-thin max-h-[70vh] flex-1 overflow-y-auto">
-            {tab === "trace" && <TracePanel trace={trace} />}
-            {tab === "evidence" && <EvidencePaths paths={paths} seeds={seeds} />}
-            {tab === "ingest" && <IngestPanel />}
+            {tab === "trace" && (
+              <TracePanel
+                trace={trace}
+                steps={traceSteps}
+                meta={{
+                  route: lastRoute,
+                  status: lastStatus,
+                  confidence: lastConfidence,
+                  coverage,
+                  phoenixUrl,
+                }}
+              />
+            )}
+            {tab === "evidence" && (
+              <EvidencePaths
+                paths={paths}
+                seeds={seeds}
+                coverage={coverage}
+                citations={
+                  [...turns].reverse().find((t) => t.role === "assistant")?.citations || []
+                }
+              />
+            )}
+            {tab === "ingest" && <IngestPanel onAsk={send} />}
             {tab === "eval" && <EvalPanel />}
           </div>
         </section>

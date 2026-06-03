@@ -10,7 +10,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:sse": "node lib/sse.test.mjs",
-    "test:failover": "node lib/failover.test.mjs"
+    "test:failover": "node lib/failover.test.mjs",
+    "test:theme": "node lib/theme.test.mjs"
   },
   "dependencies": {
     "highlight.js": "11.9.0",

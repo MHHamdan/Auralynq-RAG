@@ -4,14 +4,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#0b1120", // base background (lifted from near-black for readability)
-        panel: "#151d31", // raised surfaces
-        edge: "#2c3a59", // visible borders
+        // Surface tokens are theme-driven (see globals.css :root / [data-theme]).
+        ink: "rgb(var(--c-ink) / <alpha-value>)", // base background
+        panel: "rgb(var(--c-panel) / <alpha-value>)", // raised surfaces
+        edge: "rgb(var(--c-edge) / <alpha-value>)", // borders
+        muted: "rgb(var(--c-muted) / <alpha-value>)", // secondary text
+        // Brand identity colors stay fixed across themes.
         brand: "#5eead4", // teal
-        brand2: "#a5b4fc", // indigo (brighter for contrast)
+        brand2: "#a5b4fc", // indigo
         accent: "#c084fc", // violet
         accent2: "#f472b6", // pink
-        muted: "#cbd5e1", // secondary text (slate-300) — readable on dark
       },
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
