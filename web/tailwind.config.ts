@@ -4,13 +4,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#070b16",
-        panel: "#0e1424",
-        edge: "#1f2a44",
+        ink: "#0b1120", // base background (lifted from near-black for readability)
+        panel: "#151d31", // raised surfaces
+        edge: "#2c3a59", // visible borders
         brand: "#5eead4", // teal
-        brand2: "#818cf8", // indigo
+        brand2: "#a5b4fc", // indigo (brighter for contrast)
         accent: "#c084fc", // violet
         accent2: "#f472b6", // pink
+        muted: "#cbd5e1", // secondary text (slate-300) — readable on dark
       },
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],

@@ -14,7 +14,7 @@ export function Nav() {
           </span>
         </Link>
 
-        <div className="hidden items-center gap-7 text-sm text-slate-300 md:flex">
+        <div className="hidden items-center gap-7 text-sm text-slate-200 md:flex">
           <a href="#features" className="transition hover:text-white">
             Features
           </a>

@@ -46,7 +46,7 @@ export function Hero() {
             </a>
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-400">
+          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-300">
             <span>✓ No vendor lock-in</span>
             <span>✓ Citations on every claim</span>
             <span>✓ Voice in &amp; out</span>

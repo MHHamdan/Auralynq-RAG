@@ -14,8 +14,8 @@ html {
 }
 
 body {
-  @apply bg-ink text-slate-200;
-  background-image: radial-gradient(60rem 60rem at 80% -10%, rgba(129, 140, 248, 0.12), transparent),
+  @apply bg-ink text-slate-100;
+  background-image: radial-gradient(60rem 60rem at 80% -10%, rgba(129, 140, 248, 0.14), transparent),
     radial-gradient(50rem 50rem at -10% 10%, rgba(94, 234, 212, 0.1), transparent);
 }
 
@@ -45,16 +45,16 @@ body {
 
 /* glassmorphic surface */
 .glass {
-  @apply rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl;
-  box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  @apply rounded-2xl border border-white/15 bg-white/[0.06] backdrop-blur-xl;
+  box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
 }
 .glass-hover {
-  @apply transition duration-300 hover:border-white/20 hover:bg-white/[0.07];
+  @apply transition duration-300 hover:border-white/25 hover:bg-white/[0.09];
 }
 
 /* pill / chip */
 .chip {
-  @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300;
+  @apply inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-3 py-1 text-xs text-slate-200;
 }
 
 /* primary gradient CTA */

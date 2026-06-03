@@ -60,7 +60,7 @@ export function Message({
             >
               {turn.route === "deep" ? "deep · graph" : "fast"}
             </span>
-            {turn.rationale && <span className="text-slate-500">{turn.rationale}</span>}
+            {turn.rationale && <span className="text-slate-400">{turn.rationale}</span>}
           </div>
         )}
 
