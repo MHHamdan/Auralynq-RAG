@@ -39,13 +39,25 @@ class QdrantStore(VectorStore):
         self._hnsw_m = s.vector.hnsw_m
         self.client = QdrantClient(url=url or s.vector.url, timeout=30)
         self._dim = 0
+        self._exists_cached = False
         _log.info("qdrant.connected", url=url or s.vector.url, collection=self.collection)
+
+    def _exists(self) -> bool:
+        # Memoize the positive result: a present collection isn't dropped under
+        # search traffic, so we skip one Qdrant RPC per query. clear() resets it.
+        if self._exists_cached:
+            return True
+        if self.client.collection_exists(self.collection):
+            self._exists_cached = True
+            return True
+        return False
 
     def ensure_collection(self, dim: int) -> None:
         from qdrant_client import models as qm
 
         self._dim = dim
         if self.client.collection_exists(self.collection):
+            self._exists_cached = True
             return
 
         quant: Any = None  # qdrant accepts several quantization config types
@@ -77,6 +89,7 @@ class QdrantStore(VectorStore):
         ):
             with contextlib.suppress(Exception):  # index may already exist
                 self.client.create_payload_index(self.collection, field, schema)
+        self._exists_cached = True
 
     def upsert(self, chunks: list[Chunk], embeddings: EmbeddingBatch) -> int:
         from qdrant_client import models as qm
@@ -120,7 +133,7 @@ class QdrantStore(VectorStore):
         return qm.Filter(must=must) if must else None
 
     def search_dense(self, dense, k: int, filt: Filter | None = None) -> list[ScoredChunk]:
-        if not self.client.collection_exists(self.collection):
+        if not self._exists():
             return []
         res = self.client.query_points(
             self.collection,
@@ -137,7 +150,7 @@ class QdrantStore(VectorStore):
     ) -> list[ScoredChunk]:
         from qdrant_client import models as qm
 
-        if not sparse or not self.client.collection_exists(self.collection):
+        if not sparse or not self._exists():
             return []
         res = self.client.query_points(
             self.collection,
@@ -164,13 +177,14 @@ class QdrantStore(VectorStore):
 
     def count(self) -> int:
         # A not-yet-created collection means an empty index (don't 404).
-        if not self.client.collection_exists(self.collection):
+        if not self._exists():
             return 0
         return int(self.client.count(self.collection, exact=True).count)
 
     def clear(self) -> None:
         if self.client.collection_exists(self.collection):
             self.client.delete_collection(self.collection)
+        self._exists_cached = False
 
 
 def _uuid(chunk_id: str) -> str:
