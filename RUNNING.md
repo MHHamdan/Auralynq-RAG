@@ -17,6 +17,26 @@ make stack-up      # start;  make stack-down to stop
 
 Open **https://172.24.50.21:8443** (accept the one-time self-signed cert warning).
 
+### Fixed IP + custom ports (`make start` / `make stop`)
+
+To run on **172.24.50.21** with a custom port range (2002, 2004–2010 — 2003 is
+skipped as reserved), use the convenience targets backed by
+`scripts/run_local.sh`:
+
+```bash
+make start     # → https://172.24.50.21:2002   (Caddy TLS, the browser URL)
+make stop      # stop everything
+make restart   # stop + start
+make status    # container status
+```
+
+Port plan (only **2002** is published on the network; the rest stay on host
+loopback): `2002` HTTPS · `2004` web · `2005` api · `2006/2007` qdrant ·
+`2008` mcp · `2009/2010` phoenix. Edit the values at the top of
+`scripts/run_local.sh` to change them. These are exported into the environment
+(podman-compose gives them precedence over `.env`), so your secrets in `.env`
+are read but never modified.
+
 ---
 
 ## 1. Run on a DIFFERENT machine

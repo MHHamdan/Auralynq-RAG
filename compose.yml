@@ -76,8 +76,8 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     ports:
-      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:6006:6006"
-      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:4317:4317"
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_PHOENIX_PORT:-6006}:6006"
+      - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_PHOENIX_OTLP_PORT:-4317}:4317"
     environment:
       - PHOENIX_WORKING_DIR=/data
     volumes:
