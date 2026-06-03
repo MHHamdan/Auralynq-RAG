@@ -5,9 +5,9 @@ const REPO = "https://github.com/MHHamdan/Auralynq";
 
 export function Nav() {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/5 bg-ink/70 backdrop-blur-xl">
+    <header className="sticky top-0 z-50 border-b border-edge bg-ink/80 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-6">
-        <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-tight">
+        <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-tight text-fg">
           <span aria-hidden>🎙️</span>
           <span>
             <span className="text-brand">Aura</span>
@@ -15,17 +15,20 @@ export function Nav() {
           </span>
         </Link>
 
-        <div className="hidden items-center gap-7 text-sm text-slate-200 md:flex">
-          <a href="#features" className="transition hover:text-white">
+        <div className="hidden items-center gap-7 text-sm font-medium text-fg2 md:flex">
+          <a href="#features" className="transition hover:text-fg">
             Features
           </a>
-          <a href="#how" className="transition hover:text-white">
+          <a href="#how" className="transition hover:text-fg">
             How it works
           </a>
-          <a href="#stack" className="transition hover:text-white">
+          <a href="#why" className="transition hover:text-fg">
+            Why
+          </a>
+          <a href="#stack" className="transition hover:text-fg">
             Architecture
           </a>
-          <a href={REPO} target="_blank" rel="noopener noreferrer" className="transition hover:text-white">
+          <a href={REPO} target="_blank" rel="noopener noreferrer" className="transition hover:text-fg">
             GitHub
           </a>
         </div>
