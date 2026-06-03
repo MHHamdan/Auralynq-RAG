@@ -45,8 +45,10 @@ for f in "${CNI_DIR}"/87-podman.conflist "${CNI_DIR}"/*podman*.conflist "${CNI_D
 done
 shopt -u nullglob
 
-bind_internal="$(grep -E '^AURALYNQ_BIND_INTERNAL=' .env 2>/dev/null | cut -d= -f2)"; bind_internal="${bind_internal:-127.0.0.1}"
-https_port="$(grep -E '^AURALYNQ_HTTPS_PORT=' .env 2>/dev/null | cut -d= -f2)"; https_port="${https_port:-8443}"
+# Prefer an exported env var (e.g. from scripts/run_local.sh) over the .env file,
+# matching podman-compose's own precedence so the printed URL is accurate.
+bind_internal="${AURALYNQ_BIND_INTERNAL:-$(grep -E '^AURALYNQ_BIND_INTERNAL=' .env 2>/dev/null | cut -d= -f2)}"; bind_internal="${bind_internal:-127.0.0.1}"
+https_port="${AURALYNQ_HTTPS_PORT:-$(grep -E '^AURALYNQ_HTTPS_PORT=' .env 2>/dev/null | cut -d= -f2)}"; https_port="${https_port:-8443}"
 
 echo "→ starting stack…"
 $COMPOSE -f "$CF" up -d
