@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const REPO = "https://github.com/MHHamdan/Auralynq";
 
@@ -29,9 +30,12 @@ export function Nav() {
           </a>
         </div>
 
-        <Link href="/chat" className="btn-cta text-sm">
-          Launch app →
-        </Link>
+        <div className="flex items-center gap-2">
+          <ThemeToggle compact />
+          <Link href="/chat" className="btn-cta text-sm">
+            Launch app →
+          </Link>
+        </div>
       </nav>
     </header>
   );

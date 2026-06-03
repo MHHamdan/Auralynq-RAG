@@ -2,8 +2,48 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* ============================================================= themes ====
+   Three modes, switched via [data-theme] on <html>. Surface + text tokens are
+   CSS variables so Tailwind's bg-ink/panel/edge/muted re-theme automatically;
+   the slate text scale used across components is remapped per light/comfort
+   theme below for correct contrast without touching every component.
+   ------------------------------------------------------------------------ */
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
+  --c-ink: 11 17 32; /* #0b1120 */
+  --c-panel: 21 29 49; /* #151d31 */
+  --c-edge: 44 58 89; /* #2c3a59 */
+  --c-muted: 203 213 225; /* slate-300 */
+  --text: #f1f5f9;
+  --brand-fg: #5eead4; /* readable brand accent on this bg */
+  --body-glow-a: rgba(129, 140, 248, 0.14);
+  --body-glow-b: rgba(94, 234, 212, 0.1);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --c-ink: 244 247 252; /* #f4f7fc */
+  --c-panel: 255 255 255;
+  --c-edge: 209 217 230; /* #d1d9e6 */
+  --c-muted: 71 85 105; /* slate-600 */
+  --text: #0f172a;
+  --brand-fg: #0d9488; /* darker teal for contrast on light */
+  --body-glow-a: rgba(129, 140, 248, 0.1);
+  --body-glow-b: rgba(13, 148, 136, 0.07);
+}
+
+[data-theme="comfort"] {
+  color-scheme: light;
+  --c-ink: 250 246 237; /* warm paper #faf6ed */
+  --c-panel: 255 253 248;
+  --c-edge: 184 173 148; /* #b8ad94 */
+  --c-muted: 60 54 44;
+  --text: #1c1814;
+  --brand-fg: #0b7a6f;
+  --body-glow-a: rgba(180, 120, 40, 0.06);
+  --body-glow-b: rgba(11, 122, 111, 0.05);
+  font-size: 17px; /* roomier base for long reading sessions */
 }
 
 html {
@@ -14,9 +54,39 @@ html {
 }
 
 body {
-  @apply bg-ink text-slate-100;
-  background-image: radial-gradient(60rem 60rem at 80% -10%, rgba(129, 140, 248, 0.14), transparent),
-    radial-gradient(50rem 50rem at -10% 10%, rgba(94, 234, 212, 0.1), transparent);
+  @apply bg-ink;
+  color: var(--text);
+  background-image: radial-gradient(60rem 60rem at 80% -10%, var(--body-glow-a), transparent),
+    radial-gradient(50rem 50rem at -10% 10%, var(--body-glow-b), transparent);
+}
+
+/* ---- per-theme remap of the slate text scale (used across components) ---- */
+[data-theme="light"] .text-slate-100,
+[data-theme="comfort"] .text-slate-100 {
+  color: #0f172a;
+}
+[data-theme="light"] .text-slate-200,
+[data-theme="comfort"] .text-slate-200 {
+  color: #1e293b;
+}
+[data-theme="light"] .text-slate-300 {
+  color: #334155;
+}
+[data-theme="light"] .text-slate-400 {
+  color: #475569;
+}
+[data-theme="light"] .text-slate-500 {
+  color: #64748b;
+}
+[data-theme="comfort"] .text-slate-300,
+[data-theme="comfort"] .text-slate-400,
+[data-theme="comfort"] .text-slate-500 {
+  color: #2a241c; /* high-contrast warm ink */
+}
+/* brand-colored text needs to darken on light surfaces to stay readable */
+[data-theme="light"] .text-brand,
+[data-theme="comfort"] .text-brand {
+  color: var(--brand-fg);
 }
 
 .card {
@@ -59,7 +129,8 @@ body {
 
 /* primary gradient CTA */
 .btn-cta {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-semibold text-ink transition;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-semibold transition;
+  color: #06231e;
   background-image: linear-gradient(100deg, #5eead4, #818cf8);
   box-shadow: 0 10px 30px -10px rgba(129, 140, 248, 0.6);
 }
@@ -81,7 +152,8 @@ body {
 }
 
 .btn-brand {
-  @apply btn bg-brand text-ink hover:brightness-110;
+  @apply btn bg-brand hover:brightness-110;
+  color: #06231e; /* fixed dark ink — readable on teal in every theme */
 }
 
 .btn-ghost {

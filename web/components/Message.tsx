@@ -1,8 +1,9 @@
 "use client";
-import type { Citation } from "@/lib/api";
+import type { Citation, InsufficientReason } from "@/lib/api";
 import { Citations } from "@/components/Citations";
 import { Markdown } from "@/components/Markdown";
 import { CopyButton } from "@/components/CopyButton";
+import { InsufficientEvidence } from "@/components/InsufficientEvidence";
 
 export interface Turn {
   role: "user" | "assistant";
@@ -12,6 +13,8 @@ export interface Turn {
   rationale?: string;
   voice?: boolean;
   error?: boolean;
+  status?: string;
+  insufficient?: InsufficientReason | null;
 }
 
 function TypingDots() {
@@ -29,11 +32,15 @@ export function Message({
   streaming,
   isLast,
   onRegenerate,
+  onAsk,
+  onIngest,
 }: {
   turn: Turn;
   streaming: boolean;
   isLast: boolean;
   onRegenerate?: () => void;
+  onAsk?: (q: string) => void;
+  onIngest?: () => void;
 }) {
   if (turn.role === "user") {
     return (
@@ -73,6 +80,10 @@ export function Message({
             <Markdown text={turn.text} streaming={live} />
             {live && <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-brand/70 align-middle" />}
           </>
+        )}
+
+        {turn.insufficient && (
+          <InsufficientEvidence reason={turn.insufficient} onAsk={onAsk} onIngest={onIngest} />
         )}
 
         {turn.citations && turn.citations.length > 0 && <Citations citations={turn.citations} />}
