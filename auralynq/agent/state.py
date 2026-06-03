@@ -31,6 +31,7 @@ class AgentState(BaseModel):
     max_iters: int = 3
     need_rewrite: bool = False
     gaps: list[str] = Field(default_factory=list)
+    coverage: float = 0.0
     elapsed_ms: float = 0.0
     latency_budget_ms: int = 15_000
 

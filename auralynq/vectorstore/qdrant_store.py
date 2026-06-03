@@ -181,6 +181,47 @@ class QdrantStore(VectorStore):
             return 0
         return int(self.client.count(self.collection, exact=True).count)
 
+    def document_facts(self, max_points: int = 20_000) -> dict[str, Any]:
+        """Distinct source documents + source-type histogram via a bounded scroll.
+
+        ``all_chunks`` returns nothing for the remote store (rebuilding the KG
+        from a full payload pull would be wasteful), but corpus stats only need
+        payload metadata — so scroll just the source/doc_id/type fields. Bounded
+        to keep the corpus-summary call cheap on large indices.
+        """
+        if not self._exists():
+            return {"titles": [], "source_types": {}}
+        titles: list[str] = []
+        seen: set[str] = set()
+        stype: dict[str, int] = {}
+        offset: Any = None
+        scanned = 0
+        try:
+            while scanned < max_points:
+                points, offset = self.client.scroll(
+                    self.collection,
+                    limit=512,
+                    with_payload=["source", "title", "doc_id", "source_type"],
+                    with_vectors=False,
+                    offset=offset,
+                )
+                if not points:
+                    break
+                for p in points:
+                    scanned += 1
+                    pl = p.payload or {}
+                    src = str(pl.get("title") or pl.get("source") or pl.get("doc_id") or "").strip()
+                    st = str(pl.get("source_type") or "unknown")
+                    stype[st] = stype.get(st, 0) + 1
+                    if src and src not in seen:
+                        seen.add(src)
+                        titles.append(src)
+                if offset is None:
+                    break
+        except Exception:  # pragma: no cover - defensive; stats are best-effort
+            pass
+        return {"titles": titles[:200], "source_types": stype}
+
     def clear(self) -> None:
         if self.client.collection_exists(self.collection):
             self.client.delete_collection(self.collection)
