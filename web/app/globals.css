@@ -2,47 +2,114 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================================= themes ====
-   Three modes, switched via [data-theme] on <html>. Surface + text tokens are
-   CSS variables so Tailwind's bg-ink/panel/edge/muted re-theme automatically;
-   the slate text scale used across components is remapped per light/comfort
-   theme below for correct contrast without touching every component.
-   ------------------------------------------------------------------------ */
+/* ===========================================================================
+   AURALYNQ DESIGN TOKENS
+   Three themes switched via [data-theme] on <html>. Every surface, text and
+   status color is a CSS variable (R G B triplet) so Tailwind tokens —
+   bg-ink/panel/panel2, border-edge/edge2, text-fg/fg2/fg3, text-ok/warn/bad —
+   re-theme automatically. No component hardcodes a hex value.
+   Identity: local-first · voice-native · evidence-grounded · observable RAG.
+   ========================================================================= */
+
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --c-ink: 11 17 32; /* #0b1120 */
-  --c-panel: 21 29 49; /* #151d31 */
-  --c-edge: 44 58 89; /* #2c3a59 */
-  --c-muted: 203 213 225; /* slate-300 */
+  /* surfaces — deep, saturated base so gradients read rich (not washed out) */
+  --c-ink: 7 11 22; /* #070b16 base */
+  --c-ink-2: 12 18 33; /* #0c1221 section band */
+  --c-panel: 19 27 47; /* #131b2f raised card */
+  --c-panel-2: 28 38 65; /* #1c2641 inset */
+  --c-edge: 44 57 88; /* hairline border */
+  --c-edge-strong: 64 82 122; /* emphasized border */
+  --c-muted: 203 213 225;
+  /* text scale (contrast-checked on --c-panel) */
+  --c-text: 241 245 249; /* slate-100 */
+  --c-text-2: 203 213 225; /* slate-300 */
+  --c-text-3: 148 163 184; /* slate-400 */
+  /* semantic status dots/bars */
+  --c-ok: 52 211 153;
+  --c-warn: 251 191 36;
+  --c-bad: 251 113 133;
+  --c-info: 129 140 248;
+  /* status text variants (readable on this theme's surfaces) */
+  --ok-fg: 110 231 183;
+  --warn-fg: 252 211 77;
+  --bad-fg: 253 164 175;
+  /* misc */
   --text: #f1f5f9;
-  --brand-fg: #5eead4; /* readable brand accent on this bg */
-  --body-glow-a: rgba(129, 140, 248, 0.14);
-  --body-glow-b: rgba(94, 234, 212, 0.1);
+  --brand-fg: #5eead4;
+  --ring: #5eead4;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px -8px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 18px 50px -16px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 12px 40px -12px rgba(94, 234, 212, 0.35);
+  --body-glow-a: rgba(129, 140, 248, 0.18);
+  --body-glow-b: rgba(94, 234, 212, 0.12);
+  --grid-line: rgba(129, 140, 248, 0.07);
 }
 
 [data-theme="light"] {
   color-scheme: light;
-  --c-ink: 244 247 252; /* #f4f7fc */
+  /* crisp white cards on a soft cool-grey canvas with real separation */
+  --c-ink: 236 240 247; /* #ecf0f7 canvas */
+  --c-ink-2: 243 246 251;
   --c-panel: 255 255 255;
-  --c-edge: 209 217 230; /* #d1d9e6 */
-  --c-muted: 71 85 105; /* slate-600 */
-  --text: #0f172a;
-  --brand-fg: #0d9488; /* darker teal for contrast on light */
-  --body-glow-a: rgba(129, 140, 248, 0.1);
-  --body-glow-b: rgba(13, 148, 136, 0.07);
+  --c-panel-2: 244 247 251;
+  --c-edge: 203 213 228; /* #cbd5e4 visible hairline */
+  --c-edge-strong: 176 189 211;
+  --c-muted: 71 85 105;
+  --c-text: 11 18 32; /* near-black */
+  --c-text-2: 51 65 85; /* slate-700 */
+  --c-text-3: 71 85 105; /* slate-600 */
+  --c-ok: 16 185 129;
+  --c-warn: 217 119 6;
+  --c-bad: 225 29 72;
+  --c-info: 79 70 229;
+  --ok-fg: 4 120 87;
+  --warn-fg: 180 83 9;
+  --bad-fg: 190 18 60;
+  --text: #0b1220;
+  --brand-fg: #0d9488;
+  --ring: #0d9488;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+  --shadow-md: 0 8px 24px -12px rgba(15, 23, 42, 0.18);
+  --shadow-lg: 0 18px 48px -18px rgba(15, 23, 42, 0.22);
+  --shadow-glow: 0 12px 40px -14px rgba(13, 148, 136, 0.28);
+  --body-glow-a: rgba(99, 102, 241, 0.1);
+  --body-glow-b: rgba(13, 148, 136, 0.08);
+  --grid-line: rgba(71, 85, 105, 0.08);
 }
 
 [data-theme="comfort"] {
   color-scheme: light;
-  --c-ink: 250 246 237; /* warm paper #faf6ed */
-  --c-panel: 255 253 248;
-  --c-edge: 184 173 148; /* #b8ad94 */
+  /* warm paper, larger type, low glare, high-contrast warm ink */
+  --c-ink: 241 232 217; /* #f1e8d9 warm canvas */
+  --c-ink-2: 247 240 228;
+  --c-panel: 252 247 238; /* warm card */
+  --c-panel-2: 245 237 223;
+  --c-edge: 205 191 162; /* visible warm hairline */
+  --c-edge-strong: 181 165 132;
   --c-muted: 60 54 44;
+  --c-text: 28 24 20; /* #1c1814 */
+  --c-text-2: 58 51 40;
+  --c-text-3: 90 79 62;
+  --c-ok: 21 128 61;
+  --c-warn: 180 83 9;
+  --c-bad: 190 18 60;
+  --c-info: 67 56 202;
+  --ok-fg: 21 110 53;
+  --warn-fg: 154 70 8;
+  --bad-fg: 159 18 57;
   --text: #1c1814;
   --brand-fg: #0b7a6f;
-  --body-glow-a: rgba(180, 120, 40, 0.06);
-  --body-glow-b: rgba(11, 122, 111, 0.05);
+  --ring: #0b7a6f;
+  --shadow-sm: 0 1px 2px rgba(80, 60, 30, 0.1);
+  --shadow-md: 0 8px 22px -12px rgba(80, 60, 30, 0.2);
+  --shadow-lg: 0 18px 46px -18px rgba(80, 60, 30, 0.24);
+  --shadow-glow: 0 12px 40px -14px rgba(11, 122, 111, 0.25);
+  --body-glow-a: rgba(180, 120, 40, 0.08);
+  --body-glow-b: rgba(11, 122, 111, 0.06);
+  --grid-line: rgba(120, 90, 40, 0.07);
   font-size: 17px; /* roomier base for long reading sessions */
 }
 
@@ -54,55 +121,112 @@ html {
 }
 
 body {
-  @apply bg-ink;
-  color: var(--text);
+  @apply bg-ink text-fg;
   background-image: radial-gradient(60rem 60rem at 80% -10%, var(--body-glow-a), transparent),
     radial-gradient(50rem 50rem at -10% 10%, var(--body-glow-b), transparent);
 }
 
-/* ---- per-theme remap of the slate text scale (used across components) ---- */
+/* ---- per-theme remap of the slate text scale (legacy components) ---------
+   New components use token classes (text-fg/fg2/fg3); this keeps any remaining
+   slate-* usage contrast-correct across light/comfort. */
 [data-theme="light"] .text-slate-100,
 [data-theme="comfort"] .text-slate-100 {
-  color: #0f172a;
+  color: rgb(var(--c-text));
 }
 [data-theme="light"] .text-slate-200,
 [data-theme="comfort"] .text-slate-200 {
-  color: #1e293b;
+  color: rgb(var(--c-text));
 }
-[data-theme="light"] .text-slate-300 {
-  color: #334155;
+[data-theme="light"] .text-slate-300,
+[data-theme="comfort"] .text-slate-300 {
+  color: rgb(var(--c-text-2));
 }
-[data-theme="light"] .text-slate-400 {
-  color: #475569;
+[data-theme="light"] .text-slate-400,
+[data-theme="comfort"] .text-slate-400 {
+  color: rgb(var(--c-text-3));
 }
-[data-theme="light"] .text-slate-500 {
-  color: #64748b;
-}
-[data-theme="comfort"] .text-slate-300,
-[data-theme="comfort"] .text-slate-400,
+[data-theme="light"] .text-slate-500,
 [data-theme="comfort"] .text-slate-500 {
-  color: #2a241c; /* high-contrast warm ink */
+  color: rgb(var(--c-text-3));
 }
-/* brand-colored text needs to darken on light surfaces to stay readable */
+/* brand-colored text darkens on light surfaces to stay readable */
 [data-theme="light"] .text-brand,
 [data-theme="comfort"] .text-brand {
   color: var(--brand-fg);
 }
-
-.card {
-  @apply rounded-2xl border border-edge bg-panel/80 backdrop-blur p-4 shadow-lg;
+/* indigo brand2 text is too light on white — darken it on light/comfort */
+[data-theme="light"] .text-brand2,
+[data-theme="comfort"] .text-brand2 {
+  color: #4f46e5;
+}
+[data-theme="light"] .text-accent,
+[data-theme="comfort"] .text-accent {
+  color: #7c3aed;
 }
 
-/* ---- landing / marketing design system ---- */
+/* ===================================================== focus & a11y ====== */
+.focusable {
+  @apply outline-none;
+}
+.focusable:focus-visible,
+button:focus-visible,
+a:focus-visible,
+[role="radio"]:focus-visible,
+summary:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--c-ink)), 0 0 0 4px var(--ring);
+  border-radius: 0.5rem;
+}
+
+/* ===================================================== surfaces ========== */
+.card {
+  @apply rounded-2xl border border-edge bg-panel p-4;
+  box-shadow: var(--shadow-md);
+}
+.card-inset {
+  @apply rounded-xl border border-edge bg-panel2 p-3;
+}
+.card-hover {
+  @apply transition duration-200;
+}
+.card-hover:hover {
+  @apply border-edge2;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* glassmorphic surface — token-aware so it works in every theme (hero/marketing) */
+.glass {
+  @apply rounded-2xl border border-edge bg-panel/70 backdrop-blur-xl;
+  box-shadow: var(--shadow-lg);
+}
+.glass-hover {
+  @apply transition duration-300;
+}
+.glass-hover:hover {
+  @apply border-edge2 bg-panel/90;
+  transform: translateY(-2px);
+}
+
+/* ===================================================== typography ======== */
 .gradient-text {
   @apply bg-clip-text text-transparent;
   background-image: linear-gradient(100deg, #5eead4 0%, #818cf8 45%, #c084fc 80%);
 }
+.overline {
+  @apply text-overline font-semibold uppercase text-brand;
+}
+.section-title {
+  @apply text-3xl font-bold tracking-tight sm:text-4xl;
+  color: rgb(var(--c-text));
+}
 
-/* faint grid + vignette backdrop for the marketing page */
+/* faint grid + vignette backdrop for the marketing hero */
 .grid-bg {
-  background-image: linear-gradient(rgba(129, 140, 248, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(129, 140, 248, 0.06) 1px, transparent 1px);
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 56px 56px;
   -webkit-mask-image: radial-gradient(60% 50% at 50% 0%, #000 30%, transparent 100%);
   mask-image: radial-gradient(60% 50% at 50% 0%, #000 30%, transparent 100%);
@@ -113,62 +237,139 @@ body {
   @apply pointer-events-none absolute rounded-full blur-[90px];
 }
 
-/* glassmorphic surface */
-.glass {
-  @apply rounded-2xl border border-white/15 bg-white/[0.06] backdrop-blur-xl;
-  box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
-}
-.glass-hover {
-  @apply transition duration-300 hover:border-white/25 hover:bg-white/[0.09];
-}
-
-/* pill / chip */
+/* ===================================================== chips / pills ===== */
 .chip {
-  @apply inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-3 py-1 text-xs text-slate-200;
+  @apply inline-flex items-center gap-2 rounded-full border border-edge bg-panel2 px-3 py-1 text-xs font-medium;
+  color: rgb(var(--c-text-2));
+}
+.tag {
+  @apply inline-flex items-center gap-1 rounded-full border border-edge bg-panel2/60 px-2 py-0.5 text-xs;
+  color: rgb(var(--c-text-2));
+}
+/* status pill: dot + label, semantic color */
+.pill {
+  @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold;
+}
+.pill-ok {
+  color: rgb(var(--ok-fg));
+  border-color: rgb(var(--c-ok) / 0.4);
+  background: rgb(var(--c-ok) / 0.1);
+}
+.pill-warn {
+  color: rgb(var(--warn-fg));
+  border-color: rgb(var(--c-warn) / 0.4);
+  background: rgb(var(--c-warn) / 0.1);
+}
+.pill-bad {
+  color: rgb(var(--bad-fg));
+  border-color: rgb(var(--c-bad) / 0.4);
+  background: rgb(var(--c-bad) / 0.1);
+}
+.pill-neutral {
+  color: rgb(var(--c-text-3));
+  border-color: rgb(var(--c-edge));
+  background: rgb(var(--c-panel-2));
 }
 
+/* ===================================================== buttons =========== */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 font-medium transition disabled:cursor-not-allowed disabled:opacity-40;
+}
 /* primary gradient CTA */
 .btn-cta {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-semibold transition;
+  @apply btn px-5 py-2.5 font-semibold;
   color: #06231e;
   background-image: linear-gradient(100deg, #5eead4, #818cf8);
   box-shadow: 0 10px 30px -10px rgba(129, 140, 248, 0.6);
 }
 .btn-cta:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.07);
   transform: translateY(-1px);
 }
 .btn-outline {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 px-5 py-2.5 font-semibold text-slate-200 transition hover:border-white/30 hover:bg-white/5;
+  @apply btn px-5 py-2.5 font-semibold;
+  color: rgb(var(--c-text));
+  border: 1px solid rgb(var(--c-edge-strong));
+}
+.btn-outline:hover {
+  background: rgb(var(--c-panel-2));
+  border-color: rgb(var(--c-text-3));
+}
+.btn-brand {
+  @apply btn bg-brand font-semibold hover:brightness-110;
+  color: #06231e; /* fixed dark ink — readable on teal in every theme */
+}
+.btn-ghost {
+  @apply btn border border-edge;
+  color: rgb(var(--c-text));
+}
+.btn-ghost:hover {
+  background: rgb(var(--c-panel-2));
+  border-color: rgb(var(--c-edge-strong));
 }
 
-/* staggered reveal-on-load */
+/* ===================================================== tabs ============== */
+.tab {
+  @apply inline-flex items-center gap-1.5 rounded-lg border border-transparent px-3 py-1.5 text-sm font-medium transition;
+  color: rgb(var(--c-text-3));
+}
+.tab:hover {
+  color: rgb(var(--c-text));
+  background: rgb(var(--c-panel-2));
+}
+.tab-active {
+  color: rgb(var(--c-text));
+  background: rgb(var(--c-panel-2));
+  border-color: rgb(var(--c-edge));
+  box-shadow: var(--shadow-sm);
+}
+
+/* ===================================================== stats ============= */
+.stat {
+  @apply rounded-xl border border-edge bg-panel2 px-3 py-2;
+}
+.stat-label {
+  @apply text-[10px] font-medium uppercase tracking-wider;
+  color: rgb(var(--c-text-3));
+}
+.stat-value {
+  @apply text-sm font-semibold;
+  color: rgb(var(--c-text));
+}
+
+/* ===================================================== evidence cards ==== */
+.evidence-card {
+  @apply rounded-xl border bg-panel2 p-3 transition;
+  border-color: rgb(var(--c-edge));
+}
+.evidence-strong {
+  border-color: rgb(var(--c-ok) / 0.45);
+  background: rgb(var(--c-ok) / 0.06);
+}
+.evidence-weak {
+  border-color: rgb(var(--c-warn) / 0.4);
+  background: rgb(var(--c-warn) / 0.06);
+}
+.evidence-none {
+  border-color: rgb(var(--c-bad) / 0.4);
+  background: rgb(var(--c-bad) / 0.06);
+}
+
+/* ===================================================== misc ============== */
 .reveal {
   animation: fade-up 0.7s ease-out both;
 }
-
-.btn {
-  @apply rounded-xl px-4 py-2 font-medium transition disabled:opacity-40;
-}
-
-.btn-brand {
-  @apply btn bg-brand hover:brightness-110;
-  color: #06231e; /* fixed dark ink — readable on teal in every theme */
-}
-
-.btn-ghost {
-  @apply btn border border-edge hover:bg-edge/40;
-}
-
-.tag {
-  @apply inline-flex items-center gap-1 rounded-full border border-edge px-2 py-0.5 text-xs text-slate-300;
-}
-
 .scroll-thin::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  @apply rounded-full bg-edge;
+  @apply rounded-full;
+  background: rgb(var(--c-edge-strong));
+}
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-edge-strong)) transparent;
 }
 
 /* ---- streaming "typing" indicator ---- */
@@ -204,9 +405,10 @@ body {
   }
 }
 
-/* ---- markdown rendering for assistant answers ---- */
+/* ===================================================== markdown ========== */
 .prose-auralynq {
-  @apply text-[0.95rem] leading-relaxed text-slate-200;
+  @apply text-[0.95rem] leading-relaxed;
+  color: rgb(var(--c-text-2));
 }
 .prose-auralynq > :first-child {
   margin-top: 0;
@@ -220,7 +422,8 @@ body {
 .prose-auralynq h1,
 .prose-auralynq h2,
 .prose-auralynq h3 {
-  @apply mb-2 mt-4 font-semibold text-slate-100;
+  @apply mb-2 mt-4 font-semibold;
+  color: rgb(var(--c-text));
 }
 .prose-auralynq h1 {
   @apply text-lg;
@@ -238,13 +441,15 @@ body {
   @apply text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand;
 }
 .prose-auralynq blockquote {
-  @apply my-2 border-l-2 border-edge pl-3 text-slate-400;
+  @apply my-2 border-l-2 border-edge pl-3;
+  color: rgb(var(--c-text-3));
 }
 .prose-auralynq code:not(pre code) {
   @apply rounded bg-ink/80 px-1.5 py-0.5 font-mono text-[0.85em] text-brand;
 }
 .prose-auralynq pre {
-  @apply my-3 overflow-x-auto rounded-xl border border-edge bg-[#0d1117] p-3 text-[0.85rem];
+  @apply my-3 overflow-x-auto rounded-xl border border-edge p-3 text-[0.85rem];
+  background: #0d1117;
 }
 .prose-auralynq table {
   @apply my-3 w-full border-collapse text-sm;
@@ -254,5 +459,5 @@ body {
   @apply border border-edge px-2 py-1 text-left;
 }
 .prose-auralynq th {
-  @apply bg-panel/60;
+  @apply bg-panel2;
 }
