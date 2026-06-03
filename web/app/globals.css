@@ -6,6 +6,13 @@
   color-scheme: dark;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+::selection {
+  background: rgba(129, 140, 248, 0.3);
+}
+
 body {
   @apply bg-ink text-slate-200;
   background-image: radial-gradient(60rem 60rem at 80% -10%, rgba(129, 140, 248, 0.12), transparent),
@@ -14,6 +21,59 @@ body {
 
 .card {
   @apply rounded-2xl border border-edge bg-panel/80 backdrop-blur p-4 shadow-lg;
+}
+
+/* ---- landing / marketing design system ---- */
+.gradient-text {
+  @apply bg-clip-text text-transparent;
+  background-image: linear-gradient(100deg, #5eead4 0%, #818cf8 45%, #c084fc 80%);
+}
+
+/* faint grid + vignette backdrop for the marketing page */
+.grid-bg {
+  background-image: linear-gradient(rgba(129, 140, 248, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(129, 140, 248, 0.06) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(60% 50% at 50% 0%, #000 30%, transparent 100%);
+  mask-image: radial-gradient(60% 50% at 50% 0%, #000 30%, transparent 100%);
+}
+
+/* ambient blurred color orbs */
+.orb {
+  @apply pointer-events-none absolute rounded-full blur-[90px];
+}
+
+/* glassmorphic surface */
+.glass {
+  @apply rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl;
+  box-shadow: 0 8px 40px -12px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+.glass-hover {
+  @apply transition duration-300 hover:border-white/20 hover:bg-white/[0.07];
+}
+
+/* pill / chip */
+.chip {
+  @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300;
+}
+
+/* primary gradient CTA */
+.btn-cta {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-semibold text-ink transition;
+  background-image: linear-gradient(100deg, #5eead4, #818cf8);
+  box-shadow: 0 10px 30px -10px rgba(129, 140, 248, 0.6);
+}
+.btn-cta:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.btn-outline {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 px-5 py-2.5 font-semibold text-slate-200 transition hover:border-white/30 hover:bg-white/5;
+}
+
+/* staggered reveal-on-load */
+.reveal {
+  animation: fade-up 0.7s ease-out both;
 }
 
 .btn {
