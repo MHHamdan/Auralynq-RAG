@@ -33,10 +33,14 @@ from auralynq.serving.errors import (
 )
 from auralynq.serving.ratelimit import RateLimitMiddleware
 from auralynq.serving.schemas import (
+    CorpusSummaryResponse,
     HealthResponse,
     IngestResponse,
+    ObservabilitySummaryResponse,
     QueryRequest,
     QueryResponse,
+    StatusResponse,
+    SuggestionsResponse,
     VoiceResponse,
 )
 from auralynq.telemetry import configure_logging, get_logger, init_telemetry
@@ -144,6 +148,68 @@ def create_app() -> FastAPI:
     async def metrics() -> JSONResponse:
         return JSONResponse(dict(_METRICS))
 
+    # -------------------------------------------------- status / corpus ----
+    @app.get("/status", response_model=StatusResponse)
+    async def status() -> StatusResponse:
+        from auralynq.serving.corpus import corpus_summary
+
+        snap = health_snapshot()
+        s = get_settings()
+        try:
+            from auralynq.vectorstore.factory import get_store
+
+            vectors = get_store().count()
+        except Exception:  # pragma: no cover
+            vectors = 0
+        from auralynq.telemetry.langfuse_export import langfuse_enabled
+
+        return StatusResponse(
+            status=snap["status"],
+            version=snap["version"],
+            env=snap["env"],
+            providers=snap["providers"],
+            index={"vectors": vectors},
+            corpus=corpus_summary(),
+            tracing={
+                "provider": "langfuse+phoenix" if langfuse_enabled() else "in-process",
+                "phoenix_endpoint": s.telemetry.phoenix_endpoint,
+                "langfuse_host": s.telemetry.langfuse_host,
+                "enabled": s.telemetry.enabled,
+            },
+        )
+
+    @app.get("/corpus/summary", response_model=CorpusSummaryResponse)
+    async def corpus_summary_ep() -> CorpusSummaryResponse:
+        from auralynq.serving.corpus import corpus_summary
+
+        return CorpusSummaryResponse(**corpus_summary())
+
+    @app.get("/suggestions", response_model=SuggestionsResponse)
+    async def suggestions_ep(limit: int = 4) -> SuggestionsResponse:
+        from auralynq.serving.corpus import corpus_summary, suggested_questions
+
+        summary = corpus_summary()
+        return SuggestionsResponse(
+            suggestions=suggested_questions(max(1, min(limit, 8)), summary),
+            corpus_indexed=bool(summary.get("indexed")),
+        )
+
+    @app.get("/observability/summary", response_model=ObservabilitySummaryResponse)
+    async def observability_summary() -> ObservabilitySummaryResponse:
+        from auralynq.telemetry.langfuse_export import langfuse_enabled
+
+        s = get_settings()
+        reqs = _METRICS.get("requests_total", 0)
+        total_ms = _METRICS.get("request_ms_total", 0)
+        return ObservabilitySummaryResponse(
+            requests_total=reqs,
+            query_total=_METRICS.get("query_total", 0) + _METRICS.get("query_stream_total", 0),
+            avg_request_ms=round(total_ms / reqs, 2) if reqs else 0.0,
+            tracing_provider="langfuse+phoenix" if langfuse_enabled() else "in-process",
+            phoenix_url=s.telemetry.phoenix_endpoint or None,
+            langfuse_host=s.telemetry.langfuse_host or None,
+        )
+
     # ------------------------------------------------------------- query ---
     @app.post("/query", response_model=QueryResponse)
     async def query(req: QueryRequest, request: Request) -> QueryResponse:
@@ -197,8 +263,10 @@ def create_app() -> FastAPI:
                     )
                 fh.write(chunk)
         from auralynq.pipeline import build_index
+        from auralynq.serving.corpus import invalidate_corpus_cache
 
         stats = build_index(inbox, rebuild=False)
+        invalidate_corpus_cache()  # refresh corpus stats/suggestions immediately
         _METRICS["ingest_total"] += 1
         return IngestResponse(
             documents=stats["documents"],
