@@ -29,14 +29,14 @@ export function Stack() {
           {STATS.map((s) => (
             <div key={s.label} className="text-center">
               <div className="text-3xl font-bold gradient-text sm:text-4xl">{s.value}</div>
-              <div className="mt-1 text-xs uppercase tracking-wider text-slate-400">{s.label}</div>
+              <div className="mt-1 text-xs uppercase tracking-wider text-slate-300">{s.label}</div>
             </div>
           ))}
         </div>
 
         {/* tech credibility */}
         <div className="pt-8">
-          <p className="mb-4 text-center text-sm text-slate-400">
+          <p className="mb-4 text-center text-sm text-slate-300">
             Production-shaped, provider-agnostic, swappable at every layer
           </p>
           <div className="flex flex-wrap justify-center gap-2">

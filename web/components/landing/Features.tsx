@@ -97,7 +97,7 @@ export function Features() {
               {f.icon}
             </div>
             <h3 className="mb-2 text-lg font-semibold text-white">{f.title}</h3>
-            <p className="text-sm leading-relaxed text-slate-400">{f.body}</p>
+            <p className="text-sm leading-relaxed text-slate-300">{f.body}</p>
           </div>
         ))}
       </div>

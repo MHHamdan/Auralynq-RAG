@@ -16,10 +16,11 @@ import { IngestPanel } from "@/components/IngestPanel";
 import { EvalPanel } from "@/components/EvalPanel";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 
+// Corpus-agnostic prompts so the suggestions stay useful whatever you've indexed.
 const SUGGESTIONS = [
-  "What is the capital of France?",
-  "How does PathRAG prune relational paths?",
-  "How are Paris, France and Europe related?",
+  "Summarize the key points of my documents.",
+  "What topics do the indexed sources cover?",
+  "List the main entities and how they relate.",
 ];
 const STORE_KEY = "auralynq.chat.v1";
 
@@ -306,7 +307,7 @@ export default function Home() {
                 </button>
               )}
             </form>
-            <div className="flex items-center justify-between px-1 text-[11px] text-slate-500">
+            <div className="flex items-center justify-between px-1 text-[11px] text-slate-400">
               <span>{turns.length > 0 ? `${Math.ceil(turns.length / 2)} message(s) · saved locally` : "Local-first · $0 default"}</span>
               <button className="hover:text-brand lg:hidden" onClick={() => setShowPanel((v) => !v)}>
                 {showPanel ? "Hide details" : "Show details"}
@@ -340,7 +341,7 @@ export default function Home() {
         </section>
       </div>
 
-      <footer className="text-center text-xs text-slate-500">
+      <footer className="text-center text-xs text-slate-400">
         Auralynq · local-first · grounded answers with citations, spans &amp; timestamps
       </footer>
 

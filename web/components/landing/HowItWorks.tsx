@@ -28,7 +28,7 @@ export function HowItWorks() {
           <div key={s.n} className="relative glass p-6">
             <div className="mb-3 text-3xl font-bold gradient-text">{s.n}</div>
             <h3 className="mb-2 text-lg font-semibold text-white">{s.title}</h3>
-            <p className="text-sm leading-relaxed text-slate-400">{s.body}</p>
+            <p className="text-sm leading-relaxed text-slate-300">{s.body}</p>
             {i < STEPS.length - 1 && (
               <span className="absolute -right-2 top-1/2 hidden -translate-y-1/2 text-2xl text-edge md:block">
                 →
