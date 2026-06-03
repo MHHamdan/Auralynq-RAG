@@ -25,18 +25,18 @@ export function Stack() {
     <section id="stack" className="relative mx-auto max-w-6xl px-4 py-20 md:px-6">
       <div className="glass overflow-hidden p-8 md:p-10">
         {/* stats */}
-        <div className="grid grid-cols-2 gap-6 border-b border-white/10 pb-8 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-6 border-b border-edge pb-8 md:grid-cols-4">
           {STATS.map((s) => (
             <div key={s.label} className="text-center">
               <div className="text-3xl font-bold gradient-text sm:text-4xl">{s.value}</div>
-              <div className="mt-1 text-xs uppercase tracking-wider text-slate-300">{s.label}</div>
+              <div className="mt-1 text-xs uppercase tracking-wider text-fg3">{s.label}</div>
             </div>
           ))}
         </div>
 
         {/* tech credibility */}
         <div className="pt-8">
-          <p className="mb-4 text-center text-sm text-slate-300">
+          <p className="mb-4 text-center text-sm text-fg2">
             Production-shaped, provider-agnostic, swappable at every layer
           </p>
           <div className="flex flex-wrap justify-center gap-2">
