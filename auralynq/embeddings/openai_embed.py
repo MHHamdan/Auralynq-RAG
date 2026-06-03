@@ -9,6 +9,8 @@ the hashing embedder if the SDK/key is unavailable (see factory, ADR-0004).
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 
 from auralynq.embeddings.base import Embedder, EmbeddingBatch, SparseVector
@@ -26,15 +28,22 @@ _MODEL_DIM = {
 }
 
 
-def _sparse_of(text: str) -> SparseVector:
-    """Hashed bag-of-words lexical vector (mirrors HashingEmbedder.sparse)."""
+@functools.lru_cache(maxsize=8192)
+def _sparse_items(text: str) -> tuple[tuple[int, float], ...]:
+    """Cached tokenize+hash for the lexical vector (the per-call hot work)."""
     import math
     from collections import Counter
 
-    sp: SparseVector = {}
-    for tok, tf in Counter(tokenize(text)).items():
-        sp[_token_hash(tok, "sparse") % _SPARSE_SPACE] = 1.0 + math.log(tf)
-    return sp
+    return tuple(
+        (_token_hash(tok, "sparse") % _SPARSE_SPACE, 1.0 + math.log(tf))
+        for tok, tf in Counter(tokenize(text)).items()
+    )
+
+
+def _sparse_of(text: str) -> SparseVector:
+    """Hashed bag-of-words lexical vector (mirrors HashingEmbedder.sparse)."""
+    # Rebuild the dict each call so callers can't mutate the cached entry.
+    return dict(_sparse_items(text))
 
 
 class OpenAIEmbedder(Embedder):

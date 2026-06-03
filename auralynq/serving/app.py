@@ -7,12 +7,15 @@ safe file handling. All heavy work degrades to offline fallbacks (ADR-0003).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
 import uuid
 from collections import Counter
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +44,25 @@ from auralynq.telemetry import configure_logging, get_logger, init_telemetry
 _log = get_logger("auralynq.api")
 _METRICS: Counter = Counter()
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
+
+
+async def _aiter_sync(gen: Iterator[Any]) -> AsyncIterator[Any]:
+    """Adapt a blocking sync generator to an async iterator by advancing it one
+    item per ``asyncio.to_thread`` call, so the event loop stays free to service
+    other requests between yielded tokens."""
+    sentinel = object()
+
+    def _next() -> Any:
+        try:
+            return next(gen)
+        except StopIteration:
+            return sentinel
+
+    while True:
+        item = await asyncio.to_thread(_next)
+        if item is sentinel:
+            return
+        yield item
 
 
 def create_app() -> FastAPI:
@@ -128,7 +150,11 @@ def create_app() -> FastAPI:
         from auralynq.agent.runner import answer_question
 
         _METRICS["query_total"] += 1
-        res = answer_question(req.question, final_k=req.final_k, use_cache=req.use_cache)
+        # answer_question is CPU/network-bound and synchronous; run it off the event
+        # loop so concurrent requests aren't blocked behind it.
+        res = await asyncio.to_thread(
+            answer_question, req.question, final_k=req.final_k, use_cache=req.use_cache
+        )
         return QueryResponse(request_id=request.state.request_id, **res.to_dict())
 
     @app.post("/query/stream")
@@ -138,8 +164,14 @@ def create_app() -> FastAPI:
         _METRICS["query_stream_total"] += 1
 
         async def event_gen():
-            for event in stream_answer_question(req.question, final_k=req.final_k):
+            # Drive the blocking token generator one step at a time in a worker
+            # thread (_aiter_sync) so streaming never stalls the event loop.
+            gen = stream_answer_question(req.question, final_k=req.final_k)
+            async for event in _aiter_sync(gen):
                 if await request.is_disconnected():
+                    close = getattr(gen, "close", None)
+                    if close is not None:
+                        close()  # stop the underlying generator promptly
                     break
                 yield {"event": event["type"], "data": json.dumps(event)}
 

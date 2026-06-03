@@ -57,6 +57,35 @@ def test_mmr_reduces_redundancy():
     assert "c" in ids  # diversity pulls in the dissimilar chunk
 
 
+def test_mmr_caches_candidate_embeddings():
+    # Repeated MMR over the same candidate texts must not re-embed them: a perf
+    # guard for the bounded per-text embedding cache.
+    import numpy as np
+    from auralynq.embeddings.base import EmbeddingBatch
+
+    class CountingEmbedder:
+        model = "counting"
+
+        def __init__(self) -> None:
+            self.embedded = 0
+
+        def embed(self, texts: list[str]) -> EmbeddingBatch:
+            self.embedded += len(texts)
+            rng = np.random.default_rng(7)
+            return EmbeddingBatch(
+                dense=rng.standard_normal((len(texts), 8)).astype("float32"),
+                sparse=[{} for _ in texts],
+            )
+
+    emb = CountingEmbedder()
+    cands = [_sc("a", "alpha beta", 1.0), _sc("b", "gamma delta", 0.9)]
+    q = np.zeros(8, dtype="float32")
+    mmr_rerank(q, cands, emb, k=2)  # first pass embeds both
+    assert emb.embedded == 2
+    mmr_rerank(q, cands, emb, k=2)  # second pass fully cached
+    assert emb.embedded == 2
+
+
 def test_lexical_reranker_orders_by_overlap():
     rr = LexicalReranker()
     chunks = [_sc("a", "the cat sat", 0.1), _sc("b", "flow based pruning of paths", 0.1)]

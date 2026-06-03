@@ -38,3 +38,89 @@ body {
 .scroll-thin::-webkit-scrollbar-thumb {
   @apply rounded-full bg-edge;
 }
+
+/* ---- streaming "typing" indicator ---- */
+.typing-dot {
+  @apply inline-block h-2 w-2 rounded-full bg-brand/70;
+  animation: typing-bounce 1.1s infinite ease-in-out;
+}
+@keyframes typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* ---- new-message fade-in ---- */
+.msg-in {
+  animation: msg-in 0.22s ease-out both;
+}
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---- markdown rendering for assistant answers ---- */
+.prose-auralynq {
+  @apply text-[0.95rem] leading-relaxed text-slate-200;
+}
+.prose-auralynq > :first-child {
+  margin-top: 0;
+}
+.prose-auralynq > :last-child {
+  margin-bottom: 0;
+}
+.prose-auralynq p {
+  @apply my-2;
+}
+.prose-auralynq h1,
+.prose-auralynq h2,
+.prose-auralynq h3 {
+  @apply mb-2 mt-4 font-semibold text-slate-100;
+}
+.prose-auralynq h1 {
+  @apply text-lg;
+}
+.prose-auralynq h2 {
+  @apply text-base;
+}
+.prose-auralynq ul {
+  @apply my-2 list-disc space-y-1 pl-5;
+}
+.prose-auralynq ol {
+  @apply my-2 list-decimal space-y-1 pl-5;
+}
+.prose-auralynq a {
+  @apply text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand;
+}
+.prose-auralynq blockquote {
+  @apply my-2 border-l-2 border-edge pl-3 text-slate-400;
+}
+.prose-auralynq code:not(pre code) {
+  @apply rounded bg-ink/80 px-1.5 py-0.5 font-mono text-[0.85em] text-brand;
+}
+.prose-auralynq pre {
+  @apply my-3 overflow-x-auto rounded-xl border border-edge bg-[#0d1117] p-3 text-[0.85rem];
+}
+.prose-auralynq table {
+  @apply my-3 w-full border-collapse text-sm;
+}
+.prose-auralynq th,
+.prose-auralynq td {
+  @apply border border-edge px-2 py-1 text-left;
+}
+.prose-auralynq th {
+  @apply bg-panel/60;
+}

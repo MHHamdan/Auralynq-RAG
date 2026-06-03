@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import importlib.util
+import time
 
 import httpx
 
@@ -14,13 +15,24 @@ from auralynq.telemetry import get_logger
 
 _log = get_logger("auralynq.llm")
 
+# TTL cache for the Ollama reachability probe: resolved_provider() runs on every
+# /health and provider-resolution call, and a blocking 0.5s probe per hit adds up.
+_OLLAMA_PROBE_TTL = 30.0
+_ollama_probe: dict[str, tuple[bool, float]] = {}
+
 
 def _ollama_reachable(base_url: str) -> bool:
+    now = time.monotonic()
+    cached = _ollama_probe.get(base_url)
+    if cached is not None and now - cached[1] < _OLLAMA_PROBE_TTL:
+        return cached[0]
     try:  # pragma: no cover - network probe
         httpx.get(base_url.rstrip("/") + "/api/tags", timeout=0.5)
-        return True
+        ok = True
     except Exception:
-        return False
+        ok = False
+    _ollama_probe[base_url] = (ok, now)
+    return ok
 
 
 # Sensible per-provider default models. The global default (llama3.2:3b) targets
