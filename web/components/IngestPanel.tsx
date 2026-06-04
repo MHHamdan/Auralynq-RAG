@@ -1,20 +1,17 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { CorpusSummary, corpusSummary, fetchSuggestions, ingestFile } from "@/lib/api";
+import { displaySource, timeAgo } from "@/lib/format";
 
 const ACCEPT = ".pdf,.docx,.html,.htm,.md,.txt,.wav,.mp3,.m4a";
 const TYPES = ["PDF", "DOCX", "HTML", "Markdown", "TXT", "WAV", "MP3", "M4A"];
 
-function timeAgo(iso: string | null): string {
-  if (!iso) return "never";
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "unknown";
-  const mins = Math.round((Date.now() - t) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.round(hrs / 24)}d ago`;
+interface Recent {
+  name: string;
+  docs: number;
+  chunks: number;
+  skipped: number;
+  ok: boolean;
 }
 
 export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
@@ -23,6 +20,7 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
   const [drag, setDrag] = useState(false);
   const [summary, setSummary] = useState<CorpusSummary | null>(null);
   const [samples, setSamples] = useState<string[]>([]);
+  const [recent, setRecent] = useState<Recent[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -50,9 +48,16 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
             r.skipped ? `, ${r.skipped} skipped` : ""
           }.`,
         });
+        setRecent((prev) =>
+          [{ name: file.name, docs: r.documents, chunks: r.chunks, skipped: r.skipped || 0, ok: true }, ...prev].slice(
+            0,
+            5,
+          ),
+        );
         await refresh();
       } catch (err) {
         setStatus({ kind: "err", msg: `✗ ${(err as Error).message}` });
+        setRecent((prev) => [{ name: file.name, docs: 0, chunks: 0, skipped: 0, ok: false }, ...prev].slice(0, 5));
       } finally {
         setBusy(false);
       }
@@ -67,29 +72,35 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
     if (file && !busy) void upload(file);
   }
 
+  const failed = summary?.failed_files || [];
+
   return (
     <div className="space-y-3">
       {/* corpus stats */}
       {summary && (
-        <div className="grid grid-cols-3 gap-1.5 text-center">
-          <div className="rounded-lg border border-edge bg-ink/40 px-2 py-1.5">
-            <div className="text-sm font-semibold text-slate-100">
-              {summary.indexed_document_count}
+        <div className="card-inset">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-fg">Corpus</h3>
+            <button onClick={() => void refresh()} className="text-[11px] text-fg3 hover:text-brand">
+              ↻ Refresh
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 text-center">
+            <div className="stat">
+              <div className="stat-value">{summary.indexed_document_count}</div>
+              <div className="stat-label">docs</div>
             </div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400">docs</div>
+            <div className="stat">
+              <div className="stat-value">{summary.vector_count}</div>
+              <div className="stat-label">vectors</div>
+            </div>
+            <div className="stat">
+              <div className="stat-value">{summary.entity_count}</div>
+              <div className="stat-label">entities</div>
+            </div>
           </div>
-          <div className="rounded-lg border border-edge bg-ink/40 px-2 py-1.5">
-            <div className="text-sm font-semibold text-slate-100">{summary.vector_count}</div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400">vectors</div>
-          </div>
-          <div className="rounded-lg border border-edge bg-ink/40 px-2 py-1.5">
-            <div className="text-sm font-semibold text-slate-100">{summary.entity_count}</div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400">entities</div>
-          </div>
+          <p className="mt-2 text-[11px] text-fg3">Last indexed: {timeAgo(summary.last_indexed)}</p>
         </div>
-      )}
-      {summary && (
-        <p className="text-[11px] text-slate-400">Last indexed: {timeAgo(summary.last_indexed)}</p>
       )}
 
       {/* drag-and-drop zone */}
@@ -100,17 +111,17 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
         }}
         onDragLeave={() => setDrag(false)}
         onDrop={onDrop}
-        className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-5 text-center transition ${
-          drag ? "border-brand bg-brand/10" : "border-edge hover:border-brand/50"
+        className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-6 text-center transition ${
+          drag ? "border-brand bg-brand/10" : "border-edge2 hover:border-brand/50 hover:bg-panel2"
         }`}
       >
         <span className="text-2xl" aria-hidden>
           {busy ? "⏳" : "⬆️"}
         </span>
-        <span className="text-sm text-slate-200">
-          {busy ? "Working…" : "Drag a file here, or click to upload"}
+        <span className="text-sm font-medium text-fg">
+          {busy ? "Indexing…" : "Drag a file here, or click to upload"}
         </span>
-        <span className="text-[11px] text-slate-400">Chunked with source spans → hybrid index + graph</span>
+        <span className="text-[11px] text-fg3">Chunked with source spans → hybrid index + graph</span>
         <input
           type="file"
           className="hidden"
@@ -123,38 +134,78 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
         />
       </label>
 
-      <div className="flex flex-wrap gap-1">
-        {TYPES.map((t) => (
-          <span key={t} className="tag">
-            {t}
-          </span>
-        ))}
+      {/* indexing progress */}
+      {busy && (
+        <div className="h-1 w-full overflow-hidden rounded-full bg-edge">
+          <div className="h-1 w-1/3 animate-pulse rounded-full bg-brand" />
+        </div>
+      )}
+
+      {/* supported types */}
+      <div>
+        <p className="stat-label mb-1">Supported file types</p>
+        <div className="flex flex-wrap gap-1">
+          {TYPES.map((t) => (
+            <span key={t} className="tag">
+              {t}
+            </span>
+          ))}
+        </div>
       </div>
 
       {status && (
         <p
           className={`text-sm ${
-            status.kind === "ok"
-              ? "text-emerald-400"
-              : status.kind === "err"
-                ? "text-rose-300"
-                : "text-slate-300"
+            status.kind === "ok" ? "text-ok" : status.kind === "err" ? "text-bad" : "text-fg3"
           }`}
         >
           {status.msg}
         </p>
       )}
 
+      {/* recent uploads */}
+      {recent.length > 0 && (
+        <div className="card-inset">
+          <p className="stat-label mb-1.5">Recent uploads</p>
+          <ul className="space-y-1 text-xs">
+            {recent.map((r, i) => (
+              <li key={i} className="flex items-center justify-between gap-2">
+                <span className="truncate text-fg2" title={r.name}>
+                  {r.ok ? "✓" : "✕"} {displaySource(r.name)}
+                </span>
+                <span className={r.ok ? "text-fg3" : "text-bad"}>
+                  {r.ok ? `${r.docs}d · ${r.chunks}c${r.skipped ? ` · ${r.skipped} skip` : ""}` : "failed"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* failed ingestion files (from corpus) */}
+      {failed.length > 0 && (
+        <div className="evidence-weak rounded-xl border p-2.5">
+          <p className="stat-label mb-1 text-warn">Failed to ingest ({failed.length})</p>
+          <ul className="space-y-0.5 text-xs text-fg2">
+            {failed.slice(0, 5).map((f) => (
+              <li key={f} className="truncate" title={f}>
+                ⚠ {displaySource(f)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* sample questions the current corpus can actually answer */}
       {samples.length > 0 && (
         <div>
-          <p className="text-xs text-slate-400">Try these on the current corpus:</p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
+          <p className="stat-label mb-1">Try these on the current corpus</p>
+          <div className="flex flex-wrap gap-1.5">
             {samples.map((q) => (
               <button
                 key={q}
                 onClick={() => onAsk?.(q)}
-                className="rounded-full border border-edge bg-panel/60 px-3 py-1 text-xs text-slate-200 transition hover:border-brand hover:text-brand"
+                className="rounded-full border border-edge bg-panel2 px-3 py-1 text-xs text-fg2 transition hover:border-brand hover:text-brand"
               >
                 {q}
               </button>
