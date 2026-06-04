@@ -71,6 +71,29 @@ export function coverageTier(coverage: number): EvidenceTier {
   return "none";
 }
 
+/**
+ * Heuristic: does this question ask about the *collection itself* (what's
+ * indexed, languages, file types, counts) rather than the documents' content?
+ * Such questions should render a corpus-inventory answer, not an evidence
+ * failure (e.g. "Is there any document in Arabic in my collection?").
+ */
+export function isInventoryQuestion(q: string): boolean {
+  if (!q) return false;
+  const s = q.toLowerCase();
+  const corpusWord = /\b(corpus|collection|knowledge base|index(?:ed)?|library|uploaded|ingest(?:ed)?|documents?|files?|docs?)\b/.test(
+    s,
+  );
+  const inventoryIntent =
+    /\b(how many|what|which|list|are there|is there|any|do you have|contain|languages?|file types?|formats?|last (?:indexed|updated)|what'?s in)\b/.test(
+      s,
+    );
+  // Strong single-phrase triggers.
+  if (/\b(in my (?:collection|corpus|library)|in the (?:collection|corpus))\b/.test(s)) return true;
+  if (/\bwhat (?:documents?|files?|docs?) /.test(s)) return true;
+  if (/\b(languages?|file types?|formats?)\b/.test(s) && corpusWord) return true;
+  return corpusWord && inventoryIntent && s.length < 120;
+}
+
 /** Human label for a relevance/score value in [0,1]. */
 export function relevanceLabel(score: number): string {
   if (score >= 0.66) return "high";
