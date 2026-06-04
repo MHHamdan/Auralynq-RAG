@@ -5,7 +5,7 @@ A local-first, agentic, voice-enabled RAG platform with PathRAG graph retrieval.
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = ["Settings", "__version__", "get_settings"]
 
