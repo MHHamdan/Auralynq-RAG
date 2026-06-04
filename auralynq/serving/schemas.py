@@ -57,6 +57,8 @@ class CorpusSummaryResponse(BaseModel):
     top_entities: list[dict[str, Any]] = Field(default_factory=list)
     entity_count: int = 0
     last_indexed: str | None = None
+    languages: list[str] = Field(default_factory=list)
+    failed_files: list[str] = Field(default_factory=list)
 
 
 class SuggestionsResponse(BaseModel):

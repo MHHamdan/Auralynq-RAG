@@ -75,9 +75,40 @@ def _graph_entities() -> list[dict[str, Any]]:
         return []
 
 
+# Unicode-script ranges → human language label. Cheap, dependency-free detection
+# so corpus-inventory questions ("any Arabic documents?") get an honest answer
+# without a heavyweight langdetect dependency.
+_SCRIPT_RANGES: list[tuple[int, int, str]] = [
+    (0x0600, 0x06FF, "Arabic"),
+    (0x0750, 0x077F, "Arabic"),
+    (0x0590, 0x05FF, "Hebrew"),
+    (0x0400, 0x04FF, "Cyrillic"),
+    (0x0370, 0x03FF, "Greek"),
+    (0x4E00, 0x9FFF, "Chinese"),
+    (0x3040, 0x30FF, "Japanese"),
+    (0xAC00, 0xD7AF, "Korean"),
+    (0x0900, 0x097F, "Devanagari"),
+    (0x0E00, 0x0E7F, "Thai"),
+]
+
+
+def _detect_script(text: str) -> str | None:
+    """Best-effort language/script label from a text sample (None → Latin/unknown)."""
+    counts: dict[str, int] = {}
+    for ch in text[:2000]:
+        cp = ord(ch)
+        for lo, hi, label in _SCRIPT_RANGES:
+            if lo <= cp <= hi:
+                counts[label] = counts.get(label, 0) + 1
+                break
+    if not counts:
+        return None
+    return max(counts, key=lambda k: counts[k])
+
+
 def _store_facts() -> dict[str, Any]:
     """Distinct sources / source-types / vector count from the live store."""
-    facts: dict[str, Any] = {"vectors": 0, "titles": [], "source_types": {}}
+    facts: dict[str, Any] = {"vectors": 0, "titles": [], "source_types": {}, "languages": []}
     try:
         from auralynq.vectorstore.factory import get_store
 
@@ -89,16 +120,25 @@ def _store_facts() -> dict[str, Any]:
         chunks = store.all_chunks() or []
         titles: list[str] = []
         stype: Counter[str] = Counter()
+        langs: Counter[str] = Counter()
         seen: set[str] = set()
         for c in chunks:
             src = (getattr(c, "title", None) or getattr(c, "source", "") or "").strip()
             st = getattr(getattr(c, "source_type", None), "value", None) or "unknown"
             stype[st] += 1
+            lang = _detect_script(getattr(c, "text", "") or "")
+            if lang:
+                langs[lang] += 1
             if src and src not in seen:
                 seen.add(src)
                 titles.append(src)
         facts["titles"] = titles[:50]
         facts["source_types"] = dict(stype)
+        # A document with no detected non-Latin script is treated as English/Latin.
+        non_latin = sum(langs.values())
+        if facts["vectors"] and non_latin < facts["vectors"]:
+            langs["English"] += facts["vectors"] - non_latin
+        facts["languages"] = [lang for lang, _ in langs.most_common(6)]
         # Remote stores (Qdrant) don't enumerate via all_chunks; scroll payload
         # metadata so doc count/types are honest instead of reading 0.
         if not titles and facts["vectors"] and hasattr(store, "document_facts"):
@@ -125,6 +165,26 @@ def _last_indexed() -> str | None:
     if newest <= 0:
         return None
     return _dt.datetime.fromtimestamp(newest, tz=_dt.UTC).isoformat()
+
+
+def _failed_files() -> list[str]:
+    """Names of files that failed to ingest, if the ingest pipeline recorded any.
+
+    Reads an optional ``failed.json`` sidecar in the index dir (list of names);
+    absent file → no known failures. Kept defensive so the UI never breaks.
+    """
+    import json
+
+    s = get_settings()
+    try:
+        marker = s.index_dir / "failed.json"
+        if marker.is_file():
+            data = json.loads(marker.read_text())
+            if isinstance(data, list):
+                return [str(x) for x in data][:20]
+    except Exception:  # pragma: no cover - defensive
+        pass
+    return []
 
 
 def corpus_summary(use_cache: bool = True) -> dict[str, Any]:
@@ -160,6 +220,8 @@ def _corpus_summary_uncached() -> dict[str, Any]:
         "top_entities": ents[:12],
         "entity_count": len(ents),
         "last_indexed": _last_indexed(),
+        "languages": facts.get("languages", []),
+        "failed_files": _failed_files(),
     }
 
 
