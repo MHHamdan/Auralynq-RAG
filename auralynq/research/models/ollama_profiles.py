@@ -89,7 +89,7 @@ class OllamaInventory:
     def has(self, tag: str) -> bool:
         # Ollama may report "llama3.2:3b" or with a digest; match on prefix.
         base = tag.split(":")[0]
-        return any(t == tag or t.startswith(base + ":") or t == base for t in self.local_tags)
+        return any(t in (tag, base) or t.startswith(base + ":") for t in self.local_tags)
 
     def likely_fits(self, spec: ModelSpec) -> bool | None:
         """Coarse heuristic: model fits if approx footprint < ~70% of RAM."""
@@ -108,10 +108,8 @@ def inventory(timeout: float = 1.5) -> OllamaInventory:
         data = resp.json()
         tags = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
         return OllamaInventory(reachable=True, base_url=base, local_tags=tags, total_ram_gb=ram)
-    except Exception as exc:  # noqa: BLE001 - any failure means "not reachable"
-        return OllamaInventory(
-            reachable=False, base_url=base, total_ram_gb=ram, error=str(exc)
-        )
+    except Exception as exc:
+        return OllamaInventory(reachable=False, base_url=base, total_ram_gb=ram, error=str(exc))
 
 
 def list_models_report(inv: OllamaInventory | None = None) -> dict[str, object]:
@@ -176,5 +174,5 @@ def ensure_model(tag: str) -> bool:
             for _ in resp.iter_lines():
                 pass
         return inventory().has(tag)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
