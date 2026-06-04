@@ -84,6 +84,8 @@ export interface CorpusSummary {
   top_entities: { name: string; type: string; mentions: number; chunks: number }[];
   entity_count: number;
   last_indexed: string | null;
+  languages?: string[];
+  failed_files?: string[];
 }
 
 export type StreamEvent =

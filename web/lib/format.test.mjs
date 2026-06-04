@@ -23,9 +23,14 @@ execFileSync(
   ],
   { stdio: "inherit" },
 );
-const { displaySource, isInternalPath, timeAgo, coverageTier, relevanceLabel } = await import(
-  join(dir, "format.js")
-);
+const {
+  displaySource,
+  isInternalPath,
+  timeAgo,
+  coverageTier,
+  relevanceLabel,
+  isInventoryQuestion,
+} = await import(join(dir, "format.js"));
 
 let passed = 0;
 const t = (name, fn) => {
@@ -86,6 +91,20 @@ t("relevanceLabel buckets scores", () => {
   assert.equal(relevanceLabel(0.8), "high");
   assert.equal(relevanceLabel(0.5), "medium");
   assert.equal(relevanceLabel(0.2), "low");
+});
+
+t("isInventoryQuestion detects collection/inventory questions", () => {
+  assert.equal(isInventoryQuestion("Is there any document in Arabic in my collection?"), true);
+  assert.equal(isInventoryQuestion("What documents are indexed?"), true);
+  assert.equal(isInventoryQuestion("How many files are in the corpus?"), true);
+  assert.equal(isInventoryQuestion("What languages are in my documents?"), true);
+  assert.equal(isInventoryQuestion("What file types do you have?"), true);
+});
+
+t("isInventoryQuestion ignores content questions", () => {
+  assert.equal(isInventoryQuestion("How does PathRAG prune relational paths?"), false);
+  assert.equal(isInventoryQuestion("Summarize the treatment for sepsis."), false);
+  assert.equal(isInventoryQuestion(""), false);
 });
 
 console.log(`\n${passed} format tests passed`);

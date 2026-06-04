@@ -1,9 +1,10 @@
 "use client";
-import type { Citation, InsufficientReason } from "@/lib/api";
+import type { Citation, CorpusSummary, InsufficientReason } from "@/lib/api";
 import { Citations } from "@/components/Citations";
 import { Markdown } from "@/components/Markdown";
 import { CopyButton } from "@/components/CopyButton";
 import { InsufficientEvidence } from "@/components/InsufficientEvidence";
+import { CorpusInventory } from "@/components/CorpusInventory";
 
 export interface Turn {
   role: "user" | "assistant";
@@ -15,6 +16,8 @@ export interface Turn {
   error?: boolean;
   status?: string;
   insufficient?: InsufficientReason | null;
+  inventory?: CorpusSummary | null;
+  question?: string;
 }
 
 function TypingDots() {
@@ -53,11 +56,22 @@ export function Message({
     );
   }
 
+  // Corpus-inventory answer (what's in the collection) renders its own card.
+  if (turn.inventory) {
+    return (
+      <div className="flex justify-start">
+        <div className="w-full max-w-[94%] rounded-2xl rounded-bl-md border border-edge bg-panel2 px-4 py-3 shadow-sm">
+          <CorpusInventory summary={turn.inventory} question={turn.question} />
+        </div>
+      </div>
+    );
+  }
+
   const empty = !turn.text;
   const live = streaming && isLast;
   return (
     <div className="group flex justify-start">
-      <div className="w-full max-w-[92%] rounded-2xl rounded-bl-md border border-edge bg-ink/50 px-4 py-3 shadow-sm">
+      <div className="w-full max-w-[94%] rounded-2xl rounded-bl-md border border-edge bg-panel2 px-4 py-3 shadow-sm">
         {turn.route && (
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
             <span

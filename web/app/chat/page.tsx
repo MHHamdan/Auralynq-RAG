@@ -1,35 +1,40 @@
 "use client";
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AnswerResult,
+  CorpusSummary,
   PathEvidence,
   StreamEvent,
   TraceSpan,
   TraceStep,
   askStream,
+  corpusSummary,
   fetchSuggestions,
   health,
   statusSummary,
 } from "@/lib/api";
+import { isInventoryQuestion } from "@/lib/format";
 import { Message, type Turn } from "@/components/Message";
 import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
 import { EvalPanel } from "@/components/EvalPanel";
-import { VoiceRecorder } from "@/components/VoiceRecorder";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { AppBar } from "@/components/chat/AppBar";
+import { Composer, type ChatMode } from "@/components/chat/Composer";
+import { InspectorOverview, type RecentMeta } from "@/components/chat/InspectorOverview";
 
-// Fallback only — real suggestions are fetched from /api/suggestions (corpus-aware).
 const FALLBACK_SUGGESTIONS = [
   "Summarize the main topics in the indexed documents.",
   "What are the key entities and how do they relate?",
 ];
 const STORE_KEY = "auralynq.chat.v1";
+const TABS = ["overview", "trace", "evidence", "ingest", "eval"] as const;
+type Tab = (typeof TABS)[number];
 
-export default function Home() {
+export default function Chat() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState<ChatMode>("corpus");
   const [streaming, setStreaming] = useState(false);
   const [trace, setTrace] = useState<TraceSpan[]>([]);
   const [traceSteps, setTraceSteps] = useState<TraceStep[]>([]);
@@ -39,35 +44,41 @@ export default function Home() {
   const [lastConfidence, setLastConfidence] = useState(0);
   const [lastRoute, setLastRoute] = useState("fast");
   const [lastStatus, setLastStatus] = useState<string>("answered");
-  const [tab, setTab] = useState<"trace" | "evidence" | "ingest" | "eval">("trace");
+  const [tab, setTab] = useState<Tab>("overview");
   const [showPanel, setShowPanel] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [providers, setProviders] = useState<{ subsystem: string; provider: string }[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>(FALLBACK_SUGGESTIONS);
-  const [corpusIndexed, setCorpusIndexed] = useState(true);
   const [phoenixUrl, setPhoenixUrl] = useState<string | null>(null);
+  const [online, setOnline] = useState<boolean | null>(null);
+  const [vectors, setVectors] = useState<number | null>(null);
+  const [hasAnswered, setHasAnswered] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const taRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // --- providers badge + restore persisted conversation -------------------
+  // --- bootstrap: status, suggestions, persisted conversation -------------
   useEffect(() => {
     health()
-      .then((h) => setProviders(h.providers || []))
-      .catch(() => {});
-    fetchSuggestions(3)
+      .then(() => setOnline(true))
+      .catch(() => setOnline(false));
+    fetchSuggestions(4)
       .then((s) => {
         if (s.suggestions?.length) setSuggestions(s.suggestions);
-        setCorpusIndexed(s.corpus_indexed);
       })
       .catch(() => {});
     statusSummary()
-      .then((s) => setPhoenixUrl(s?.tracing?.phoenix_endpoint || null))
+      .then((s) => {
+        setPhoenixUrl(s?.tracing?.phoenix_endpoint || null);
+        setVectors(s?.index?.vectors ?? s?.corpus?.vector_count ?? null);
+      })
       .catch(() => {});
     try {
       const raw = localStorage.getItem(STORE_KEY);
-      if (raw) setTurns(JSON.parse(raw));
+      if (raw) {
+        const restored: Turn[] = JSON.parse(raw);
+        setTurns(restored);
+        if (restored.length) setHasAnswered(true);
+      }
     } catch {
       /* ignore corrupt cache */
     }
@@ -86,14 +97,6 @@ export default function Home() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [turns]);
-
-  // Auto-grow the composer textarea.
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!ta) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
-  }, [input]);
 
   const flash = useCallback((m: string) => {
     setToast(m);
@@ -157,7 +160,8 @@ export default function Home() {
         setTurns((t) => {
           const c = [...t];
           const last = c[c.length - 1];
-          if (last?.role === "assistant" && !last.text) c[c.length - 1] = { ...last, text: "⏹ Stopped." };
+          if (last?.role === "assistant" && !last.text)
+            c[c.length - 1] = { ...last, text: "⏹ Stopped." };
           return c;
         });
       } else {
@@ -165,19 +169,59 @@ export default function Home() {
       }
     } finally {
       setStreaming(false);
+      setHasAnswered(true);
       abortRef.current = null;
     }
   }, []);
 
+  // Inventory questions are answered from corpus metadata, not the evidence
+  // pipeline — so "what's in my collection?" never reads as a failure.
+  const answerInventory = useCallback(async (q: string) => {
+    let summary: CorpusSummary | null = null;
+    try {
+      summary = await corpusSummary();
+    } catch {
+      /* fall through to a graceful message */
+    }
+    setTurns((t) => {
+      const c = [...t];
+      c[c.length - 1] = summary
+        ? { role: "assistant", text: "", inventory: summary, question: q }
+        : {
+            role: "assistant",
+            text: "I couldn't read the corpus inventory right now — the backend may be warming up.",
+            error: true,
+          };
+      return c;
+    });
+    setHasAnswered(true);
+    setTab("overview");
+  }, []);
+
+  // Shape the outgoing query by composer mode.
+  const shapeQuery = useCallback((q: string, m: ChatMode): string => {
+    const t = q.trim();
+    if (m === "summarize") {
+      return t ? `Summarize the key points about: ${t}` : "Summarize the main topics in the indexed documents.";
+    }
+    return t;
+  }, []);
+
   const send = useCallback(
-    (q: string) => {
+    (raw: string) => {
+      const q = shapeQuery(raw, mode);
       if (!q.trim() || streaming) return;
       setInput("");
       setShowPanel(false);
+      const inventory = mode === "inventory" || isInventoryQuestion(q);
       setTurns((t) => [...t, { role: "user", text: q }, { role: "assistant", text: "" }]);
-      void runStream(q);
+      if (inventory) {
+        void answerInventory(q);
+      } else {
+        void runStream(q);
+      }
     },
-    [streaming, runStream],
+    [streaming, runStream, answerInventory, mode, shapeQuery],
   );
 
   const regenerate = useCallback(() => {
@@ -204,12 +248,13 @@ export default function Home() {
     setTrace([]);
     setPaths([]);
     setSeeds([]);
+    setHasAnswered(false);
+    setTab("overview");
     try {
       localStorage.removeItem(STORE_KEY);
     } catch {
       /* ignore */
     }
-    taRef.current?.focus();
     flash("New chat");
   }, [flash]);
 
@@ -235,169 +280,112 @@ export default function Home() {
     setPaths(r.path_evidence || []);
     setSeeds(r.seeds || []);
     if (r.trace) setTrace(r.trace);
+    setHasAnswered(true);
   }
 
-  return (
-    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 p-4 md:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-2xl font-bold tracking-tight" aria-label="Auralynq home">
-            🎙️ <span className="text-brand">Aura</span>
-            <span className="text-brand2">lynq</span>
-          </Link>
-          <p className="hidden text-sm text-slate-400 sm:block">
-            Talk to Your Data — agentic voice RAG · PathRAG
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="hidden flex-wrap gap-1 md:flex">
-            {providers.slice(0, 4).map((p) => (
-              <span key={p.subsystem} className="tag" title={`${p.subsystem}: ${p.provider}`}>
-                {p.subsystem}: <span className="text-brand">{p.provider}</span>
-              </span>
-            ))}
-          </div>
-          <ThemeToggle />
-          <button
-            className="btn-ghost text-sm"
-            onClick={newChat}
-            aria-label="Start a new chat (Ctrl/Cmd+K)"
-            title="New chat (⌘K)"
-          >
-            + New
-          </button>
-        </div>
-      </header>
+  const openIngest = useCallback(() => {
+    setShowPanel(true);
+    setTab("ingest");
+  }, []);
 
-      <div className="grid flex-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-        {/* Chat column */}
-        <section className="card flex min-h-[62vh] flex-col">
+  const recentMeta: RecentMeta | null = hasAnswered
+    ? { route: lastRoute, status: lastStatus, coverage, confidence: lastConfidence }
+    : null;
+
+  const lastAssistant = [...turns].reverse().find((t) => t.role === "assistant");
+
+  return (
+    <div className="flex h-[100dvh] flex-col bg-ink text-fg">
+      <AppBar
+        online={online}
+        vectors={vectors}
+        onNewChat={newChat}
+        onToggleInspector={() => setShowPanel((v) => !v)}
+        inspectorOpen={showPanel}
+      />
+
+      <div className="mx-auto grid w-full max-w-[1600px] flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_400px]">
+        {/* Conversation column */}
+        <section className="flex min-h-0 flex-col">
           <div
             ref={scrollRef}
             role="log"
             aria-live="polite"
             aria-label="Conversation"
-            className="scroll-thin flex-1 space-y-3 overflow-y-auto pr-1"
+            className="scroll-thin flex-1 overflow-y-auto px-3 py-4 md:px-6"
           >
-            {turns.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
-                <div className="space-y-1">
-                  <p className="text-lg font-medium text-slate-200">Ask Auralynq anything</p>
-                  <p className="text-sm text-slate-400">
-                    Grounded, cited answers from your data — by text or voice.
-                  </p>
-                </div>
-                {corpusIndexed ? (
-                  <div className="flex max-w-xl flex-col items-center gap-2">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">
-                      Suggested for your indexed corpus
-                    </p>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {suggestions.map((s) => (
-                        <button key={s} className="btn-ghost text-sm" onClick={() => send(s)}>
-                          {s}
-                        </button>
-                      ))}
-                    </div>
+            <div className="mx-auto max-w-3xl space-y-4">
+              {turns.length === 0 ? (
+                <EmptyConversation suggestions={suggestions} onAsk={send} onIngest={openIngest} />
+              ) : (
+                turns.map((t, i) => (
+                  <div key={i} className="msg-in">
+                    <Message
+                      turn={t}
+                      streaming={streaming}
+                      isLast={i === turns.length - 1}
+                      onRegenerate={t.role === "assistant" ? regenerate : undefined}
+                      onAsk={send}
+                      onIngest={openIngest}
+                    />
                   </div>
-                ) : (
-                  <div className="max-w-md rounded-xl border border-edge bg-ink/40 p-4 text-sm">
-                    <p className="font-medium text-slate-200">No documents indexed yet</p>
-                    <p className="mt-1 text-slate-400">
-                      Auralynq only answers from evidence you&apos;ve ingested. Open the{" "}
-                      <button
-                        className="text-brand underline"
-                        onClick={() => {
-                          setShowPanel(true);
-                          setTab("ingest");
-                        }}
-                      >
-                        Ingest tab
-                      </button>{" "}
-                      to add PDFs, docs or audio — then suggestions will appear here.
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              turns.map((t, i) => (
-                <div key={i} className="msg-in">
-                  <Message
-                    turn={t}
-                    streaming={streaming}
-                    isLast={i === turns.length - 1}
-                    onRegenerate={t.role === "assistant" ? regenerate : undefined}
-                    onAsk={send}
-                    onIngest={() => {
-                      setShowPanel(true);
-                      setTab("ingest");
-                    }}
-                  />
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
           </div>
 
-          <div className="mt-3 space-y-2 border-t border-edge pt-3">
-            <VoiceRecorder onResult={onVoice} />
-            <form
-              className="flex items-end gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                send(input);
-              }}
-            >
-              <textarea
-                ref={taRef}
-                value={input}
-                rows={1}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    send(input);
-                  }
-                }}
-                placeholder="Ask Auralynq…  (Enter to send · Shift+Enter for a new line)"
-                aria-label="Ask a question"
-                className="scroll-thin max-h-40 flex-1 resize-none rounded-xl border border-edge bg-ink/60 px-4 py-2 leading-relaxed outline-none transition focus:border-brand"
-              />
-              {streaming ? (
-                <button type="button" onClick={stop} className="btn-ghost" aria-label="Stop generating (Esc)">
-                  ◼ Stop
-                </button>
-              ) : (
-                <button className="btn-brand" disabled={!input.trim()} aria-label="Send">
-                  Ask
-                </button>
-              )}
-            </form>
-            <div className="flex items-center justify-between px-1 text-[11px] text-slate-400">
-              <span>{turns.length > 0 ? `${Math.ceil(turns.length / 2)} message(s) · saved locally` : "Local-first · $0 default"}</span>
-              <button className="hover:text-brand lg:hidden" onClick={() => setShowPanel((v) => !v)}>
-                {showPanel ? "Hide details" : "Show details"}
-              </button>
-            </div>
+          {/* sticky composer */}
+          <div className="mx-auto w-full max-w-3xl">
+            <Composer
+              input={input}
+              setInput={setInput}
+              mode={mode}
+              setMode={setMode}
+              streaming={streaming}
+              onSend={send}
+              onStop={stop}
+              onVoiceResult={onVoice}
+              onUploadClick={openIngest}
+            />
           </div>
         </section>
 
-        {/* Side panel */}
-        <section className={`card flex-col ${showPanel ? "flex" : "hidden"} lg:flex`}>
-          <div className="mb-3 flex gap-1 text-sm">
-            {(["trace", "evidence", "ingest", "eval"] as const).map((t) => (
+        {/* Inspector — desktop column / mobile drawer */}
+        <aside
+          className={`min-h-0 flex-col border-l border-edge bg-panel/60 lg:flex ${
+            showPanel
+              ? "fixed inset-0 z-50 flex bg-ink/95 backdrop-blur-sm lg:static lg:bg-panel/60"
+              : "hidden"
+          }`}
+        >
+          <div className="flex items-center gap-1 overflow-x-auto border-b border-edge px-3 py-2">
+            {TABS.map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 aria-pressed={tab === t}
-                className={`rounded-lg px-3 py-1 capitalize transition ${
-                  tab === t ? "bg-brand text-[#06231e]" : "border border-edge hover:bg-edge/40"
-                }`}
+                className={`tab capitalize ${tab === t ? "tab-active" : ""}`}
               >
                 {t}
               </button>
             ))}
+            <button
+              onClick={() => setShowPanel(false)}
+              className="btn-ghost ml-auto px-2 py-1 text-sm lg:hidden"
+              aria-label="Close inspector"
+            >
+              ✕
+            </button>
           </div>
-          <div className="scroll-thin max-h-[70vh] flex-1 overflow-y-auto">
+          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3">
+            {tab === "overview" && (
+              <InspectorOverview
+                suggestions={suggestions}
+                recent={recentMeta}
+                onAsk={send}
+                onIngest={openIngest}
+              />
+            )}
             {tab === "trace" && (
               <TracePanel
                 trace={trace}
@@ -416,30 +404,65 @@ export default function Home() {
                 paths={paths}
                 seeds={seeds}
                 coverage={coverage}
-                citations={
-                  [...turns].reverse().find((t) => t.role === "assistant")?.citations || []
-                }
+                citations={lastAssistant?.citations || []}
               />
             )}
             {tab === "ingest" && <IngestPanel onAsk={send} />}
             {tab === "eval" && <EvalPanel />}
           </div>
-        </section>
+        </aside>
       </div>
 
-      <footer className="text-center text-xs text-slate-400">
-        Auralynq · local-first · grounded answers with citations, spans &amp; timestamps
-      </footer>
-
-      {/* transient toast */}
       {toast && (
         <div
           role="status"
-          className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-xl border border-edge bg-panel px-4 py-2 text-sm shadow-lg"
+          className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-edge bg-panel px-4 py-2 text-sm shadow-lg"
         >
           {toast}
         </div>
       )}
-    </main>
+    </div>
+  );
+}
+
+function EmptyConversation({
+  suggestions,
+  onAsk,
+  onIngest,
+}: {
+  suggestions: string[];
+  onAsk: (q: string) => void;
+  onIngest: () => void;
+}) {
+  return (
+    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-6 text-center">
+      <div className="space-y-2">
+        <div className="text-4xl" aria-hidden>
+          🎙️
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-fg">Talk to your data</h1>
+        <p className="mx-auto max-w-md text-fg2">
+          Grounded, cited answers from your indexed documents — by text or voice. Ask a question or
+          pick a suggestion to begin.
+        </p>
+      </div>
+      <div className="flex w-full max-w-xl flex-col gap-2">
+        {suggestions.slice(0, 4).map((s) => (
+          <button
+            key={s}
+            onClick={() => onAsk(s)}
+            className="card card-hover px-4 py-3 text-left text-sm text-fg2"
+          >
+            <span className="mr-2 text-brand" aria-hidden>
+              ↳
+            </span>
+            {s}
+          </button>
+        ))}
+      </div>
+      <button onClick={onIngest} className="btn-ghost text-sm">
+        <span aria-hidden>＋</span> Add documents to your corpus
+      </button>
+    </div>
   );
 }
