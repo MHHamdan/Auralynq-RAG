@@ -90,6 +90,14 @@ temp/
 *.log
 logs/
 
+# Research Phase 2: experiment run artifacts (provenance + traces + metrics)
+runs/*
+!runs/.gitkeep
+# LaTeX paper draft — kept local, built on Overleaf, never committed (per request)
+docs/paper/
+# Research datasets (manual download; never auto-committed)
+data/research/
+
 # Podman / compose local artifacts
 .podman/
 containers/.env
