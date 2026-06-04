@@ -1,0 +1,30 @@
+name: abstention_calibrated
+description: Hybrid+graph+rerank with Evidence Sufficiency Controller + calibrated abstention.
+seed: 42
+retrieval:
+  mode: vector_graph_rerank
+  top_k: 30
+  final_k: 6
+  chunk_size: 800
+  chunk_overlap: 120
+  keyword: true
+  graph: true
+  reranker: true
+embedding:
+  provider: auto
+  model: BAAI/bge-m3
+vector:
+  backend: auto
+  collection: auralynq_research
+llm:
+  provider: auto
+  model: llama3.2:3b
+  temperature: 0.1
+  max_tokens: 1024
+abstention:
+  mode: calibrated
+  evidence_sufficiency: true
+  threshold: 0.5
+  citation_required: true
+web_search: false
+voice: false
