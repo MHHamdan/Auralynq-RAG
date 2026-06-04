@@ -1,43 +1,218 @@
 "use client";
-import { useState } from "react";
-import { ingestFile } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { CorpusSummary, corpusSummary, fetchSuggestions, ingestFile } from "@/lib/api";
+import { displaySource, timeAgo } from "@/lib/format";
 
-export function IngestPanel() {
-  const [status, setStatus] = useState<string>("");
+const ACCEPT = ".pdf,.docx,.html,.htm,.md,.txt,.wav,.mp3,.m4a";
+const TYPES = ["PDF", "DOCX", "HTML", "Markdown", "TXT", "WAV", "MP3", "M4A"];
+
+interface Recent {
+  name: string;
+  docs: number;
+  chunks: number;
+  skipped: number;
+  ok: boolean;
+}
+
+export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
+  const [status, setStatus] = useState<{ kind: "ok" | "err" | "info"; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const [summary, setSummary] = useState<CorpusSummary | null>(null);
+  const [samples, setSamples] = useState<string[]>([]);
+  const [recent, setRecent] = useState<Recent[]>([]);
 
-  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    setStatus(`Uploading ${file.name} …`);
+  const refresh = useCallback(async () => {
     try {
-      const r = await ingestFile(file);
-      setStatus(`✓ Indexed ${r.documents} document(s), ${r.chunks} chunk(s).`);
-    } catch (err) {
-      setStatus(`✗ ${(err as Error).message}`);
-    } finally {
-      setBusy(false);
+      const [s, sug] = await Promise.all([corpusSummary(), fetchSuggestions(3)]);
+      setSummary(s);
+      setSamples(sug.suggestions);
+    } catch {
+      /* backend may be warming up */
     }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const upload = useCallback(
+    async (file: File) => {
+      setBusy(true);
+      setStatus({ kind: "info", msg: `Uploading ${file.name} — parsing → chunking → indexing…` });
+      try {
+        const r = await ingestFile(file);
+        setStatus({
+          kind: "ok",
+          msg: `✓ Indexed ${r.documents} document(s), ${r.chunks} chunk(s)${
+            r.skipped ? `, ${r.skipped} skipped` : ""
+          }.`,
+        });
+        setRecent((prev) =>
+          [{ name: file.name, docs: r.documents, chunks: r.chunks, skipped: r.skipped || 0, ok: true }, ...prev].slice(
+            0,
+            5,
+          ),
+        );
+        await refresh();
+      } catch (err) {
+        setStatus({ kind: "err", msg: `✗ ${(err as Error).message}` });
+        setRecent((prev) => [{ name: file.name, docs: 0, chunks: 0, skipped: 0, ok: false }, ...prev].slice(0, 5));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refresh],
+  );
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDrag(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && !busy) void upload(file);
   }
+
+  const failed = summary?.failed_files || [];
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-400">
-        Add PDF, DOCX, HTML, Markdown, TXT or audio (WAV/MP3/M4A). Files are chunked with
-        source spans and indexed into the hybrid store + knowledge graph.
-      </p>
-      <label className="btn-brand cursor-pointer inline-block">
-        {busy ? "Working…" : "Upload & index"}
+      {/* corpus stats */}
+      {summary && (
+        <div className="card-inset">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-fg">Corpus</h3>
+            <button onClick={() => void refresh()} className="text-[11px] text-fg3 hover:text-brand">
+              ↻ Refresh
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 text-center">
+            <div className="stat">
+              <div className="stat-value">{summary.indexed_document_count}</div>
+              <div className="stat-label">docs</div>
+            </div>
+            <div className="stat">
+              <div className="stat-value">{summary.vector_count}</div>
+              <div className="stat-label">vectors</div>
+            </div>
+            <div className="stat">
+              <div className="stat-value">{summary.entity_count}</div>
+              <div className="stat-label">entities</div>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-fg3">Last indexed: {timeAgo(summary.last_indexed)}</p>
+        </div>
+      )}
+
+      {/* drag-and-drop zone */}
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={onDrop}
+        className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed p-6 text-center transition ${
+          drag ? "border-brand bg-brand/10" : "border-edge2 hover:border-brand/50 hover:bg-panel2"
+        }`}
+      >
+        <span className="text-2xl" aria-hidden>
+          {busy ? "⏳" : "⬆️"}
+        </span>
+        <span className="text-sm font-medium text-fg">
+          {busy ? "Indexing…" : "Drag a file here, or click to upload"}
+        </span>
+        <span className="text-[11px] text-fg3">Chunked with source spans → hybrid index + graph</span>
         <input
           type="file"
           className="hidden"
           disabled={busy}
-          onChange={onUpload}
-          accept=".pdf,.docx,.html,.htm,.md,.txt,.wav,.mp3,.m4a"
+          accept={ACCEPT}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void upload(f);
+          }}
         />
       </label>
-      {status && <p className="text-sm text-slate-300">{status}</p>}
+
+      {/* indexing progress */}
+      {busy && (
+        <div className="h-1 w-full overflow-hidden rounded-full bg-edge">
+          <div className="h-1 w-1/3 animate-pulse rounded-full bg-brand" />
+        </div>
+      )}
+
+      {/* supported types */}
+      <div>
+        <p className="stat-label mb-1">Supported file types</p>
+        <div className="flex flex-wrap gap-1">
+          {TYPES.map((t) => (
+            <span key={t} className="tag">
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {status && (
+        <p
+          className={`text-sm ${
+            status.kind === "ok" ? "text-ok" : status.kind === "err" ? "text-bad" : "text-fg3"
+          }`}
+        >
+          {status.msg}
+        </p>
+      )}
+
+      {/* recent uploads */}
+      {recent.length > 0 && (
+        <div className="card-inset">
+          <p className="stat-label mb-1.5">Recent uploads</p>
+          <ul className="space-y-1 text-xs">
+            {recent.map((r, i) => (
+              <li key={i} className="flex items-center justify-between gap-2">
+                <span className="truncate text-fg2" title={r.name}>
+                  {r.ok ? "✓" : "✕"} {displaySource(r.name)}
+                </span>
+                <span className={r.ok ? "text-fg3" : "text-bad"}>
+                  {r.ok ? `${r.docs}d · ${r.chunks}c${r.skipped ? ` · ${r.skipped} skip` : ""}` : "failed"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* failed ingestion files (from corpus) */}
+      {failed.length > 0 && (
+        <div className="evidence-weak rounded-xl border p-2.5">
+          <p className="stat-label mb-1 text-warn">Failed to ingest ({failed.length})</p>
+          <ul className="space-y-0.5 text-xs text-fg2">
+            {failed.slice(0, 5).map((f) => (
+              <li key={f} className="truncate" title={f}>
+                ⚠ {displaySource(f)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* sample questions the current corpus can actually answer */}
+      {samples.length > 0 && (
+        <div>
+          <p className="stat-label mb-1">Try these on the current corpus</p>
+          <div className="flex flex-wrap gap-1.5">
+            {samples.map((q) => (
+              <button
+                key={q}
+                onClick={() => onAsk?.(q)}
+                className="rounded-full border border-edge bg-panel2 px-3 py-1 text-xs text-fg2 transition hover:border-brand hover:text-brand"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

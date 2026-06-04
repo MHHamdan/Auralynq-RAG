@@ -125,6 +125,7 @@ def node_critic(state: AgentState, deps: AgentDeps) -> AgentState:
         missing = sorted(q_terms - covered)
         coverage = 1.0 - (len(missing) / max(len(q_terms), 1))
         state.gaps = missing
+        state.coverage = round(coverage, 3)
         can_retry = (
             state.iteration < state.max_iters - 1
             and not state.out_of_budget()

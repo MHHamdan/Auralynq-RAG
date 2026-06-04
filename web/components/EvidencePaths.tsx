@@ -1,49 +1,241 @@
-import { PathEvidence } from "@/lib/api";
+import { Citation, PathEvidence } from "@/lib/api";
+import { coverageTier, displaySource, isInternalPath } from "@/lib/format";
 
-export function EvidencePaths({ paths, seeds }: { paths: PathEvidence[]; seeds: string[] }) {
-  if (!paths?.length)
-    return (
-      <p className="text-sm text-slate-500">
-        PathRAG evidence paths appear here for relational / multi-hop questions.
+const TIER_META = {
+  strong: { label: "Strong evidence", cls: "evidence-strong", bar: "bg-ok", dot: "bg-ok", pill: "pill-ok" },
+  weak: { label: "Weak evidence", cls: "evidence-weak", bar: "bg-warn", dot: "bg-warn", pill: "pill-warn" },
+  none: { label: "Insufficient evidence", cls: "evidence-none", bar: "bg-bad", dot: "bg-bad", pill: "pill-bad" },
+} as const;
+
+function CoverageHeader({ coverage }: { coverage: number }) {
+  const pct = Math.round(Math.max(0, Math.min(1, coverage)) * 100);
+  const tier = coverageTier(coverage);
+  const m = TIER_META[tier];
+  return (
+    <div className={`rounded-xl border p-3 ${m.cls}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-fg">Evidence coverage</span>
+        <span className={`pill ${m.pill}`}>
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${m.dot}`} />
+          {m.label}
+        </span>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <div className="h-2 flex-1 rounded-full bg-edge">
+          <div className={`h-2 rounded-full ${m.bar}`} style={{ width: `${Math.max(pct, 2)}%` }} />
+        </div>
+        <span className="text-sm font-bold text-fg">{pct}%</span>
+      </div>
+      <p className="mt-1.5 text-[11px] text-fg3">
+        Share of the question&apos;s key terms supported by retrieved evidence.
       </p>
+    </div>
+  );
+}
+
+function Breakdown({
+  vector,
+  graph,
+  citations,
+}: {
+  vector: number;
+  graph: number;
+  citations: number;
+}) {
+  const items = [
+    { label: "Vector hits", value: vector, tint: "text-brand" },
+    { label: "Graph paths", value: graph, tint: "text-accent" },
+    { label: "Reranked", value: citations, tint: "text-brand2" },
+    { label: "Citations", value: citations, tint: "text-ok" },
+  ];
+  return (
+    <div className="grid grid-cols-4 gap-1.5">
+      {items.map((i) => (
+        <div key={i.label} className="stat text-center">
+          <div className={`text-base font-bold ${i.tint}`}>{i.value}</div>
+          <div className="stat-label">{i.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// "Why selected" copy by source type — explains the evidence to the user.
+function whySelected(c: Citation): string {
+  if (c.source_type === "audio") return "Top-ranked transcript segment matching your question.";
+  if (c.source_type === "web") return "High-relevance passage from a retrieved web source.";
+  return "High-relevance passage from hybrid retrieval, kept after reranking.";
+}
+
+function cleanLocator(c: Citation): string {
+  if (c.speaker || c.start_s != null) {
+    const t = (s?: number | null) => {
+      if (s == null) return "";
+      const m = Math.floor(s / 60);
+      const sec = Math.round(s % 60);
+      return `${m}:${String(sec).padStart(2, "0")}`;
+    };
+    const range = c.start_s != null ? `${t(c.start_s)}–${t(c.end_s)}` : "";
+    return [c.speaker, range].filter(Boolean).join(" · ");
+  }
+  if (c.page != null) return `Page ${c.page}`;
+  return "";
+}
+
+function CitationCard({ c }: { c: Citation }) {
+  const loc = cleanLocator(c);
+  const showDebug = isInternalPath(c.source) || /\[\d+:\d+\]/.test(c.locator);
+  return (
+    <li className="evidence-card">
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand2/15 text-xs font-semibold text-brand2">
+          {c.marker}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate text-sm font-semibold text-fg" title={displaySource(c.source)}>
+              {displaySource(c.source)}
+            </span>
+            <span className="pill pill-neutral shrink-0">{c.source_type}</span>
+          </div>
+          {loc && <p className="mt-0.5 text-xs text-fg3">{loc}</p>}
+          <p className="mt-1.5 text-xs italic text-fg2">{whySelected(c)}</p>
+          {showDebug && (
+            <details className="mt-1.5">
+              <summary className="cursor-pointer text-[11px] text-fg3 hover:text-fg">
+                Debug · raw source
+              </summary>
+              <p className="mt-1 break-all rounded bg-ink/60 p-1.5 font-mono text-[10px] text-fg3">
+                {c.source}
+                {c.locator ? ` · ${c.locator}` : ""}
+              </p>
+            </details>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function Section({
+  title,
+  count,
+  children,
+  open = true,
+}: {
+  title: string;
+  count?: number;
+  children: React.ReactNode;
+  open?: boolean;
+}) {
+  return (
+    <details open={open} className="card-inset">
+      <summary className="cursor-pointer text-sm font-semibold text-fg">
+        {title}
+        {typeof count === "number" && (
+          <span className="ml-2 rounded-full bg-edge px-2 py-0.5 text-xs text-fg2">{count}</span>
+        )}
+      </summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  );
+}
+
+export function EvidencePaths({
+  paths,
+  seeds,
+  coverage = 0,
+  citations = [],
+}: {
+  paths: PathEvidence[];
+  seeds: string[];
+  coverage?: number;
+  citations?: Citation[];
+}) {
+  const hasAnything = paths?.length || citations?.length || seeds?.length;
+  if (!hasAnything)
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+        <span className="text-3xl" aria-hidden>
+          🔍
+        </span>
+        <p className="text-sm font-medium text-fg">Ask a question to see the evidence trail.</p>
+        <p className="max-w-xs text-xs text-fg3">
+          Vector hits, PathRAG graph paths, and the exact citations an answer was grounded on appear
+          here — with a coverage score and per-source reasoning.
+        </p>
+      </div>
     );
+
   return (
     <div className="space-y-3">
-      {seeds?.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          <span className="text-xs text-slate-400">seeds:</span>
-          {seeds.map((s) => (
-            <span key={s} className="tag border-brand2/40 text-brand2">
-              {s}
-            </span>
-          ))}
-        </div>
-      )}
-      {paths.map((p, i) => (
-        <div key={i} className="rounded-xl border border-edge bg-ink/40 p-2">
-          <div className="flex flex-wrap items-center gap-1 text-sm">
-            {p.nodes.map((n, j) => (
-              <span key={j} className="flex items-center gap-1">
-                <span className="rounded-md bg-edge/60 px-2 py-0.5">{n}</span>
-                {j < p.relations.length && (
-                  <span className="text-xs text-brand">—{p.relations[j]}→</span>
-                )}
+      <CoverageHeader coverage={coverage} />
+      <Breakdown
+        vector={citations.length}
+        graph={paths?.length || 0}
+        citations={citations.length}
+      />
+
+      <Section title="Citations" count={citations.length} open={citations.length > 0}>
+        {citations.length ? (
+          <ol className="space-y-2">
+            {citations.map((c) => (
+              <CitationCard key={c.marker} c={c} />
+            ))}
+          </ol>
+        ) : (
+          <p className="text-xs text-fg3">No citations attached to the answer.</p>
+        )}
+      </Section>
+
+      <Section title="Graph evidence · PathRAG" count={paths?.length || 0} open={!!paths?.length}>
+        {seeds?.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-1">
+            <span className="text-xs text-fg3">seeds:</span>
+            {seeds.map((s) => (
+              <span key={s} className="tag border-brand2/30 text-brand2">
+                {s}
               </span>
             ))}
           </div>
-          <div className="mt-1 flex items-center gap-2">
-            <div className="h-1.5 flex-1 rounded-full bg-edge/50">
-              <div
-                className="h-1.5 rounded-full bg-brand2"
-                style={{ width: `${Math.round(p.reliability * 100)}%` }}
-              />
-            </div>
-            <span className="text-xs text-slate-400">
-              reliability {p.reliability.toFixed(2)}
-            </span>
+        )}
+        {paths?.length ? (
+          <div className="space-y-2">
+            {paths.map((p, i) => (
+              <div key={i} className="evidence-card">
+                <div className="flex flex-wrap items-center gap-1 text-sm">
+                  {p.nodes.map((n, j) => (
+                    <span key={j} className="flex items-center gap-1">
+                      <span className="rounded-md bg-edge px-2 py-0.5 text-fg">{n}</span>
+                      {j < p.relations.length && (
+                        <span className="text-xs text-accent">—{p.relations[j]}→</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="h-1.5 flex-1 rounded-full bg-edge">
+                    <div
+                      className="h-1.5 rounded-full bg-accent"
+                      style={{ width: `${Math.round(p.reliability * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-fg3">reliability {p.reliability.toFixed(2)}</span>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      ))}
+        ) : (
+          <p className="text-xs text-fg3">
+            No graph paths — this was answered by vector retrieval alone.
+          </p>
+        )}
+      </Section>
+
+      <p className="px-1 text-[11px] text-fg3">
+        Passages are ranked by hybrid (dense + sparse) retrieval, expanded along reliable graph
+        relations, reranked, then only the cited sources are kept.
+      </p>
     </div>
   );
 }
