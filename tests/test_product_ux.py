@@ -37,6 +37,24 @@ def test_corpus_summary_reports_indexed(corpus_dir):
     assert any("path" in n or "france" in n or "paris" in n for n in names)
 
 
+def test_corpus_summary_reports_languages(corpus_dir):
+    build_index(corpus_dir)
+    s = corpus_summary()
+    # Latin/English corpus → at least one language label, and the inventory
+    # fields the UI renders are always present.
+    assert "languages" in s and isinstance(s["languages"], list)
+    assert "failed_files" in s and isinstance(s["failed_files"], list)
+    assert s["languages"], "expected a detected language for an indexed corpus"
+
+
+def test_detect_script_identifies_arabic():
+    from auralynq.serving.corpus import _detect_script
+
+    assert _detect_script("مرحبا هذا نص عربي طويل بما فيه الكفاية") == "Arabic"
+    assert _detect_script("Hello, this is plain English text") is None
+    assert _detect_script("Привет мир, как дела сегодня") == "Cyrillic"
+
+
 def test_suggestions_are_corpus_aware(corpus_dir):
     build_index(corpus_dir)
     s = corpus_summary()
