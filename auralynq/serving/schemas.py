@@ -26,6 +26,7 @@ class Citation(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str
+    status: str = "answered"
     citations: list[dict[str, Any]] = Field(default_factory=list)
     route: str = "fast"
     route_confidence: float = 0.0
@@ -34,10 +35,54 @@ class QueryResponse(BaseModel):
     seeds: list[str] = Field(default_factory=list)
     iterations: int = 0
     confidence: float = 0.0
+    evidence_coverage: float = 0.0
     cached: bool = False
     elapsed_ms: float = 0.0
     trace: list[dict[str, Any]] = Field(default_factory=list)
+    trace_steps: list[dict[str, Any]] = Field(default_factory=list)
+    detected_entities: list[str] = Field(default_factory=list)
+    suggested_questions: list[str] = Field(default_factory=list)
+    insufficient_evidence_reason: dict[str, Any] | None = None
+    warnings: list[str] = Field(default_factory=list)
+    provider_status: list[dict[str, str]] = Field(default_factory=list)
     request_id: str = ""
+
+
+class CorpusSummaryResponse(BaseModel):
+    indexed: bool = False
+    indexed_document_count: int = 0
+    vector_count: int = 0
+    document_titles: list[str] = Field(default_factory=list)
+    source_types: dict[str, int] = Field(default_factory=dict)
+    top_entities: list[dict[str, Any]] = Field(default_factory=list)
+    entity_count: int = 0
+    last_indexed: str | None = None
+    languages: list[str] = Field(default_factory=list)
+    failed_files: list[str] = Field(default_factory=list)
+
+
+class SuggestionsResponse(BaseModel):
+    suggestions: list[str] = Field(default_factory=list)
+    corpus_indexed: bool = False
+
+
+class StatusResponse(BaseModel):
+    status: str = "ok"
+    version: str = ""
+    env: str = ""
+    providers: list[dict[str, str]] = Field(default_factory=list)
+    index: dict[str, Any] = Field(default_factory=dict)
+    corpus: dict[str, Any] = Field(default_factory=dict)
+    tracing: dict[str, Any] = Field(default_factory=dict)
+
+
+class ObservabilitySummaryResponse(BaseModel):
+    requests_total: int = 0
+    query_total: int = 0
+    avg_request_ms: float = 0.0
+    tracing_provider: str = "in-process"
+    phoenix_url: str | None = None
+    langfuse_host: str | None = None
 
 
 class IngestResponse(BaseModel):

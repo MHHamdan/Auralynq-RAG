@@ -1,0 +1,156 @@
+// Structural UI guards for the premium redesign. The project's test harness is
+// dependency-free (no DOM runtime), so these assert that each redesigned surface
+// composes the required sections, copy and states at the source level — catching
+// accidental regressions of the acceptance criteria without a browser.
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const read = (p) => readFileSync(join(root, p), "utf8");
+
+let passed = 0;
+const t = (name, fn) => {
+  fn();
+  passed++;
+  console.log("  ok", name);
+};
+const has = (src, needle, msg) =>
+  assert.ok(src.includes(needle), msg || `expected to find: ${needle}`);
+
+// ---- landing composes all main sections ---------------------------------
+t("landing page renders all main sections", () => {
+  const page = read("app/page.tsx");
+  for (const s of ["Hero", "SystemStatus", "Features", "HowItWorks", "Differentiators", "Stack", "CTA", "Footer"]) {
+    has(page, `<${s} `, `landing missing <${s}>`);
+  }
+});
+
+t("hero has value prop, dual CTAs and trust badges", () => {
+  const hero = read("components/landing/Hero.tsx");
+  has(hero, "Voice-native RAG for private documents");
+  has(hero, "/chat"); // launch CTA
+  has(hero, "github.com/MHHamdan/Auralynq"); // github CTA
+  for (const b of ["Local-first", "$0 default", "Open source", "Citations on every answer", "Voice in / out", "Provider-agnostic"]) {
+    has(hero, b, `hero missing trust badge: ${b}`);
+  }
+});
+
+t("system status surfaces the seven subsystems with health states", () => {
+  const s = read("components/landing/SystemStatus.tsx");
+  for (const g of ["API", "Corpus", "Vector DB", "Embeddings", "LLM", "ASR / TTS", "Tracing"]) {
+    has(s, g, `status missing group: ${g}`);
+  }
+  for (const h of ["healthy", "degraded", "offline"]) has(s, h);
+});
+
+t("capabilities render six benefit cards", () => {
+  const f = read("components/landing/Features.tsx");
+  for (const c of [
+    "Voice-native document chat",
+    "Grounded answers with citations",
+    "PathRAG graph reasoning",
+    "Hybrid retrieval & reranking",
+    "Agent trace & observability",
+    "Local-first provider routing",
+  ]) {
+    has(f, c, `features missing card: ${c}`);
+  }
+});
+
+t("how-it-works renders the nine-step pipeline", () => {
+  const h = read("components/landing/HowItWorks.tsx");
+  for (const step of ["Upload", "Parse", "Chunk", "Index", "Retrieve", "Rerank", "Reason", "Cite", "Observe"]) {
+    has(h, step, `pipeline missing step: ${step}`);
+  }
+});
+
+t("differentiators proof section exists", () => {
+  const d = read("components/landing/Differentiators.tsx");
+  has(d, "What makes Auralynq different?");
+  has(d, "Honest abstention");
+  has(d, "Local-first by default");
+});
+
+// ---- chat shell ----------------------------------------------------------
+t("chat uses app bar, composer and never-empty inspector overview", () => {
+  const page = read("app/chat/page.tsx");
+  has(page, "<AppBar");
+  has(page, "<Composer");
+  has(page, "<InspectorOverview");
+  has(page, '"overview"'); // default inspector tab
+});
+
+t("composer has mode selector, voice, upload and key hints", () => {
+  const c = read("components/chat/Composer.tsx");
+  for (const m of ["Ask corpus", "Summarize", "Inventory", "Search web"]) has(c, m);
+  has(c, "VoiceRecorder");
+  has(c, "Upload a document");
+  has(c, "Shift");
+});
+
+t("voice recorder exposes explicit states", () => {
+  const v = read("components/VoiceRecorder.tsx");
+  for (const st of ["idle", "listening", "transcribing", "speaking", "failed"]) has(v, st);
+});
+
+t("inspector overview is useful before any query", () => {
+  const o = read("components/chat/InspectorOverview.tsx");
+  for (const s of ["Your corpus", "System status", "Try asking"]) has(o, s);
+});
+
+// ---- inspector panels ----------------------------------------------------
+t("evidence panel has coverage, breakdown, debug disclosure and empty state", () => {
+  const e = read("components/EvidencePaths.tsx");
+  has(e, "Evidence coverage");
+  has(e, "displaySource");
+  has(e, "Debug · raw source");
+  has(e, "Ask a question to see the evidence trail");
+  has(e, "whySelected");
+});
+
+t("trace panel has summary dashboard and Phoenix card", () => {
+  const tr = read("components/TracePanel.tsx");
+  has(tr, "Hallu. risk");
+  has(tr, "Open in Phoenix");
+  has(tr, "not connected"); // degraded hint
+  has(tr, "Run a query to see the trace");
+});
+
+t("eval panel has feedback widget and planned evals", () => {
+  const ev = read("components/EvalPanel.tsx");
+  has(ev, "Rate the last answer");
+  has(ev, "Groundedness");
+  has(ev, "Abstention correctness");
+});
+
+t("insufficient-evidence card uses soft warning copy", () => {
+  const ie = read("components/InsufficientEvidence.tsx");
+  has(ie, "Not enough evidence in your indexed documents");
+  has(ie, "held back instead of guessing");
+  has(ie, "border-warn"); // soft warning, not error red
+});
+
+t("corpus inventory renders the inventory fields", () => {
+  const ci = read("components/CorpusInventory.tsx");
+  for (const field of ["Documents", "Languages", "File types", "Last indexed", "Top topics"]) {
+    has(ci, field, `inventory missing field: ${field}`);
+  }
+});
+
+t("citations clean internal paths via displaySource", () => {
+  has(read("components/Citations.tsx"), "displaySource");
+  has(read("components/Message.tsx"), "CorpusInventory");
+});
+
+// ---- design system -------------------------------------------------------
+t("design tokens define all three themes with status + text scale", () => {
+  const css = read("app/globals.css");
+  for (const th of ['[data-theme="dark"]', '[data-theme="light"]', '[data-theme="comfort"]']) has(css, th);
+  for (const tok of ["--c-text-2", "--c-text-3", "--c-ok", "--c-warn", "--c-bad", "--ring"]) has(css, tok);
+  has(css, ".focusable");
+  has(css, ".evidence-strong");
+});
+
+console.log(`\n${passed} ui structure tests passed`);

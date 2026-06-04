@@ -44,10 +44,12 @@ def _isolated_env(tmp_path, monkeypatch):
     seed_everything(42)
     # reset cached singletons that read settings
     from auralynq.embeddings import factory as ef
+    from auralynq.serving.corpus import invalidate_corpus_cache
     from auralynq.vectorstore import factory as vf
 
     ef.get_embedder.cache_clear()
     vf.get_store.cache_clear()
+    invalidate_corpus_cache()  # TTL-cached corpus summary must not leak across tests
     yield
     reload_settings()
 

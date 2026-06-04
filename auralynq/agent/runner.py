@@ -44,8 +44,78 @@ def _export_langfuse(trace: Trace, question: str, answer: str, metadata: dict) -
         pass
 
 
+_REFUSAL_MARKERS = (
+    "don't have enough evidence",
+    "do not have enough evidence",
+    "not enough evidence",
+    "no relevant evidence",
+)
+
+
+def _is_refusal(answer: str, has_contexts: bool) -> bool:
+    """An answer is an abstention if it has no grounding *or* says so outright."""
+    low = (answer or "").lower()
+    if any(m in low for m in _REFUSAL_MARKERS):
+        return True
+    return not has_contexts and not low.strip()
+
+
+def _snippets(state: AgentState, limit: int = 3) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for c in state.contexts[:limit]:
+        cit = c.chunk.citation()
+        out.append(
+            {
+                "source": str(cit.get("source", "")),
+                "locator": str(cit.get("locator", "")),
+                "score": round(float(getattr(c, "score", 0.0) or 0.0), 4),
+                "text": c.chunk.text[:280],
+            }
+        )
+    return out
+
+
+def _insufficiency(
+    state: AgentState, detected: list[str], suggestions: list[str]
+) -> dict[str, Any]:
+    """Structured, trustworthy explanation of *why* we abstained."""
+    snippets = _snippets(state)
+    in_corpus = bool(detected)
+    n = len(state.contexts)
+    if not state.contexts:
+        why = (
+            "Retrieval returned no passages above the relevance threshold for this "
+            "question — the indexed corpus does not appear to cover it."
+        )
+    elif state.coverage < 0.6:
+        why = (
+            f"Retrieved {n} passage(s), but they covered only "
+            f"{round(state.coverage * 100)}% of the question's key terms — not enough "
+            "to ground a faithful, cited answer."
+        )
+    else:
+        why = (
+            f"Retrieved {n} passage(s) on related topics, but none directly answered "
+            "the question, so the model declined to ground a confident, cited answer "
+            "rather than guess."
+        )
+    return {
+        "summary": (
+            "Auralynq could not answer because the indexed corpus does not contain "
+            "enough relevant evidence."
+        ),
+        "detected_entities": detected,
+        "route_attempted": state.route.value,
+        "retrieved_snippets": snippets,
+        "why_insufficient": why,
+        "suggested_questions": suggestions,
+        "suggest_ingest": not in_corpus,
+    }
+
+
 class AnswerResult(BaseModel):
     answer: str
+    status: str = "answered"
     citations: list[dict[str, Any]] = Field(default_factory=list)
     route: str = "fast"
     route_confidence: float = 0.0
@@ -54,10 +124,17 @@ class AnswerResult(BaseModel):
     seeds: list[str] = Field(default_factory=list)
     iterations: int = 0
     confidence: float = 0.0
+    evidence_coverage: float = 0.0
     cached: bool = False
     elapsed_ms: float = 0.0
     contexts: list[str] = Field(default_factory=list)
     trace: list[dict[str, Any]] = Field(default_factory=list)
+    trace_steps: list[dict[str, Any]] = Field(default_factory=list)
+    detected_entities: list[str] = Field(default_factory=list)
+    suggested_questions: list[str] = Field(default_factory=list)
+    insufficient_evidence_reason: dict[str, Any] | None = None
+    warnings: list[str] = Field(default_factory=list)
+    provider_status: list[dict[str, str]] = Field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump()
@@ -111,8 +188,19 @@ def answer_question(
     state = _new_state(question, final_k)
     state = run_agent(state, deps)
 
+    from auralynq.providers import describe_providers
+    from auralynq.serving.corpus import corpus_summary, detect_entities, suggested_questions
+    from auralynq.serving.observability import to_trace_steps
+
+    summary = corpus_summary()
+    detected = detect_entities(question, summary)
+    suggestions = suggested_questions(3, summary)
+    refused = _is_refusal(state.answer, bool(state.contexts))
+    trace_list = trace.to_list()
+
     result = AnswerResult(
         answer=state.answer,
+        status="insufficient_evidence" if refused else "answered",
         citations=state.citations,
         route=state.route.value,
         route_confidence=state.route_confidence,
@@ -121,9 +209,18 @@ def answer_question(
         seeds=state.seeds,
         iterations=state.iteration,
         confidence=state.confidence,
+        evidence_coverage=state.coverage,
         elapsed_ms=round(trace.total_ms, 2),
         contexts=[c.chunk.text for c in state.contexts],
-        trace=trace.to_list(),
+        trace=trace_list,
+        trace_steps=to_trace_steps(trace_list),
+        detected_entities=detected,
+        suggested_questions=suggestions,
+        insufficient_evidence_reason=(
+            _insufficiency(state, detected, suggestions) if refused else None
+        ),
+        warnings=list(state.notes),
+        provider_status=describe_providers(),
     )
     if use_cache and state.answer:
         _CACHE.store(question, state.answer, state.citations)
@@ -162,6 +259,12 @@ def stream_answer_question(
             continue
         break
 
+    from auralynq.serving.corpus import corpus_summary, detect_entities, suggested_questions
+
+    _summary = corpus_summary()
+    _detected = detect_entities(question, _summary)
+    _suggestions = suggested_questions(3, _summary)
+
     yield {
         "type": "meta",
         "route": state.route.value,
@@ -169,6 +272,8 @@ def stream_answer_question(
         "rationale": state.route_rationale,
         "seeds": state.seeds,
         "path_evidence": [e.model_dump() for e in state.path_evidence],
+        "detected_entities": _detected,
+        "evidence_coverage": state.coverage,
     }
 
     contexts = _contexts_for_llm(state)
@@ -197,11 +302,24 @@ def stream_answer_question(
         state.answer,
         {"route": state.route.value, "confidence": state.confidence, "streamed": True},
     )
+    from auralynq.serving.observability import to_trace_steps
+
+    refused = _is_refusal(state.answer, bool(state.contexts))
+    trace_list = trace.to_list()
     yield {
         "type": "final",
         "answer": state.answer,
+        "status": "insufficient_evidence" if refused else "answered",
         "citations": state.citations,
         "confidence": state.confidence,
+        "evidence_coverage": state.coverage,
         "elapsed_ms": round(trace.total_ms, 2),
-        "trace": trace.to_list(),
+        "trace": trace_list,
+        "trace_steps": to_trace_steps(trace_list),
+        "detected_entities": _detected,
+        "suggested_questions": _suggestions,
+        "warnings": list(state.notes),
+        "insufficient_evidence_reason": (
+            _insufficiency(state, _detected, _suggestions) if refused else None
+        ),
     }

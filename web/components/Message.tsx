@@ -1,8 +1,10 @@
 "use client";
-import type { Citation } from "@/lib/api";
+import type { Citation, CorpusSummary, InsufficientReason } from "@/lib/api";
 import { Citations } from "@/components/Citations";
 import { Markdown } from "@/components/Markdown";
 import { CopyButton } from "@/components/CopyButton";
+import { InsufficientEvidence } from "@/components/InsufficientEvidence";
+import { CorpusInventory } from "@/components/CorpusInventory";
 
 export interface Turn {
   role: "user" | "assistant";
@@ -12,6 +14,10 @@ export interface Turn {
   rationale?: string;
   voice?: boolean;
   error?: boolean;
+  status?: string;
+  insufficient?: InsufficientReason | null;
+  inventory?: CorpusSummary | null;
+  question?: string;
 }
 
 function TypingDots() {
@@ -29,11 +35,15 @@ export function Message({
   streaming,
   isLast,
   onRegenerate,
+  onAsk,
+  onIngest,
 }: {
   turn: Turn;
   streaming: boolean;
   isLast: boolean;
   onRegenerate?: () => void;
+  onAsk?: (q: string) => void;
+  onIngest?: () => void;
 }) {
   if (turn.role === "user") {
     return (
@@ -46,11 +56,22 @@ export function Message({
     );
   }
 
+  // Corpus-inventory answer (what's in the collection) renders its own card.
+  if (turn.inventory) {
+    return (
+      <div className="flex justify-start">
+        <div className="w-full max-w-[94%] rounded-2xl rounded-bl-md border border-edge bg-panel2 px-4 py-3 shadow-sm">
+          <CorpusInventory summary={turn.inventory} question={turn.question} />
+        </div>
+      </div>
+    );
+  }
+
   const empty = !turn.text;
   const live = streaming && isLast;
   return (
     <div className="group flex justify-start">
-      <div className="w-full max-w-[92%] rounded-2xl rounded-bl-md border border-edge bg-ink/50 px-4 py-3 shadow-sm">
+      <div className="w-full max-w-[94%] rounded-2xl rounded-bl-md border border-edge bg-panel2 px-4 py-3 shadow-sm">
         {turn.route && (
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
             <span
@@ -60,7 +81,7 @@ export function Message({
             >
               {turn.route === "deep" ? "deep · graph" : "fast"}
             </span>
-            {turn.rationale && <span className="text-slate-500">{turn.rationale}</span>}
+            {turn.rationale && <span className="text-slate-400">{turn.rationale}</span>}
           </div>
         )}
 
@@ -73,6 +94,10 @@ export function Message({
             <Markdown text={turn.text} streaming={live} />
             {live && <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-brand/70 align-middle" />}
           </>
+        )}
+
+        {turn.insufficient && (
+          <InsufficientEvidence reason={turn.insufficient} onAsk={onAsk} onIngest={onIngest} />
         )}
 
         {turn.citations && turn.citations.length > 0 && <Citations citations={turn.citations} />}
