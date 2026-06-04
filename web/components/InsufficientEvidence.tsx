@@ -1,8 +1,9 @@
 "use client";
 import type { InsufficientReason } from "@/lib/api";
+import { displaySource } from "@/lib/format";
 
-/** Rich, trustworthy abstention card — explains *why* Auralynq refused and what
- * to do next, instead of a bare "Don't have enough evidence." */
+/** Trustworthy abstention card — explains *why* Auralynq held back and what to
+ * do next. Soft, informative styling (not an alarming error). */
 export function InsufficientEvidence({
   reason,
   onAsk,
@@ -13,72 +14,83 @@ export function InsufficientEvidence({
   onIngest?: () => void;
 }) {
   return (
-    <div className="mt-1 space-y-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
-      <div className="flex items-start gap-2">
-        <span aria-hidden className="text-lg leading-none">
+    <div className="mt-2 space-y-4 rounded-2xl border border-warn/30 bg-warn/[0.05] p-4">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-warn/30 bg-warn/10 text-lg"
+        >
           ⚖️
         </span>
         <div>
-          <p className="font-medium text-slate-100">Not enough evidence to answer — honestly.</p>
-          <p className="mt-0.5 text-sm text-slate-300">{reason.summary}</p>
+          <p className="text-base font-semibold text-fg">
+            Not enough evidence in your indexed documents
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-fg2">
+            Auralynq found related snippets, but they don&apos;t support a reliable answer — so it
+            held back instead of guessing.
+          </p>
         </div>
       </div>
 
       <div className="grid gap-2 text-xs sm:grid-cols-2">
-        <div className="rounded-lg border border-edge bg-ink/40 p-2">
-          <p className="text-slate-400">Detected entities</p>
-          <div className="mt-1 flex flex-wrap gap-1">
+        <div className="card-inset">
+          <p className="stat-label mb-1">Detected entities</p>
+          <div className="flex flex-wrap gap-1">
             {reason.detected_entities.length ? (
               reason.detected_entities.map((e) => (
-                <span key={e} className="tag border-brand2/40 text-brand2">
+                <span key={e} className="tag border-brand2/30 text-brand2">
                   {e}
                 </span>
               ))
             ) : (
-              <span className="text-slate-500">none matched the corpus</span>
+              <span className="text-fg3">none matched the corpus</span>
             )}
           </div>
         </div>
-        <div className="rounded-lg border border-edge bg-ink/40 p-2">
-          <p className="text-slate-400">Retrieval route attempted</p>
-          <p className="mt-1 font-mono text-slate-200">{reason.route_attempted}</p>
+        <div className="card-inset">
+          <p className="stat-label mb-1">Route attempted</p>
+          <p className="font-mono text-sm text-fg">{reason.route_attempted}</p>
         </div>
       </div>
 
-      {reason.retrieved_snippets.length > 0 && (
-        <details className="rounded-lg border border-edge bg-ink/40 p-2 text-sm">
-          <summary className="cursor-pointer text-slate-300">
-            Top retrieved snippets ({reason.retrieved_snippets.length}) — why they were insufficient
+      {reason.retrieved_snippets.length > 0 ? (
+        <details className="card-inset text-sm">
+          <summary className="cursor-pointer font-medium text-fg2">
+            Top retrieved snippets ({reason.retrieved_snippets.length}) — why they fell short
           </summary>
-          <p className="mt-2 text-xs text-slate-400">{reason.why_insufficient}</p>
+          <p className="mt-2 text-xs text-fg3">{reason.why_insufficient}</p>
           <ul className="mt-2 space-y-2">
             {reason.retrieved_snippets.map((s, i) => (
-              <li key={i} className="rounded-md border border-edge/70 bg-panel/40 p-2">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="truncate">{s.source || "source"}</span>
+              <li key={i} className="rounded-lg border border-edge bg-panel p-2">
+                <div className="flex items-center justify-between text-xs text-fg3">
+                  <span className="truncate" title={displaySource(s.source)}>
+                    {displaySource(s.source) || "source"}
+                  </span>
                   <span>score {s.score.toFixed(3)}</span>
                 </div>
-                <p className="mt-1 text-xs text-slate-300">{s.text}…</p>
+                <p className="mt-1 text-xs text-fg2">{s.text}…</p>
               </li>
             ))}
           </ul>
         </details>
-      )}
-
-      {!reason.retrieved_snippets.length && (
-        <p className="text-xs text-slate-400">{reason.why_insufficient}</p>
+      ) : (
+        <p className="text-xs text-fg3">{reason.why_insufficient}</p>
       )}
 
       {reason.suggested_questions.length > 0 && (
         <div>
-          <p className="text-xs text-slate-400">Try a question the corpus can actually support:</p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
+          <p className="stat-label mb-1.5">Try a question the corpus can support</p>
+          <div className="flex flex-col gap-1.5">
             {reason.suggested_questions.map((q) => (
               <button
                 key={q}
                 onClick={() => onAsk?.(q)}
-                className="rounded-full border border-edge bg-panel/60 px-3 py-1 text-xs text-slate-200 transition hover:border-brand hover:text-brand"
+                className="rounded-lg border border-edge bg-panel px-3 py-2 text-left text-sm text-fg2 transition hover:border-brand/50 hover:text-fg"
               >
+                <span className="mr-1.5 text-brand" aria-hidden>
+                  ↳
+                </span>
                 {q}
               </button>
             ))}
@@ -87,8 +99,8 @@ export function InsufficientEvidence({
       )}
 
       {reason.suggest_ingest && (
-        <button onClick={onIngest} className="btn-ghost text-sm">
-          ＋ Ingest relevant documents
+        <button onClick={onIngest} className="btn-brand w-full text-sm">
+          <span aria-hidden>＋</span> Ingest relevant documents
         </button>
       )}
     </div>
