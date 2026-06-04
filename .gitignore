@@ -66,6 +66,9 @@ reports/*
 
 # Model/cache files
 models/
+# ...but the research Ollama-profiles *source package* is code, not weights:
+!auralynq/research/models/
+!auralynq/research/models/**
 model_cache/
 .cache/
 .huggingface/

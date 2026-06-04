@@ -1,0 +1,30 @@
+name: baseline_vector
+description: Dense-only retrieval, no graph/rerank/abstention. Lower bound baseline.
+seed: 42
+retrieval:
+  mode: dense
+  top_k: 20
+  final_k: 6
+  chunk_size: 800
+  chunk_overlap: 120
+  keyword: false
+  graph: false
+  reranker: false
+embedding:
+  provider: auto
+  model: BAAI/bge-m3
+vector:
+  backend: auto
+  collection: auralynq_research
+llm:
+  provider: auto
+  model: llama3.2:3b
+  temperature: 0.1
+  max_tokens: 1024
+abstention:
+  mode: none
+  evidence_sufficiency: false
+  threshold: 0.5
+  citation_required: false
+web_search: false
+voice: false
