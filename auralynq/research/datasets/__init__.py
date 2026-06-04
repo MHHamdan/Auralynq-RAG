@@ -15,13 +15,17 @@ from auralynq.research.datasets.base import (
 )
 from auralynq.research.datasets.crag_adapter import CRAGAdapter
 from auralynq.research.datasets.custom_corpus import CustomCorpusAdapter
+from auralynq.research.datasets.dev_benchmark import DevBenchmarkAdapter
 from auralynq.research.datasets.mirage_adapter import MirageAdapter
 from auralynq.research.datasets.ragbench import RAGBenchAdapter
+from auralynq.research.datasets.rgb_adapter import RGBAdapter
 from auralynq.research.datasets.t2_ragbench_adapter import T2RAGBenchAdapter
 
 REGISTRY: dict[str, type[BaseAdapter]] = {
     CustomCorpusAdapter.name: CustomCorpusAdapter,
+    DevBenchmarkAdapter.name: DevBenchmarkAdapter,
     CRAGAdapter.name: CRAGAdapter,
+    RGBAdapter.name: RGBAdapter,
     RAGBenchAdapter.name: RAGBenchAdapter,
     MirageAdapter.name: MirageAdapter,
     T2RAGBenchAdapter.name: T2RAGBenchAdapter,
@@ -70,9 +74,11 @@ __all__ = [
     "CRAGAdapter",
     "CustomCorpusAdapter",
     "DatasetUnavailable",
+    "DevBenchmarkAdapter",
     "MirageAdapter",
     "NormalizedExample",
     "RAGBenchAdapter",
+    "RGBAdapter",
     "ResearchDataEnv",
     "T2RAGBenchAdapter",
     "get_adapter",
