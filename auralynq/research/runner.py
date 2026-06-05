@@ -83,6 +83,7 @@ def execute_example(
     config: ResearchConfig,
     ex: NormalizedExample,
     controller: EvidenceSufficiencyController,
+    calibrator: Any = None,
 ) -> ResearchTrace:
     t0 = time.perf_counter()
     final_k = config.retrieval.final_k
@@ -143,7 +144,21 @@ def execute_example(
     }
     decision = controller.decide(extract_features(signals))
 
-    abstain = _resolve_abstention(config, decision, signals, agent_abstained)
+    # Learned calibration: in calibrated mode, map ESC features -> calibrated
+    # confidence and use it for the abstain decision + reporting. Raw confidence is
+    # preserved for auditing. Identity calibrator (default) is a no-op.
+    raw_confidence = decision.confidence
+    es_dict = decision.to_dict()
+    if calibrator is not None and config.abstention.mode == "calibrated":
+        cal_conf = round(float(calibrator.predict_one(raw_confidence, decision.features)), 4)
+        es_dict["raw_confidence"] = raw_confidence
+        es_dict["confidence"] = cal_conf
+        es_dict["calibrator"] = getattr(calibrator, "name", "identity")
+        eff_confidence = cal_conf
+    else:
+        eff_confidence = raw_confidence
+
+    abstain = _resolve_abstention(config, decision, signals, agent_abstained, eff_confidence)
     final_answer = ABSTAIN_MSG if abstain else answer
 
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
@@ -158,7 +173,7 @@ def execute_example(
         "exact_match": M.exact_match(final_answer, ex.gold_answer),
         "answer_relevance_proxy": M.answer_relevance_proxy(ex.question, final_answer),
         "correct": correct,
-        "confidence": decision.confidence,
+        "confidence": eff_confidence,
     }
     per_metrics.update(M.citation_metrics_proxy(final_answer, citations, contexts))
 
@@ -187,7 +202,7 @@ def execute_example(
         reranker_scores=reranker_scores,
         n_contexts=len(contexts),
         graph_paths=path_evidence,
-        evidence_sufficiency=decision.to_dict(),
+        evidence_sufficiency=es_dict,
         abstained=abstain,
         answer=final_answer,
         citations=citations,
@@ -243,6 +258,7 @@ def _resolve_abstention(
     decision,
     signals: dict[str, Any],
     agent_abstained: bool,
+    eff_confidence: float | None = None,
 ) -> bool:
     mode = config.abstention.mode
     if mode == "none":
@@ -255,7 +271,16 @@ def _resolve_abstention(
             config.abstention.citation_required and signals.get("citation_coverage", 0) <= 0
         )
         return bool(low_score or no_citation)
-    # heuristic / calibrated / judge all use the ESC decision; agent abstention OR'd in.
+    if mode == "calibrated" and eff_confidence is not None:
+        # Hard ESC constraints (no supporting chunks / required-but-absent
+        # citations) still apply; otherwise abstain on the *calibrated* confidence.
+        no_support = int(signals.get("n_supporting_chunks", 0)) < 1
+        no_citation = (
+            config.abstention.citation_required and signals.get("citation_coverage", 0) <= 0
+        )
+        low_conf = eff_confidence < config.abstention.threshold
+        return bool(no_support or no_citation or low_conf or agent_abstained)
+    # heuristic / judge use the ESC decision; agent abstention OR'd in.
     return bool(decision.abstain or agent_abstained)
 
 
@@ -310,6 +335,7 @@ def run(
     limit: int | None = None,
     use_mini: bool = False,
     extra_env: dict[str, str] | None = None,
+    calibrator_path: str | Path | None = None,
 ) -> dict[str, Any]:
     config = load_config(config_path)
     config.apply()
@@ -329,8 +355,13 @@ def run(
     adapter = get_adapter("mini") if (use_mini or dataset == "mini") else get_adapter(dataset)
     examples = adapter.load(limit=limit)
 
-    # calibrator hook (identity v0; learned calibrator pluggable later)
-    _ = get_calibrator("identity")
+    # Calibrator: learned one if a path is supplied, else identity (no-op).
+    if calibrator_path is not None:
+        from auralynq.research.calibration import load_calibrator
+
+        calibrator = load_calibrator(calibrator_path)
+    else:
+        calibrator = get_calibrator("identity")
     controller = EvidenceSufficiencyController(
         abstain_threshold=config.abstention.threshold,
         citation_required=config.abstention.citation_required,
@@ -341,7 +372,7 @@ def run(
 
     traces: list[ResearchTrace] = []
     for ex in examples:
-        tr = execute_example(config, ex, controller)
+        tr = execute_example(config, ex, controller, calibrator=calibrator)
         write_trace(tr, run_dir)
         traces.append(tr)
 
@@ -355,7 +386,12 @@ def run(
         n_examples=len(examples),
         started_iso=started.isoformat(),
         duration_s=duration,
-        extra={"dataset_source": adapter.source, "dataset_license": adapter.license},
+        extra={
+            "dataset_source": adapter.source,
+            "dataset_license": adapter.license,
+            "calibrator": getattr(calibrator, "name", "identity"),
+            "calibrator_path": str(calibrator_path) if calibrator_path else None,
+        },
     )
     (run_dir / "provenance.json").write_text(json.dumps(provenance, indent=2), encoding="utf-8")
     (run_dir / "results.json").write_text(

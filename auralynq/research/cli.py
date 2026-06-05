@@ -34,13 +34,35 @@ def run(
     dataset: str = typer.Option("mini", "--dataset", help="Dataset name (or 'mini')."),
     output: Path = typer.Option(..., "--output", help="Run output dir, e.g. runs/<id>."),
     limit: int | None = typer.Option(None, "--limit", help="Cap #examples."),
+    calibrator: Path | None = typer.Option(
+        None, "--calibrator", help="Fitted calibrator JSON (calibrated mode)."
+    ),
 ) -> None:
     """Run a config on a dataset and write a provenanced run directory."""
     from auralynq.research.runner import run as run_experiment
 
-    out = run_experiment(str(config), dataset, str(output), limit=limit)
+    out = run_experiment(
+        str(config),
+        dataset,
+        str(output),
+        limit=limit,
+        calibrator_path=str(calibrator) if calibrator else None,
+    )
     console.print_json(json.dumps(out["metrics"]))
     console.print(f"[green]✓[/] run written to {out['run_dir']} ({out['n']} examples)")
+
+
+@app.command()
+def calibrate(
+    run: Path = typer.Option(..., "--run", help="Run dir to fit the calibrator from."),
+    output: Path = typer.Option(..., "--output", help="Where to write calibrator JSON."),
+    holdout: float = typer.Option(0.0, "--holdout", help="Test fraction (0=in-sample)."),
+) -> None:
+    """Fit a learned calibrator from a run's traces; report ECE/AURC before->after."""
+    from auralynq.research.calibrate import fit_and_save
+
+    report = fit_and_save(str(run), str(output), holdout=holdout)
+    console.print_json(json.dumps(report))
 
 
 @app.command("list-datasets")

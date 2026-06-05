@@ -190,7 +190,10 @@ class LogisticCalibrator(Calibrator):
 
     def __init__(self, feature_keys: list[str] | None = None) -> None:
         self.feature_keys = feature_keys or []
-        self._model = None
+        self._model: Any = None
+        # Plain weights enable sklearn-free inference after load.
+        self._coef: list[float] | None = None
+        self._intercept: float = 0.0
 
     def _vec(self, features: dict[str, Any]) -> list[float]:
         return [float(features.get(k, 0.0) or 0.0) for k in self.feature_keys]
@@ -202,20 +205,51 @@ class LogisticCalibrator(Calibrator):
             self.feature_keys = sorted(X[0].keys())
         mat = [self._vec(x) for x in X]
         self._model = LogisticRegression(max_iter=1000).fit(mat, y)
+        self._coef = self._model.coef_[0].tolist()
+        self._intercept = float(self._model.intercept_[0])
         return self
 
+    @property
+    def fitted(self) -> bool:
+        return self._coef is not None
+
     def predict_one(self, raw_confidence: float, features: dict[str, Any] | None = None) -> float:
-        if self._model is None or not features:
+        # Inference uses plain weights (no sklearn needed once fitted/loaded).
+        if self._coef is None or not features:
             return max(0.0, min(1.0, raw_confidence))
-        proba = self._model.predict_proba([self._vec(features)])[0][1]
-        return float(proba)
+        z = self._intercept + sum(
+            c * v for c, v in zip(self._coef, self._vec(features), strict=True)
+        )
+        return 1.0 / (1.0 + math.exp(-z))
 
     def to_json(self) -> dict[str, Any]:
         info: dict[str, Any] = {"name": self.name, "feature_keys": self.feature_keys}
-        if self._model is not None:
-            info["coef"] = self._model.coef_.tolist()
-            info["intercept"] = self._model.intercept_.tolist()
+        if self._coef is not None:
+            info["coef"] = self._coef
+            info["intercept"] = self._intercept
         return info
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> LogisticCalibrator:
+        cal = cls(feature_keys=list(data.get("feature_keys", [])))
+        if "coef" in data:
+            cal._coef = [float(c) for c in data["coef"]]
+            cal._intercept = float(data.get("intercept", 0.0))
+        return cal
+
+
+def load_calibrator(path: str | Path) -> Calibrator:
+    """Load a calibrator from JSON (sklearn-free). Returns Identity if missing."""
+    p = Path(path)
+    if not p.exists():
+        return IdentityCalibrator()
+    data = json.loads(p.read_text(encoding="utf-8"))
+    kind = data.get("name", "identity")
+    if kind == "logistic":
+        return LogisticCalibrator.from_json(data)
+    if kind == "temperature":
+        return TemperatureScaler(temperature=float(data.get("temperature", 1.0)))
+    return IdentityCalibrator()
 
 
 def get_calibrator(kind: str = "identity", **kwargs: Any) -> Calibrator:
