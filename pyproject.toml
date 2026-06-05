@@ -53,6 +53,9 @@ agent = ["langgraph>=0.2", "langchain-core>=0.2"]
 # Commercial LLM provider SDKs (optional; auto-detected, with offline fallback).
 llm = ["openai>=1.30", "anthropic>=0.30", "cohere>=5.5"]
 eval = ["ragas>=0.1.9", "jiwer>=3.0", "datasets>=2.19", "scikit-learn>=1.4"]
+# Phase 2 research layer: config loading + learned calibration. Pure-Python; the
+# rest of the research layer reuses core/eval deps and degrades offline at $0.
+research = ["pyyaml>=6.0", "scikit-learn>=1.4"]
 telemetry = [
   "opentelemetry-api>=1.25",
   "opentelemetry-sdk>=1.25",
@@ -72,12 +75,13 @@ dev = [
   "pre-commit>=3.7",
 ]
 all = [
-  "auralynq[embeddings,vector,ingest,voice,agent,llm,eval,telemetry,mcp]",
+  "auralynq[embeddings,vector,ingest,voice,agent,llm,eval,telemetry,mcp,research]",
 ]
 
 [project.scripts]
 auralynq = "auralynq.cli:app"
 auralynq-mcp = "auralynq.mcp_server.server:main"
+auralynq-research = "auralynq.research.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/auralynq/auralynq"

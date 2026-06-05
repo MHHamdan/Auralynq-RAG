@@ -157,6 +157,26 @@ eval: ## Run evaluation harness, write reports/
 bench: ## Benchmark Qdrant recall/latency/memory trade-offs
 	$(PY) -m auralynq.cli bench --report
 
+# ------------------------------------------------------------- research -----
+.PHONY: research-smoke
+research-smoke: ## Phase 2 smoke experiment (offline, $0, deterministic)
+	$(PY) scripts/research/smoke_experiment.py
+
+.PHONY: research-run-small
+research-run-small: ## Small research run: full_agentic on the mini benchmark
+	$(PY) -m auralynq.research.cli run \
+		--config configs/research/full_agentic.yaml --dataset mini --output runs/small
+
+.PHONY: research-eval
+research-eval: ## Analyze traces across runs/ (trace-feature -> risk study)
+	$(PY) scripts/research/analyze_traces.py 'runs/*/*' 'runs/*' \
+		--json reports/trace_analysis.json
+
+.PHONY: research-paper-tables
+research-paper-tables: ## Export generated result tables from runs/ -> docs/research/generated
+	$(PY) -m auralynq.research.cli export-paper-tables \
+		--runs 'runs/*/*' --output docs/research/generated
+
 # --------------------------------------------------------------- misc -------
 .PHONY: clean
 clean: ## Remove caches and build artifacts
