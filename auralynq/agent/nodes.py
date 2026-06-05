@@ -71,6 +71,18 @@ def node_plan(state: AgentState, deps: AgentDeps) -> AgentState:
 
 def node_route(state: AgentState, deps: AgentDeps) -> AgentState:
     with deps.trace.span("router") as sp:
+        # Caller hint (e.g. from API route_hint field) overrides the heuristic router.
+        if state.route_hint and state.route_hint != "auto":
+            try:
+                state.route = Route(state.route_hint)
+                state.route_confidence = 1.0
+                state.route_rationale = f"caller override → {state.route_hint}"
+                sp.attributes.update(
+                    route=state.route.value, confidence=1.0, rationale=state.route_rationale
+                )
+                return state
+            except ValueError:
+                pass  # unknown hint value — fall through to heuristic
         decision = route_query(state.question, deps.graph)
         state.route = decision.route
         state.route_confidence = decision.confidence
@@ -97,6 +109,16 @@ def node_retrieve(state: AgentState, deps: AgentDeps) -> AgentState:
             sp.attributes.update(
                 n=len(res.chunks), seeds=state.seeds, paths=len(state.path_evidence)
             )
+    # Fallback: graph-only route that returned no evidence → retry with hybrid so that
+    # documents whose text is indexed but whose entities have no graph paths can still
+    # be retrieved (e.g. freshly ingested documents with no relational paths yet).
+    if state.route == Route.graph and not state.contexts:
+        with deps.trace.span("hybrid_fallback") as sp:
+            res = deps.hybrid.retrieve(state.question, pool_k, deps.filt)
+            state.contexts.extend(res.chunks)
+            state.route = Route.hybrid  # reflect the actual retrieval path used
+            state.route_rationale += " [graph empty → hybrid fallback]"
+            sp.attributes.update(n=len(res.chunks), reason="graph_returned_no_contexts")
     return state
 
 

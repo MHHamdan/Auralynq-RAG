@@ -15,6 +15,7 @@ class AgentState(BaseModel):
     question: str
     original_question: str = ""
     final_k: int = 6
+    route_hint: str = ""  # caller override: "fast" | "hybrid" | "graph" | "" (auto)
 
     # routing
     route: Route = Route.fast

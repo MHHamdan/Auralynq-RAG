@@ -11,6 +11,10 @@ class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
     final_k: int | None = Field(default=None, ge=1, le=50)
     use_cache: bool | None = None
+    route_hint: str | None = Field(
+        default=None,
+        description="Override the adaptive router: 'fast' | 'hybrid' | 'graph' | 'auto'.",
+    )
 
 
 class Citation(BaseModel):
