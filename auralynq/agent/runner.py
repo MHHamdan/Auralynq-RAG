@@ -155,7 +155,7 @@ def _build_deps(trace: Trace, filt: Filter | None) -> AgentDeps:
     )
 
 
-def _new_state(question: str, final_k: int | None) -> AgentState:
+def _new_state(question: str, final_k: int | None, route_hint: str = "") -> AgentState:
     s = get_settings()
     return AgentState(
         question=question,
@@ -163,6 +163,7 @@ def _new_state(question: str, final_k: int | None) -> AgentState:
         final_k=final_k or s.retrieval.final_k,
         max_iters=s.agent.max_iters,
         latency_budget_ms=s.agent.latency_budget_ms,
+        route_hint=route_hint,
     )
 
 
@@ -171,6 +172,7 @@ def answer_question(
     final_k: int | None = None,
     filt: Filter | None = None,
     use_cache: bool | None = None,
+    route_hint: str = "",
 ) -> AnswerResult:
     s = get_settings()
     use_cache = s.agent.semantic_cache if use_cache is None else use_cache
@@ -185,7 +187,7 @@ def answer_question(
             )
 
     deps = _build_deps(trace, filt)
-    state = _new_state(question, final_k)
+    state = _new_state(question, final_k, route_hint=route_hint)
     state = run_agent(state, deps)
 
     from auralynq.providers import describe_providers

@@ -26,8 +26,17 @@ _RELATIONAL = re.compile(
     r"multi-?hop|across|through|via|lead to|result)\b",
     re.IGNORECASE,
 )
-_ENTITY_RE = re.compile(r"\b[A-Z][\w’'-]*(?:\s+[A-Z][\w’'-]*)*\b")
+_ENTITY_RE = re.compile(r"\b[A-Z][\w’’-]*(?:\s+[A-Z][\w’’-]*)*\b")
 _SIMPLE_LEAD = re.compile(r"^(what is|who is|define|when|where|list|give me)\b", re.IGNORECASE)
+# Factoid patterns: single-entity declarations, pledges, policy statements.
+# Their multi-entity surface form fools the entity counter into thinking they are
+# relational, but they are simple retrieval questions, not multi-hop traversals.
+_FACTOID = re.compile(
+    r"\b(pledge|pledged|pledges|policy|policies|announced|announcement|statement|"
+    r"committed|commitment|promise|promis|declared|declaration|press.?release|"
+    r"what did|status)\b",
+    re.IGNORECASE,
+)
 
 
 class Route(str, Enum):
@@ -46,6 +55,7 @@ class RouteDecision:
 
 def route_query(query: str, graph: KnowledgeGraph | None = None) -> RouteDecision:
     relational_hits = len(_RELATIONAL.findall(query))
+    factoid_hits = len(_FACTOID.findall(query))
     entities = [e.strip() for e in _ENTITY_RE.findall(query) if len(e.strip()) > 2]
     distinct_entities = len({e.lower() for e in entities})
     in_graph = sum(1 for e in entities if graph is not None and graph.has(e))
@@ -54,6 +64,7 @@ def route_query(query: str, graph: KnowledgeGraph | None = None) -> RouteDecisio
 
     signals = {
         "relational_hits": float(relational_hits),
+        "factoid_hits": float(factoid_hits),
         "distinct_entities": float(distinct_entities),
         "entities_in_graph": float(in_graph),
         "tokens": float(n_tokens),
@@ -61,8 +72,14 @@ def route_query(query: str, graph: KnowledgeGraph | None = None) -> RouteDecisio
     }
 
     # Scoring: graph evidence pushes toward PathRAG; simple lexical lookups stay fast.
+    # factoid_hits dampen graph routing for pledge/policy/announcement queries whose
+    # multi-entity surface form would otherwise look relational.
     graph_score = relational_hits * 1.2 + max(distinct_entities - 1, 0) * 0.8 + in_graph * 0.6
-    fast_score = (1.5 if simple_lead else 0.0) + (1.0 if distinct_entities <= 1 else 0.0)
+    fast_score = (
+        (1.5 if simple_lead else 0.0)
+        + (1.0 if distinct_entities <= 1 else 0.0)
+        + factoid_hits * 1.2  # each factoid cue adds fast-path weight
+    )
 
     if graph_score >= 2.0 and in_graph >= 1:
         route, conf = Route.graph, min(0.5 + graph_score / 6.0, 0.95)

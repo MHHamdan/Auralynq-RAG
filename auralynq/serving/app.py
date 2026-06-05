@@ -219,7 +219,11 @@ def create_app() -> FastAPI:
         # answer_question is CPU/network-bound and synchronous; run it off the event
         # loop so concurrent requests aren't blocked behind it.
         res = await asyncio.to_thread(
-            answer_question, req.question, final_k=req.final_k, use_cache=req.use_cache
+            answer_question,
+            req.question,
+            final_k=req.final_k,
+            use_cache=req.use_cache,
+            route_hint=req.route_hint or "",
         )
         return QueryResponse(request_id=request.state.request_id, **res.to_dict())
 
