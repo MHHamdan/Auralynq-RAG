@@ -316,6 +316,262 @@ def test_runner_end_to_end_and_no_secrets(corpus_dir, tmp_path, monkeypatch):
     assert prov["env"]["OPENAI_API_KEY"].startswith("<redacted")
 
 
+# ================================================================ calibrate ==
+
+
+def _make_trace(question_id: str, correct: int | None, confidence: float = 0.5) -> ResearchTrace:
+    """Minimal ResearchTrace with realistic ESC features for calibration tests."""
+    features = {
+        "top_k_retrieval_score": 0.8,
+        "retrieval_score_margin": 0.3,
+        "reranker_score": 0.7,
+        "citation_coverage": 1.0,
+        "graph_path_reliability": 0.5,
+        "source_agreement": 0.9,
+        "n_supporting_chunks": 2,
+    }
+    return ResearchTrace(
+        question_id=question_id,
+        question="q?",
+        retrieval_mode="dense",
+        retrieval_scores=[0.8, 0.5],
+        evidence_sufficiency={"confidence": confidence, "hallucination_risk": 0.2, "features": features},
+        abstained=False,
+        metrics={"correct": correct} if correct is not None else {},
+    )
+
+
+def _write_biclass_run(run_dir, n: int = 10) -> None:
+    """Write n traces with alternating correct=0/1 labels into run_dir."""
+    for i in range(n):
+        write_trace(_make_trace(f"q{i}", i % 2, confidence=0.4 + 0.05 * (i % 2)), run_dir)
+
+
+def test_rows_from_traces_excludes_unlabeled():
+    from auralynq.research.calibrate import _rows_from_traces
+
+    traces = [_make_trace("q1", 1), _make_trace("q2", None), _make_trace("q3", 0)]
+    feats, conf, correct = _rows_from_traces(traces)
+    assert len(feats) == len(conf) == len(correct) == 2
+    assert correct == [1, 0]
+
+
+def test_rows_from_traces_extracts_confidence_and_features():
+    from auralynq.research.calibrate import _rows_from_traces
+
+    traces = [_make_trace("q1", 1, confidence=0.75)]
+    feats, conf, correct = _rows_from_traces(traces)
+    assert conf == [0.75]
+    assert feats[0]["top_k_retrieval_score"] == 0.8
+
+
+def test_fit_calibrator_insufficient_n(tmp_path):
+    from auralynq.research.calibrate import fit_calibrator_from_run
+
+    for i in range(3):
+        write_trace(_make_trace(f"q{i}", i % 2), tmp_path)
+    cal, report = fit_calibrator_from_run(tmp_path)
+    assert cal is None
+    assert report["status"] == "insufficient_data"
+    assert report["n_scored"] == 3
+
+
+def test_fit_calibrator_single_class(tmp_path):
+    from auralynq.research.calibrate import fit_calibrator_from_run
+
+    for i in range(6):
+        write_trace(_make_trace(f"q{i}", 0), tmp_path)
+    cal, report = fit_calibrator_from_run(tmp_path)
+    assert cal is None
+    assert report["status"] == "insufficient_data"
+
+
+def test_fit_calibrator_insample(tmp_path):
+    from auralynq.research.calibrate import CALIBRATION_FEATURES, fit_calibrator_from_run
+
+    _write_biclass_run(tmp_path)
+    cal, report = fit_calibrator_from_run(tmp_path, holdout=0.0)
+    assert cal is not None and cal.fitted
+    assert report["status"] == "ok"
+    assert report["eval_mode"] == "in-sample"
+    assert report["n_scored"] == 10
+    assert report["feature_keys"] == CALIBRATION_FEATURES
+    for key in ("ece", "brier", "aurc", "n"):
+        assert key in report["before_raw"] and key in report["after_learned"]
+    assert set(report["delta"]) == {"ece", "brier", "aurc"}
+
+
+def test_fit_calibrator_holdout(tmp_path):
+    from auralynq.research.calibrate import fit_calibrator_from_run
+
+    _write_biclass_run(tmp_path, n=12)
+    cal, report = fit_calibrator_from_run(tmp_path, holdout=0.2)
+    assert cal is not None
+    assert report["status"] == "ok"
+    assert "holdout" in report["eval_mode"]
+    assert report["before_raw"]["n"] < report["n_scored"]
+
+
+def test_fit_and_save_writes_json_and_path(tmp_path):
+    from auralynq.research.calibrate import fit_and_save
+
+    _write_biclass_run(tmp_path / "run")
+    out_path = tmp_path / "cal" / "calibrator.json"
+    report = fit_and_save(tmp_path / "run", out_path)
+    assert report["status"] == "ok"
+    assert "calibrator_path" in report
+    assert out_path.exists()
+    data = json.loads(out_path.read_text(encoding="utf-8"))
+    assert data["name"] == "logistic"
+    assert "coef" in data and "feature_keys" in data
+
+
+def test_fit_and_save_no_file_on_insufficient_data(tmp_path):
+    from auralynq.research.calibrate import fit_and_save
+
+    for i in range(2):
+        write_trace(_make_trace(f"q{i}", i % 2), tmp_path / "run")
+    out_path = tmp_path / "cal" / "calibrator.json"
+    report = fit_and_save(tmp_path / "run", out_path)
+    assert report["status"] == "insufficient_data"
+    assert "calibrator_path" not in report
+    assert not out_path.exists()
+
+
+# ================================================================= cli =======
+
+
+def test_cli_list_datasets():
+    from typer.testing import CliRunner
+
+    from auralynq.research.cli import app as research_app
+
+    result = CliRunner().invoke(research_app, ["list-datasets"])
+    assert result.exit_code == 0, result.exception
+
+
+def test_cli_list_models_unreachable(monkeypatch):
+    import httpx
+    from typer.testing import CliRunner
+
+    from auralynq.research.cli import app as research_app
+    from auralynq.research.models import ollama_profiles as op
+
+    def _no_ollama(*a, **k):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(op.httpx, "get", _no_ollama)
+    result = CliRunner().invoke(research_app, ["list-models"])
+    assert result.exit_code == 0, result.exception
+
+
+def test_cli_calibrate_insufficient_data(tmp_path):
+    from typer.testing import CliRunner
+
+    from auralynq.research.cli import app as research_app
+
+    run_dir = tmp_path / "run"
+    for i in range(6):
+        write_trace(_make_trace(f"q{i}", 0), run_dir)
+    out_path = tmp_path / "cal.json"
+    result = CliRunner().invoke(research_app, [
+        "calibrate",
+        "--run", str(run_dir),
+        "--output", str(out_path),
+    ])
+    assert result.exit_code == 0, result.exception
+    assert not out_path.exists()
+
+
+def test_cli_calibrate_ok(tmp_path):
+    from typer.testing import CliRunner
+
+    from auralynq.research.cli import app as research_app
+
+    run_dir = tmp_path / "run"
+    _write_biclass_run(run_dir)
+    out_path = tmp_path / "cal.json"
+    result = CliRunner().invoke(research_app, [
+        "calibrate",
+        "--run", str(run_dir),
+        "--output", str(out_path),
+        "--holdout", "0.0",
+    ])
+    assert result.exit_code == 0, result.exception
+    assert out_path.exists()
+    data = json.loads(out_path.read_text(encoding="utf-8"))
+    assert data["name"] == "logistic"
+
+
+def test_cli_run_wires_params(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from typer.testing import CliRunner
+
+    from auralynq.research.cli import app as research_app
+
+    calls: list[dict] = []
+
+    def fake_run(config, dataset, output, limit=None, calibrator_path=None, **kwargs):
+        calls.append({"dataset": dataset, "calibrator_path": calibrator_path})
+        Path(output).mkdir(parents=True, exist_ok=True)
+        return {"metrics": {"abstention_rate": 0.0}, "run_dir": output, "n": 3}
+
+    monkeypatch.setattr("auralynq.research.runner.run", fake_run)
+    result = CliRunner().invoke(research_app, [
+        "run",
+        "--config", "configs/research/full_agentic.yaml",
+        "--dataset", "mini",
+        "--output", str(tmp_path / "out"),
+    ])
+    assert result.exit_code == 0, result.exception
+    assert len(calls) == 1 and calls[0]["dataset"] == "mini"
+    assert calls[0]["calibrator_path"] is None
+
+
+def test_cli_run_passes_calibrator_path(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from typer.testing import CliRunner
+
+    from auralynq.research.cli import app as research_app
+
+    calls: list[dict] = []
+
+    def fake_run(config, dataset, output, limit=None, calibrator_path=None, **kwargs):
+        calls.append({"calibrator_path": calibrator_path})
+        Path(output).mkdir(parents=True, exist_ok=True)
+        return {"metrics": {}, "run_dir": output, "n": 0}
+
+    monkeypatch.setattr("auralynq.research.runner.run", fake_run)
+    fake_cal = tmp_path / "cal.json"
+    fake_cal.write_text("{}")
+    result = CliRunner().invoke(research_app, [
+        "run",
+        "--config", "configs/research/full_agentic.yaml",
+        "--dataset", "mini",
+        "--output", str(tmp_path / "out"),
+        "--calibrator", str(fake_cal),
+    ])
+    assert result.exit_code == 0, result.exception
+    assert calls[0]["calibrator_path"] == str(fake_cal)
+
+
+def test_cli_evaluate_wires_params(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from auralynq.research.cli import app as research_app
+
+    called_with: list[str] = []
+    monkeypatch.setattr(
+        "auralynq.research.runner.evaluate_run",
+        lambda run_dir: (called_with.append(run_dir), {"abstention_rate": 0.5, "n": 4})[1],
+    )
+    result = CliRunner().invoke(research_app, ["evaluate", "--run", str(tmp_path)])
+    assert result.exit_code == 0, result.exception
+    assert str(tmp_path) in called_with
+
+
 def test_export_paper_tables(corpus_dir, tmp_path):
     _build_index(corpus_dir)
     from auralynq.research.reporting import export_paper_tables
