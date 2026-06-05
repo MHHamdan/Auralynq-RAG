@@ -1,0 +1,30 @@
+name: ollama_balanced
+description: Full pipeline on a balanced open model (8B-class). Model ablation D.
+seed: 42
+retrieval:
+  mode: full_agentic
+  top_k: 30
+  final_k: 6
+  chunk_size: 800
+  chunk_overlap: 120
+  keyword: true
+  graph: true
+  reranker: true
+embedding:
+  provider: auto
+  model: BAAI/bge-m3
+vector:
+  backend: auto
+  collection: auralynq_research
+llm:
+  provider: ollama
+  model: llama3.1:8b
+  temperature: 0.1
+  max_tokens: 1024
+abstention:
+  mode: calibrated
+  evidence_sufficiency: true
+  threshold: 0.5
+  citation_required: true
+web_search: false
+voice: false
