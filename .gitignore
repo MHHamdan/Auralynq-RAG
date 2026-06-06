@@ -102,18 +102,6 @@ docs/paper/
 # Research datasets (manual download; never auto-committed)
 data/research/
 
-# Research code, configs, scripts, tests — local only
-auralynq/research/
-configs/research/
-scripts/research/
-tests/test_research.py
-
-# Private planning / design docs — local only
-docs/research/
-docs/frontend-premium-redesign-audit.md
-docs/product-ux-competitor-audit.md
-docs/sparknet-design-port.md
-
 # Podman / compose local artifacts
 .podman/
 containers/.env
