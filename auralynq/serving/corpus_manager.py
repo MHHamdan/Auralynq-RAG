@@ -71,6 +71,43 @@ def _doc_id_for_source(source: str) -> str:
     return stable_id(str(Path(source).resolve()))
 
 
+def _qdrant_documents_from_scroll(store: Any) -> dict[str, dict[str, Any]]:
+    """Scroll Qdrant collection to collect unique doc_id→metadata mappings."""
+    seen: dict[str, dict[str, Any]] = {}
+    offset = None
+    while True:
+        results, next_offset = store.client.scroll(
+            collection_name=store.collection,
+            scroll_filter=None,
+            limit=256,
+            offset=offset,
+            with_payload=["doc_id", "source", "title", "source_type"],
+            with_vectors=False,
+        )
+        for pt in results:
+            pl = pt.payload or {}
+            did = pl.get("doc_id", "")
+            src = pl.get("source", "")
+            if not did:
+                continue
+            if did not in seen:
+                raw_title = pl.get("title") or Path(src).name if src else did
+                seen[did] = {
+                    "doc_id": did,
+                    "source": src,
+                    "title": raw_title,
+                    "source_type": pl.get("source_type", "unknown"),
+                    "chunks": 0,
+                    "vectors": 0,
+                }
+            seen[did]["chunks"] += 1
+            seen[did]["vectors"] += 1
+        if next_offset is None:
+            break
+        offset = next_offset
+    return seen
+
+
 def _all_indexed_documents() -> list[dict[str, Any]]:
     """Return indexed document metadata: {doc_id, source, title, chunks, vectors}."""
     try:
@@ -80,14 +117,16 @@ def _all_indexed_documents() -> list[dict[str, Any]]:
     except Exception:
         return []
 
+    # For memory store: build from chunks
     seen: dict[str, dict[str, Any]] = {}
     for ch in chunks:
         did = ch.doc_id
         if did not in seen:
+            title = ch.title or (Path(ch.source).name if ch.source else did)
             seen[did] = {
                 "doc_id": did,
                 "source": ch.source or "",
-                "title": ch.title or Path(ch.source).name if ch.source else did,
+                "title": title,
                 "source_type": (
                     ch.source_type.value
                     if hasattr(ch.source_type, "value")
@@ -98,6 +137,13 @@ def _all_indexed_documents() -> list[dict[str, Any]]:
             }
         seen[did]["chunks"] += 1
         seen[did]["vectors"] += 1
+
+    # For Qdrant store (all_chunks returns []): scroll payload to get real doc_id+source
+    if not seen:
+        import contextlib
+        with contextlib.suppress(Exception):
+            seen = _qdrant_documents_from_scroll(store)
+
     docs = list(seen.values())
     docs.sort(key=lambda d: d["source"])
     return docs
