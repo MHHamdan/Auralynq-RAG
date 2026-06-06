@@ -24,10 +24,15 @@ def build_embedder(provider: str | None = None) -> Embedder:
     if provider == "auto":
         if _have("FlagEmbedding"):
             provider = "bge"
-        elif s.openai_api_key and _have("openai"):
+        elif not s.air_gapped and s.openai_api_key and _have("openai"):
             provider = "openai"
         else:
             provider = "hash"
+
+    # Air-gap hard-block: never send embeddings to OpenAI when air-gapped.
+    if s.air_gapped and provider == "openai":
+        _log.warning("embeddings.air_gapped_block", provider="openai", action="falling back to hash")
+        provider = "hash"
 
     # Networked/commercial embedders are wrapped so a request-time failure (bad
     # key, inactive billing/429, rate limit, network blip) degrades to the hashing
@@ -72,9 +77,11 @@ def get_embedder() -> Embedder:
 def resolved_provider() -> str:
     s = get_settings()
     if s.embedding.provider != "auto":
+        if s.air_gapped and s.embedding.provider == "openai":
+            return "hash"
         return s.embedding.provider
     if _have("FlagEmbedding"):
         return "bge"
-    if s.openai_api_key and _have("openai"):
+    if not s.air_gapped and s.openai_api_key and _have("openai"):
         return "openai"
     return "hash"
