@@ -1,5 +1,5 @@
 import { Citation, PathEvidence } from "@/lib/api";
-import { coverageTier, displaySource, isInternalPath } from "@/lib/format";
+import { coverageTier, displaySource } from "@/lib/format";
 
 const TIER_META = {
   strong: { label: "Strong evidence", cls: "evidence-strong", bar: "bg-ok", dot: "bg-ok", pill: "pill-ok" },
@@ -109,7 +109,6 @@ function MethodPill({ method }: { method: string }) {
 
 function CitationCard({ c }: { c: Citation }) {
   const loc = cleanLocator(c);
-  const showDebug = isInternalPath(c.source) || /\[\d+:\d+\]/.test(c.locator);
   const hasScore = c.score != null && c.score > 0;
   const hasMethod = c.method != null && c.method !== "unknown";
   return (
@@ -142,17 +141,6 @@ function CitationCard({ c }: { c: Citation }) {
             </div>
           )}
           <p className="mt-1.5 text-xs italic text-fg2">{whySelected(c)}</p>
-          {showDebug && (
-            <details className="mt-1.5">
-              <summary className="cursor-pointer text-[11px] text-fg3 hover:text-fg">
-                Debug · raw source
-              </summary>
-              <p className="mt-1 break-all rounded bg-ink/60 p-1.5 font-mono text-[10px] text-fg3">
-                {c.source}
-                {c.locator ? ` · ${c.locator}` : ""}
-              </p>
-            </details>
-          )}
         </div>
       </div>
     </li>

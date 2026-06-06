@@ -220,3 +220,104 @@ export async function evalReport() {
 export function audioUrl() {
   return `${API_BASE}/voice/audio?t=${Date.now()}`;
 }
+
+// --- Corpus management ---------------------------------------------------
+
+export interface DocumentMeta {
+  doc_id: string;
+  source: string;
+  title: string;
+  source_type: string;
+  chunks?: number;
+  vectors?: number;
+  ingested_at?: string | null;
+}
+
+export interface CorpusClearPreview {
+  action: string;
+  document_count: number;
+  vector_count: number;
+  entity_count: number;
+  files: string[];
+  document_details: DocumentMeta[];
+  manifest_entries: number;
+  graph_exists: boolean;
+  confirmation_phrase: string;
+  warning: string;
+}
+
+export interface CorpusDeleteDocumentPreview {
+  action: string;
+  found: boolean;
+  document: DocumentMeta | null;
+  confirmation_phrase: string;
+  warning?: string;
+}
+
+export interface CorpusDeleteReport {
+  action: string;
+  deleted: boolean;
+  deleted_vectors: number;
+  deleted_documents: number;
+  deleted_entities: number;
+  deleted_chunks: number;
+  errors: string[];
+  reason?: string | null;
+}
+
+export async function corpusClearPreview(): Promise<CorpusClearPreview> {
+  const r = await fetch(`${API_BASE}/corpus/clear/preview`, { method: "POST", cache: "no-store" });
+  if (!r.ok) throw new Error(`corpus clear preview failed: ${r.status}`);
+  return r.json();
+}
+
+export async function corpusClearConfirm(phrase: string): Promise<CorpusDeleteReport> {
+  const r = await fetch(`${API_BASE}/corpus/clear/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phrase }),
+  });
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+  }
+  return r.json();
+}
+
+export async function corpusDeleteLastPreview(): Promise<CorpusDeleteDocumentPreview> {
+  const r = await fetch(`${API_BASE}/corpus/documents/last/preview`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`delete last preview failed: ${r.status}`);
+  return r.json();
+}
+
+export async function corpusDeleteLastConfirm(phrase: string): Promise<CorpusDeleteReport> {
+  const r = await fetch(`${API_BASE}/corpus/documents/last/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phrase }),
+  });
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+  }
+  return r.json();
+}
+
+export async function corpusDeleteDocumentPreview(docId: string): Promise<CorpusDeleteDocumentPreview> {
+  const r = await fetch(`${API_BASE}/corpus/documents/${encodeURIComponent(docId)}/preview`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`delete document preview failed: ${r.status}`);
+  return r.json();
+}
+
+export async function corpusDeleteDocumentConfirm(docId: string, phrase: string): Promise<CorpusDeleteReport> {
+  const r = await fetch(`${API_BASE}/corpus/documents/${encodeURIComponent(docId)}/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phrase }),
+  });
+  if (!r.ok) {
+    const detail = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+  }
+  return r.json();
+}

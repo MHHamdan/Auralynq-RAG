@@ -33,6 +33,11 @@ from auralynq.serving.errors import (
 )
 from auralynq.serving.ratelimit import RateLimitMiddleware
 from auralynq.serving.schemas import (
+    CorpusClearConfirmRequest,
+    CorpusClearPreviewResponse,
+    CorpusDeleteDocumentConfirmRequest,
+    CorpusDeleteDocumentPreviewResponse,
+    CorpusDeleteReportResponse,
     CorpusSummaryResponse,
     HealthResponse,
     IngestResponse,
@@ -48,6 +53,183 @@ from auralynq.telemetry import configure_logging, get_logger, init_telemetry
 _log = get_logger("auralynq.api")
 _METRICS: Counter = Counter()
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
+
+# --- Backend intent classifier -------------------------------------------
+# Classifies questions that must skip RAG and be answered from system state.
+# Intercepts at the query endpoint level before answer_question() is called.
+
+_CORPUS_MGMT_PATTERNS = [
+    re.compile(
+        r"\b(delete|remove|wipe|clear|purge|erase|drop|reset)\b"
+        r".*\b(document|file|corpus|collection|index|vector|upload|pdf|docx"
+        r"|data|db|library|everything|all|last|uploaded)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(delete|remove|wipe|clear|purge|erase|drop|reset)\b.*\b(my|the)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(how|can i|how do i|can you|please)\b"
+        r".*\b(delete|remove|clear|wipe|reset|purge)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(delete|remove)\b.*\b(last|latest|most recent|previously)\b"
+        r".*\b(document|file|upload|doc|pdf)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(clear|wipe|reset)\b.*\b(corpus|collection|vectors?|index|everything)\b",
+        re.I,
+    ),
+    re.compile(r"\b(remove|delete)\b.*permanently", re.I),
+]
+
+_CORPUS_INVENTORY_PATTERNS = [
+    re.compile(
+        r"\b(how many|how much|count|number of)\b"
+        r".*\b(document|file|doc|vector|entit|page|chunk|upload|index)\b",
+        re.I,
+    ),
+    re.compile(r"\bhow many\b", re.I),  # "how many documents do I have?"
+    re.compile(
+        r"\b(what|which|list|show)\b.*\b(document|file|doc|upload|index)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(do i have|are there|is there)\b"
+        r".*\b(document|file|doc|upload|index|arabic|english|french)\b",
+        re.I,
+    ),
+    re.compile(r"\bare there any (documents?|files?|docs?)\b", re.I),
+    re.compile(r"\b(list|show)\b.*\b(document|file|doc|indexed)\b", re.I),
+    re.compile(r"\bin my (corpus|collection|library|index)\b", re.I),
+    re.compile(r"\bwhat (documents?|files?) (do i|have i|are)\b", re.I),
+    re.compile(
+        r"\b(last|latest|most recent|recently)\b.*\b(document|file|upload|index|add)\b",
+        re.I,
+    ),
+    re.compile(r"\b(what was|what is) the last\b", re.I),
+    re.compile(r"\bhow many.*so far\b", re.I),
+    re.compile(r"\b(my|the) (corpus|collection) (is|has|contains|include)\b", re.I),
+]
+
+_APP_HELP_PATTERNS = [
+    re.compile(
+        r"\bhow (do|can|to) (i|you|we)\b.*(upload|ingest|index|add|use|start|begin|reindex)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\bhow (does|to) (upload|ingest|index|reindex|delete|remove)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(what|which) (file types?|formats?|documents?)\b.*(support|accept|upload|ingest)\b",
+        re.I,
+    ),
+]
+
+
+def _classify_corpus_intent(question: str) -> str | None:
+    """Return a corpus-management intent label, or None for normal RAG questions."""
+    q = question.strip()
+    for pat in _CORPUS_MGMT_PATTERNS:
+        if pat.search(q):
+            return "corpus_management"
+    for pat in _CORPUS_INVENTORY_PATTERNS:
+        if pat.search(q):
+            return "corpus_inventory"
+    for pat in _APP_HELP_PATTERNS:
+        if pat.search(q):
+            return "app_help"
+    return None
+
+
+def _system_answer_for_intent(intent: str, question: str) -> dict[str, Any]:
+    """Build a system-sourced answer dict for non-RAG intents."""
+    from auralynq.serving.corpus import corpus_summary, suggested_questions
+
+    summary = corpus_summary(use_cache=False)
+    doc_count = summary.get("indexed_document_count", 0)
+    vector_count = summary.get("vector_count", 0)
+    entity_count = summary.get("entity_count", 0)
+    titles = summary.get("document_titles", [])
+    last_doc = summary.get("last_document_title")
+
+    if intent == "corpus_inventory":
+        lines = [
+            f"Your corpus currently contains **{doc_count} document(s)**,"
+            f" **{vector_count} vector(s)**, and **{entity_count} entities**."
+        ]
+        if titles:
+            doc_list = "\n".join(f"  - {t}" for t in titles[:20])
+            lines.append(f"\n**Indexed documents:**\n{doc_list}")
+        if last_doc:
+            lines.append(f"\n**Last document added:** {last_doc}")
+        langs = summary.get("languages", [])
+        if langs:
+            lines.append(f"\n**Languages detected:** {', '.join(langs)}")
+        if not titles:
+            lines = ["Your corpus is **empty**. Upload a document to begin."]
+        answer = "\n".join(lines)
+
+    elif intent == "corpus_management":
+        answer = (
+            "To manage your corpus, use the **Ingest** panel → **Manage Corpus** section.\n\n"
+            "Available actions:\n"
+            "- **Delete last document**: removes the most recently indexed file\n"
+            "- **Clear all corpus**: removes all documents, vectors, and entities\n"
+            "- **Delete a specific document**: select from the document list\n\n"
+            f"Current corpus: **{doc_count}** document(s), **{vector_count}** vectors."
+        )
+
+    else:  # app_help
+        answer = (
+            "**Getting started with Auralynq:**\n\n"
+            "1. **Upload documents**: drag a file onto the Ingest panel\n"
+            "2. **Ask questions**: type or speak a question in the composer\n"
+            "3. **Manage corpus**: use Ingest → Manage Corpus to delete or clear\n"
+            "4. **Supported formats**: PDF, DOCX, HTML, Markdown, TXT, WAV, MP3, M4A"
+        )
+
+    rationale = f"retrieval skipped: system/{intent} intent detected"
+    trace_step = {
+        "id": 1,
+        "name": "intent_classifier",
+        "label": f"System: {intent}",
+        "status": "success",
+        "duration_ms": 0,
+        "warnings": [],
+        "attributes": {"intent": intent},
+    }
+    return {
+        "answer": answer,
+        "status": "answered",
+        "citations": [],
+        "route": intent,
+        "route_confidence": 1.0,
+        "route_rationale": rationale,
+        "path_evidence": [],
+        "seeds": [],
+        "iterations": 0,
+        "confidence": 1.0,
+        "evidence_coverage": 0.0,
+        "cached": False,
+        "elapsed_ms": 0.0,
+        "trace": [
+            {
+                "name": "intent_classifier",
+                "duration_ms": 0,
+                "attributes": {"intent": intent},
+                "events": [],
+            }
+        ],
+        "trace_steps": [trace_step],
+        "detected_entities": [],
+        "suggested_questions": suggested_questions(3, summary),
+        "warnings": [],
+    }
 
 
 async def _aiter_sync(gen: Iterator[Any]) -> AsyncIterator[Any]:
@@ -184,6 +366,72 @@ def create_app() -> FastAPI:
 
         return CorpusSummaryResponse(**corpus_summary())
 
+    # -------------------------------------------------- corpus management ---
+    @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)
+    async def corpus_inventory_ep() -> CorpusSummaryResponse:
+        from auralynq.serving.corpus import corpus_summary
+
+        return CorpusSummaryResponse(**corpus_summary(use_cache=False))
+
+    @app.post("/corpus/clear/preview", response_model=CorpusClearPreviewResponse)
+    async def corpus_clear_preview_ep() -> CorpusClearPreviewResponse:
+        from auralynq.serving.corpus_manager import corpus_clear_preview
+
+        return CorpusClearPreviewResponse(**corpus_clear_preview())
+
+    @app.post("/corpus/clear/confirm", response_model=CorpusDeleteReportResponse)
+    async def corpus_clear_confirm_ep(req: CorpusClearConfirmRequest) -> CorpusDeleteReportResponse:
+        from auralynq.serving.corpus_manager import corpus_clear_confirm
+
+        try:
+            report = await asyncio.to_thread(corpus_clear_confirm, req.phrase)
+        except ValueError as e:
+            raise AuralynqError("wrong_phrase", detail=str(e), status_code=400) from e
+        return CorpusDeleteReportResponse(**report)
+
+    @app.get("/corpus/documents/last/preview", response_model=CorpusDeleteDocumentPreviewResponse)
+    async def corpus_delete_last_preview_ep() -> CorpusDeleteDocumentPreviewResponse:
+        from auralynq.serving.corpus_manager import corpus_delete_last_preview
+
+        return CorpusDeleteDocumentPreviewResponse(**corpus_delete_last_preview())
+
+    @app.post("/corpus/documents/last/confirm", response_model=CorpusDeleteReportResponse)
+    async def corpus_delete_last_confirm_ep(
+        req: CorpusDeleteDocumentConfirmRequest,
+    ) -> CorpusDeleteReportResponse:
+        from auralynq.serving.corpus_manager import corpus_delete_last_confirm
+
+        try:
+            report = await asyncio.to_thread(corpus_delete_last_confirm, req.phrase)
+        except ValueError as e:
+            raise AuralynqError("wrong_phrase", detail=str(e), status_code=400) from e
+        return CorpusDeleteReportResponse(**report)
+
+    @app.get(
+        "/corpus/documents/{doc_id}/preview",
+        response_model=CorpusDeleteDocumentPreviewResponse,
+    )
+    async def corpus_delete_doc_preview_ep(doc_id: str) -> CorpusDeleteDocumentPreviewResponse:
+        if not re.match(r"^[0-9a-f]{8,64}$", doc_id):
+            raise AuralynqError("invalid_doc_id", status_code=400)
+        from auralynq.serving.corpus_manager import corpus_delete_document_preview
+
+        return CorpusDeleteDocumentPreviewResponse(**corpus_delete_document_preview(doc_id))
+
+    @app.post("/corpus/documents/{doc_id}/confirm", response_model=CorpusDeleteReportResponse)
+    async def corpus_delete_doc_confirm_ep(
+        doc_id: str, req: CorpusDeleteDocumentConfirmRequest
+    ) -> CorpusDeleteReportResponse:
+        if not re.match(r"^[0-9a-f]{8,64}$", doc_id):
+            raise AuralynqError("invalid_doc_id", status_code=400)
+        from auralynq.serving.corpus_manager import corpus_delete_document_confirm
+
+        try:
+            report = await asyncio.to_thread(corpus_delete_document_confirm, doc_id, req.phrase)
+        except ValueError as e:
+            raise AuralynqError("wrong_phrase", detail=str(e), status_code=400) from e
+        return CorpusDeleteReportResponse(**report)
+
     @app.get("/suggestions", response_model=SuggestionsResponse)
     async def suggestions_ep(limit: int = 4) -> SuggestionsResponse:
         from auralynq.serving.corpus import corpus_summary, suggested_questions
@@ -213,9 +461,14 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------- query ---
     @app.post("/query", response_model=QueryResponse)
     async def query(req: QueryRequest, request: Request) -> QueryResponse:
+        _METRICS["query_total"] += 1
+        intent = _classify_corpus_intent(req.question)
+        if intent:
+            data = await asyncio.to_thread(_system_answer_for_intent, intent, req.question)
+            return QueryResponse(request_id=request.state.request_id, **data)
+
         from auralynq.agent.runner import answer_question
 
-        _METRICS["query_total"] += 1
         # answer_question is CPU/network-bound and synchronous; run it off the event
         # loop so concurrent requests aren't blocked behind it.
         res = await asyncio.to_thread(
@@ -229,11 +482,26 @@ def create_app() -> FastAPI:
 
     @app.post("/query/stream")
     async def query_stream(req: QueryRequest, request: Request) -> EventSourceResponse:
-        from auralynq.agent.runner import stream_answer_question
-
         _METRICS["query_stream_total"] += 1
+        intent = _classify_corpus_intent(req.question)
 
         async def event_gen():
+            if intent:
+                # System answer — emit as a single final event, no tokens
+                data = await asyncio.to_thread(_system_answer_for_intent, intent, req.question)
+                yield {"event": "meta", "data": json.dumps({
+                    "type": "meta",
+                    "route": intent,
+                    "confidence": 1.0,
+                    "rationale": f"retrieval skipped: {intent}",
+                    "seeds": [],
+                    "path_evidence": [],
+                })}
+                yield {"event": "final", "data": json.dumps({"type": "final", **data})}
+                return
+
+            from auralynq.agent.runner import stream_answer_question
+
             # Drive the blocking token generator one step at a time in a worker
             # thread (_aiter_sync) so streaming never stalls the event loop.
             gen = stream_answer_question(req.question, final_k=req.final_k)
@@ -347,7 +615,7 @@ def create_app() -> FastAPI:
                 if msg.get("bytes") is not None:
                     if len(buffer) + len(msg["bytes"]) > ws_limit:
                         await ws.send_json(
-                            {"type": "error", "detail": f"buffer exceeds {s.serve.max_upload_mb} MB"}
+                            {"type": "error", "detail": f"buffer exceeds {s.serve.max_upload_mb} MB"}  # noqa: E501
                         )
                         buffer.clear()
                         continue
