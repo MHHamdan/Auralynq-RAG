@@ -227,6 +227,24 @@ class QdrantStore(VectorStore):
             self.client.delete_collection(self.collection)
         self._exists_cached = False
 
+    def delete_by_doc_id(self, doc_id: str) -> int:
+        from qdrant_client import models as qm
+
+        if not self._exists():
+            return 0
+        before = self.count()
+        self.client.delete(
+            collection_name=self.collection,
+            points_selector=qm.FilterSelector(
+                filter=qm.Filter(
+                    must=[qm.FieldCondition(key="doc_id", match=qm.MatchValue(value=doc_id))]
+                )
+            ),
+            wait=True,
+        )
+        after = self.count()
+        return max(0, before - after)
+
 
 def _uuid(chunk_id: str) -> str:
     import uuid

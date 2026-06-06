@@ -31,7 +31,9 @@ def build_embedder(provider: str | None = None) -> Embedder:
 
     # Air-gap hard-block: never send embeddings to OpenAI when air-gapped.
     if s.air_gapped and provider == "openai":
-        _log.warning("embeddings.air_gapped_block", provider="openai", action="falling back to hash")
+        _log.warning(
+            "embeddings.air_gapped_block", provider="openai", action="falling back to hash"
+        )
         provider = "hash"
 
     # Networked/commercial embedders are wrapped so a request-time failure (bad

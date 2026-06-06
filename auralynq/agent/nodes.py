@@ -259,7 +259,7 @@ def node_self_check(state: AgentState, deps: AgentDeps) -> AgentState:
         # Blend four orthogonal signals rather than weighting context count linearly.
         #
         # 1. score_quality: mean retrieval score normalised by a 0.7 reference
-        #    (bge-m3 cross-encoder scores cluster around 0.65–0.80 for on-topic
+        #    (bge-m3 cross-encoder scores cluster around 0.65-0.80 for on-topic
         #    passages; scores below ~0.3 indicate marginal relevance).
         # 2. citation_coverage: fraction of contexts the LLM actually cited — a
         #    low value often means the contexts were not directly used.

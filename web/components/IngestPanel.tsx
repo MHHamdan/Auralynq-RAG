@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { CorpusSummary, corpusSummary, fetchSuggestions, ingestFile } from "@/lib/api";
+import { CorpusSummary, DocumentMeta, corpusSummary, fetchSuggestions, ingestFile } from "@/lib/api";
 import { displaySource, timeAgo } from "@/lib/format";
+import { CorpusManageModal } from "@/components/CorpusManageModal";
 
 const ACCEPT = ".pdf,.docx,.html,.htm,.md,.txt,.wav,.mp3,.m4a";
 const TYPES = ["PDF", "DOCX", "HTML", "Markdown", "TXT", "WAV", "MP3", "M4A"];
@@ -14,13 +15,14 @@ interface Recent {
   ok: boolean;
 }
 
-export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
+export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void; onDeleted?: () => void }) {
   const [status, setStatus] = useState<{ kind: "ok" | "err" | "info"; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
   const [summary, setSummary] = useState<CorpusSummary | null>(null);
   const [samples, setSamples] = useState<string[]>([]);
   const [recent, setRecent] = useState<Recent[]>([]);
+  const [showManage, setShowManage] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -49,10 +51,7 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
           }.`,
         });
         setRecent((prev) =>
-          [{ name: file.name, docs: r.documents, chunks: r.chunks, skipped: r.skipped || 0, ok: true }, ...prev].slice(
-            0,
-            5,
-          ),
+          [{ name: file.name, docs: r.documents, chunks: r.chunks, skipped: r.skipped || 0, ok: true }, ...prev].slice(0, 5),
         );
         await refresh();
       } catch (err) {
@@ -73,17 +72,33 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
   }
 
   const failed = summary?.failed_files || [];
+  const docs: DocumentMeta[] = (summary?.document_titles || []).map((title, i) => ({
+    doc_id: `doc_${i}`,
+    source: title,
+    title: displaySource(title),
+    source_type: "unknown",
+  }));
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* corpus stats */}
       {summary && (
         <div className="card-inset">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-fg">Corpus</h3>
-            <button onClick={() => void refresh()} className="text-[11px] text-fg3 hover:text-brand">
-              ↻ Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => void refresh()} className="text-[11px] text-fg3 hover:text-brand">
+                ↻ Refresh
+              </button>
+              {summary.indexed && (
+                <button
+                  onClick={() => setShowManage(true)}
+                  className="rounded-md border border-bad/40 px-2 py-0.5 text-[11px] text-bad transition hover:bg-bad/10"
+                >
+                  Manage
+                </button>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-1.5 text-center">
             <div className="stat">
@@ -100,6 +115,52 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
             </div>
           </div>
           <p className="mt-2 text-[11px] text-fg3">Last indexed: {timeAgo(summary.last_indexed)}</p>
+
+          {/* indexed document list */}
+          {summary.document_titles.length > 0 && (
+            <div className="mt-3">
+              <p className="stat-label mb-1">Indexed documents</p>
+              <ul className="space-y-1">
+                {summary.document_titles.slice(0, 8).map((title) => (
+                  <li key={title} className="flex items-center justify-between text-xs">
+                    <span className="truncate text-fg2" title={title}>
+                      📄 {displaySource(title)}
+                    </span>
+                    <span className="ml-2 shrink-0 text-fg3">{(summary.source_types as Record<string,number>)?.pdf ? "pdf" : ""}</span>
+                  </li>
+                ))}
+                {summary.document_titles.length > 8 && (
+                  <li className="text-[11px] text-fg3">
+                    … {summary.document_titles.length - 8} more
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {/* quick delete actions */}
+          {summary.indexed && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => setShowManage(true)}
+                className="flex-1 rounded-lg border border-bad/30 py-1.5 text-xs text-bad transition hover:bg-bad/10"
+              >
+                Delete last document
+              </button>
+              <button
+                onClick={() => setShowManage(true)}
+                className="flex-1 rounded-lg border border-bad/30 py-1.5 text-xs text-bad transition hover:bg-bad/10"
+              >
+                Clear all corpus
+              </button>
+            </div>
+          )}
+
+          {!summary.indexed && (
+            <p className="mt-3 rounded-lg border border-edge bg-panel2 p-2.5 text-xs text-fg3">
+              No documents indexed yet. Upload a file to begin.
+            </p>
+          )}
         </div>
       )}
 
@@ -212,6 +273,18 @@ export function IngestPanel({ onAsk }: { onAsk?: (q: string) => void }) {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Corpus manage modal */}
+      {showManage && (
+        <CorpusManageModal
+          onClose={() => setShowManage(false)}
+          onDeleted={() => {
+            void refresh();
+            setShowManage(false);
+            onDeleted?.();
+          }}
+        />
       )}
     </div>
   );

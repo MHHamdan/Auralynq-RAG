@@ -123,3 +123,51 @@ class ErrorResponse(BaseModel):
     error: str
     detail: str = ""
     request_id: str = ""
+
+
+# ---------------------------------------------------------------------- corpus management --
+class CorpusClearPreviewResponse(BaseModel):
+    action: str = "clear_all"
+    document_count: int = 0
+    vector_count: int = 0
+    entity_count: int = 0
+    files: list[str] = Field(default_factory=list)
+    document_details: list[dict[str, Any]] = Field(default_factory=list)
+    manifest_entries: int = 0
+    graph_exists: bool = False
+    confirmation_phrase: str = ""
+    warning: str = ""
+
+
+class CorpusClearConfirmRequest(BaseModel):
+    phrase: str
+
+
+class CorpusDeleteDocumentPreviewResponse(BaseModel):
+    action: str = "delete_document"
+    found: bool = False
+    document: dict[str, Any] | None = None
+    confirmation_phrase: str = ""
+    warning: str = ""
+
+
+class CorpusDeleteDocumentConfirmRequest(BaseModel):
+    phrase: str
+
+
+class CorpusDeleteReportResponse(BaseModel):
+    action: str
+    deleted: bool = False
+    deleted_vectors: int = 0
+    deleted_documents: int = 0
+    deleted_entities: int = 0
+    deleted_chunks: int = 0
+    deleted_graph: bool = False
+    deleted_manifest: bool = False
+    deleted_last_ingested: bool = False
+    manifest_updated: bool = False
+    graph_rebuilt: bool = False
+    last_ingested_updated: bool = False
+    errors: list[str] = Field(default_factory=list)
+    final_inventory: dict[str, Any] | None = None
+    reason: str | None = None

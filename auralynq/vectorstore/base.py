@@ -37,6 +37,10 @@ class VectorStore(abc.ABC):
     @abc.abstractmethod
     def clear(self) -> None: ...
 
+    def delete_by_doc_id(self, doc_id: str) -> int:
+        """Remove all chunks belonging to *doc_id*. Returns number deleted."""
+        return 0
+
     def get(self, chunk_id: str) -> Chunk | None:
         """Resolve a chunk by id (used by PathRAG to cite path provenance)."""
         return None
