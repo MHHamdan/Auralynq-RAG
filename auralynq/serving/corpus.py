@@ -167,6 +167,26 @@ def _last_indexed() -> str | None:
     return _dt.datetime.fromtimestamp(newest, tz=_dt.UTC).isoformat()
 
 
+def _last_uploaded_document() -> str | None:
+    """Filename of the most recently uploaded file, for corpus-inventory answers."""
+    s = get_settings()
+    uploads = s.storage_dir / "uploads"
+    if not uploads.exists():
+        return None
+    newest_mtime = 0.0
+    newest_name: str | None = None
+    try:
+        for p in uploads.rglob("*"):
+            if p.is_file():
+                mtime = p.stat().st_mtime
+                if mtime > newest_mtime:
+                    newest_mtime = mtime
+                    newest_name = p.name
+    except Exception:  # pragma: no cover
+        return None
+    return newest_name
+
+
 def _failed_files() -> list[str]:
     """Names of files that failed to ingest, if the ingest pipeline recorded any.
 
@@ -220,6 +240,7 @@ def _corpus_summary_uncached() -> dict[str, Any]:
         "top_entities": ents[:12],
         "entity_count": len(ents),
         "last_indexed": _last_indexed(),
+        "last_document_title": _last_uploaded_document(),
         "languages": facts.get("languages", []),
         "failed_files": _failed_files(),
     }
