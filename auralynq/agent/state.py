@@ -33,6 +33,7 @@ class AgentState(BaseModel):
     need_rewrite: bool = False
     gaps: list[str] = Field(default_factory=list)
     coverage: float = 0.0
+    semantic_coverage: float = 0.0  # cosine(query_emb, mean(context_embs))
     elapsed_ms: float = 0.0
     latency_budget_ms: int = 15_000
 

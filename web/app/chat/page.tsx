@@ -149,6 +149,8 @@ export default function Chat() {
               citations: e.citations,
               status: e.status,
               insufficient: e.insufficient_evidence_reason || null,
+              confidence: e.confidence ?? 0,
+              semanticCoverage: (e as any).semantic_coverage ?? undefined,
             });
             if (e.status === "insufficient_evidence") setTab("evidence");
           }

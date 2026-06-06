@@ -8,10 +8,14 @@ Pipeline:
   3. **Flow-based pruning** — distribute a resource budget from the seeds along
      edges with per-hop decay; each edge accrues 'flow'. A path's flow is its
      bottleneck (min edge flow). Low-flow paths are pruned.
-  4. **Path-reliability scoring** — combine path flow with mean edge reliability.
-  5. **Path-to-text prompting** — render each surviving path as a grounded
+  4. **PPR-augmented scoring** — Personalized PageRank (HippoRAG2, NeurIPS'24)
+     with seed personalization gives each node a convergent authority score.
+     Final path score blends flow reliability (40%) with PPR terminal authority
+     (60%), correcting the bias of pure resource-decay toward short paths.
+  5. **Path-reliability scoring** — combine blended score with mean edge reliability.
+  6. **Path-to-text prompting** — render each surviving path as a grounded
      statement with provenance.
-  6. **Golden-region ordering** — order paths so the most reliable sit at the
+  7. **Golden-region ordering** — order paths so the most reliable sit at the
      prompt edges (mitigates lost-in-the-middle).
 
 Isolated under ``auralynq/retrieval/pathrag/`` (ADR-0006).
@@ -32,6 +36,9 @@ from auralynq.utils import tokenize
 from auralynq.vectorstore.base import VectorStore
 
 DECAY = 0.8  # per-hop resource decay
+_PPR_ALPHA = 0.15   # PageRank teleport probability (damping = 1 - alpha)
+_PPR_FLOW_W = 0.4   # weight of flow component in blended score
+_PPR_AUTH_W = 0.6   # weight of PPR terminal-node authority in blended score
 
 
 @dataclass
@@ -40,10 +47,15 @@ class _Path:
     edges: list[dict]
     flow: float
     reliability: float
+    ppr_score: float = 0.0  # terminal-node PPR authority (set after _assign_ppr)
 
     @property
     def score(self) -> float:
-        return self.flow * (0.5 + 0.5 * self.reliability)
+        # Blend flow reliability (robustness signal) with PPR authority (graph centrality).
+        # PPR corrects pure flow's bias toward short paths by rewarding nodes that
+        # many query-relevant paths converge on — a convergence property flow lacks.
+        flow_component = self.flow * (0.5 + 0.5 * self.reliability)
+        return _PPR_FLOW_W * flow_component + _PPR_AUTH_W * self.ppr_score
 
 
 class PathRAGRetriever(Retriever):
@@ -124,6 +136,60 @@ class PathRAGRetriever(Retriever):
             out.append(_Path(nodes=new_nodes, edges=new_edges, flow=0.0, reliability=rel))
             self._dfs(dst, new_nodes, new_edges, out, visited | {dst})
 
+    # ----------------------------------------------- PPR authority scores --
+    def _assign_ppr(self, seeds: list[str]) -> dict[str, float]:
+        """Run Personalized PageRank from seeds and return per-node authority scores.
+
+        Uses NetworkX's power-iteration pagerank with a personalisation vector
+        concentrated on the seed entities. Alpha is the teleport probability
+        (probability of jumping back to a seed at each step), matching the
+        HippoRAG2 reset-probability formulation.
+
+        Returns an empty dict when the graph has no nodes (safe fallback for the
+        offline / unit-test scenario where no KG is built yet).
+        """
+        if self.graph.n_entities == 0:
+            return {}
+        try:
+            import networkx as nx
+
+            # Build a simple DiGraph view (no multi-edges) for pagerank stability.
+            g = nx.DiGraph()
+            for u, v, data in self.graph.g.edges(data=True):
+                w = data.get("weight", 1.0) * (0.1 + data.get("reliability", 0.0))
+                if g.has_edge(u, v):
+                    g[u][v]["weight"] += w
+                else:
+                    g.add_edge(u, v, weight=w)
+
+            if g.number_of_nodes() == 0:
+                return {}
+
+            # Uniform weight over seeds; zero for all other nodes.
+            personalisation = {n: 0.0 for n in g.nodes()}
+            for s in seeds:
+                if s in personalisation:
+                    personalisation[s] += 1.0
+            total = sum(personalisation.values())
+            if total == 0:
+                return {}
+            personalisation = {k: v / total for k, v in personalisation.items()}
+
+            scores = nx.pagerank(g, alpha=1 - _PPR_ALPHA, personalization=personalisation)
+            # Normalise to [0, 1] so scores are comparable across graph sizes.
+            max_s = max(scores.values(), default=1.0) or 1.0
+            return {k: v / max_s for k, v in scores.items()}
+        except Exception:  # pragma: no cover — networkx unavailable or graph degenerate
+            return {}
+
+    def _apply_ppr(self, paths: list[_Path], ppr: dict[str, float]) -> list[_Path]:
+        if not ppr:
+            return paths
+        for p in paths:
+            # Terminal-node authority: reward paths that reach high-authority nodes.
+            p.ppr_score = ppr.get(p.nodes[-1], 0.0) if p.nodes else 0.0
+        return paths
+
     # ------------------------------------------------- flow-based pruning ---
     def _assign_flow(self, seeds: list[str]) -> dict[int, float]:
         """Resource-allocation flow: spread a budget from seeds with decay."""
@@ -173,15 +239,18 @@ class PathRAGRetriever(Retriever):
             for prov in e["provenance"]:
                 if prov.chunk_id not in chunk_ids:
                     chunk_ids.append(prov.chunk_id)
-        # Path-to-text rendering.
+        # Path-to-text rendering: include PPR authority in the provenance text
+        # so the synthesiser can weight this path's contribution.
         parts = [names[0]]
         for i, rel in enumerate(relations):
             parts.append(f"{rel.replace('_', ' ')} {names[i + 1]}")
-        text = " ".join(parts) + f". (reliability {path.reliability:.2f})"
+        ppr_tag = f", ppr {path.ppr_score:.3f}" if path.ppr_score > 0 else ""
+        text = " ".join(parts) + f". (reliability {path.reliability:.2f}{ppr_tag})"
         return PathEvidence(
             nodes=names,
             relations=relations,
             reliability=path.reliability,
+            ppr_score=path.ppr_score,
             text=text,
             chunk_ids=chunk_ids,
         )
@@ -208,6 +277,8 @@ class PathRAGRetriever(Retriever):
                 metadata={"seeds": [], "paths": []},
             )
         candidate_paths = self._expand(seeds)
+        ppr = self._assign_ppr(seeds)
+        self._apply_ppr(candidate_paths, ppr)
         edge_flow = self._assign_flow(seeds)
         pruned = self._prune(candidate_paths, edge_flow)
         evidences = self._golden_order([self._to_evidence(p) for p in pruned])

@@ -140,6 +140,7 @@ def node_fuse(state: AgentState, deps: AgentDeps) -> AgentState:
 
 def node_critic(state: AgentState, deps: AgentDeps) -> AgentState:
     with deps.trace.span("evidence_gap_critic") as sp:
+        # --- token-level coverage (fast, deterministic) ---
         q_terms = {t for t in tokenize(state.original_question) if t not in _STOP and len(t) > 2}
         covered = set()
         for c in state.contexts:
@@ -148,16 +149,63 @@ def node_critic(state: AgentState, deps: AgentDeps) -> AgentState:
         coverage = 1.0 - (len(missing) / max(len(q_terms), 1))
         state.gaps = missing
         state.coverage = round(coverage, 3)
+
+        # --- semantic coverage (FAIR-RAG Structured Evidence Assessment) ---
+        # Computes cosine similarity between the query embedding and the mean of
+        # all retrieved-context embeddings. This catches the case where the query
+        # and the document use different surface forms for the same concept — a
+        # failure mode of pure token overlap that triggers spurious rewrites.
+        sem_cov = _semantic_coverage(state.original_question, state.contexts, deps)
+        state.semantic_coverage = round(sem_cov, 3)
+
         can_retry = (
             state.iteration < state.max_iters - 1
             and not state.out_of_budget()
             and len(state.contexts) >= 0
         )
-        state.need_rewrite = bool(missing) and coverage < 0.6 and can_retry
+        # Only rewrite when BOTH lexical AND semantic coverage are low.  High
+        # semantic coverage (≥ 0.5) means the retrieved passages are on-topic
+        # even if the surface vocabulary differs; rewriting would likely fetch
+        # the same passages with worse diversity.
+        state.need_rewrite = (
+            bool(missing) and coverage < 0.6 and sem_cov < 0.5 and can_retry
+        )
         sp.attributes.update(
-            coverage=round(coverage, 3), missing=missing, need_rewrite=state.need_rewrite
+            coverage=round(coverage, 3),
+            semantic_coverage=round(sem_cov, 3),
+            missing=missing,
+            need_rewrite=state.need_rewrite,
         )
     return state
+
+
+def _semantic_coverage(question: str, contexts: list, deps: AgentDeps) -> float:
+    """Cosine similarity between query embedding and mean context embedding.
+
+    Uses the shared embedder already loaded in deps to avoid extra model loads.
+    Falls back gracefully to 0.0 if the embedder is unavailable (hashing fallback
+    does not support meaningful cosine comparisons — we skip the check).
+    """
+    if not contexts:
+        return 0.0
+    try:
+        emb = deps.hybrid.embedder
+        # Only meaningful for real dense embedders; hashing gives random unit vectors.
+        if getattr(emb, "name", "") in ("hashing", "hash"):
+            return 0.0
+        q_vec = emb.embed_query(question).dense
+        texts = [c.chunk.text[:512] for c in contexts]
+        ctx_embs = emb.embed(texts).dense
+        # Mean pooling over contexts, then cosine similarity.
+        import numpy as np
+
+        ctx_mean = np.mean(ctx_embs, axis=0)
+        norm_q = float(np.linalg.norm(q_vec)) or 1.0
+        norm_c = float(np.linalg.norm(ctx_mean)) or 1.0
+        sim = float(np.dot(q_vec, ctx_mean) / (norm_q * norm_c))
+        return max(0.0, min(1.0, (sim + 1.0) / 2.0))  # map [-1,1] → [0,1]
+    except Exception:  # pragma: no cover — embedder error must not break the loop
+        return 0.0
 
 
 def node_rewrite(state: AgentState, deps: AgentDeps) -> AgentState:
@@ -206,14 +254,53 @@ def node_self_check(state: AgentState, deps: AgentDeps) -> AgentState:
         has_support = bool(valid) or not state.contexts
         if not has_support and state.contexts:
             state.notes.append("answer lacked citations; flagged low confidence")
+
+        # Calibrated confidence (Bayesian RAG, Frontiers 2026):
+        # Blend four orthogonal signals rather than weighting context count linearly.
+        #
+        # 1. score_quality: mean retrieval score normalised by a 0.7 reference
+        #    (bge-m3 cross-encoder scores cluster around 0.65–0.80 for on-topic
+        #    passages; scores below ~0.3 indicate marginal relevance).
+        # 2. citation_coverage: fraction of contexts the LLM actually cited — a
+        #    low value often means the contexts were not directly used.
+        # 3. semantic_coverage: cosine(query, mean_context) from the critic node —
+        #    the semantic sufficiency signal (FAIR-RAG SEA).
+        # 4. token_coverage: 1 - gap_fraction (lexical breadth of evidence).
+        score_quality = _retrieval_score_quality(state.contexts)
+        citation_coverage = len(valid) / max(len(state.contexts), 1) if state.contexts else 0.0
+        sem_cov = state.semantic_coverage
+        token_cov = 1.0 - len(state.gaps) / max(len(tokenize(state.original_question)), 1)
+
         state.confidence = round(
-            0.4 * min(len(state.contexts) / max(state.final_k, 1), 1.0)
-            + 0.3 * (1.0 if valid else 0.0)
-            + 0.3 * (1.0 - len(state.gaps) / max(len(tokenize(state.original_question)), 1)),
+            0.30 * score_quality
+            + 0.30 * citation_coverage
+            + 0.25 * sem_cov
+            + 0.15 * token_cov,
             3,
         )
-        sp.attributes.update(citations_used=sorted(valid), confidence=state.confidence)
+        sp.attributes.update(
+            citations_used=sorted(valid),
+            confidence=state.confidence,
+            score_quality=round(score_quality, 3),
+            citation_coverage=round(citation_coverage, 3),
+            semantic_coverage=round(sem_cov, 3),
+            token_coverage=round(token_cov, 3),
+        )
     return state
+
+
+def _retrieval_score_quality(contexts: list) -> float:
+    """Mean retrieval score normalised to [0,1].
+
+    Reference point 0.7: bge-m3 cross-encoder scores for clearly on-topic
+    passages centre around 0.65-0.80.  Scores below 0.3 indicate marginal
+    relevance; above 0.8 indicate high precision. Clamp to [0,1].
+    """
+    if not contexts:
+        return 0.0
+    scores = [getattr(c, "score", 0.0) or 0.0 for c in contexts]
+    mean_s = sum(scores) / len(scores)
+    return float(min(1.0, max(0.0, mean_s / 0.7)))
 
 
 def node_validate_citations(state: AgentState, deps: AgentDeps) -> AgentState:
@@ -230,8 +317,12 @@ def node_validate_citations(state: AgentState, deps: AgentDeps) -> AgentState:
         state.answer = _MARKER_RE.sub(_scrub, state.answer).strip()
         citations = []
         for n in used:
-            cit = state.contexts[n - 1].chunk.citation()
+            sc = state.contexts[n - 1]
+            cit = sc.chunk.citation()
             cit["marker"] = n
+            # Thread retrieval score and method so the UI can show evidence quality.
+            cit["score"] = round(float(sc.score or 0.0), 4)
+            cit["method"] = sc.method or "unknown"
             citations.append(cit)
         state.citations = citations
         sp.attributes.update(n_citations=len(citations))

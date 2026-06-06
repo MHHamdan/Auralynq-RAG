@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { audioUrl, sendVoice } from "@/lib/api";
 
 // The product promise is "Talk to Your Data" — voice is central, so this control
@@ -14,6 +14,66 @@ const STATE_META: Record<VoiceState, { label: string; hint: string }> = {
   failed: { label: "Voice failed — try again", hint: "Check microphone access" },
 };
 
+const BAR_COUNT = 24;
+
+function WaveformBars({ analyserRef }: { analyserRef: React.MutableRefObject<AnalyserNode | null> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const draw = () => {
+      const analyser = analyserRef.current;
+      const W = canvas.width;
+      const H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+
+      if (!analyser) {
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
+
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(buf);
+
+      const step = Math.floor(buf.length / BAR_COUNT);
+      const barW = W / BAR_COUNT - 1;
+      const style = getComputedStyle(canvas);
+      const color = style.getPropertyValue("--color-bad").trim() || "#f87171";
+      ctx.fillStyle = color;
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const val = buf[i * step] / 255;
+        const bh = Math.max(2, val * H);
+        const x = i * (barW + 1);
+        const y = (H - bh) / 2;
+        ctx.beginPath();
+        ctx.roundRect(x, y, barW, bh, 2);
+        ctx.fill();
+      }
+      rafRef.current = requestAnimationFrame(draw);
+    };
+
+    rafRef.current = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [analyserRef]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={120}
+      height={28}
+      aria-hidden
+      className="rounded"
+      style={{ background: "transparent" }}
+    />
+  );
+}
+
 export function VoiceRecorder({
   onResult,
   compact = false,
@@ -25,6 +85,8 @@ export function VoiceRecorder({
   const [partial, setPartial] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const busy = state === "transcribing";
 
@@ -33,11 +95,32 @@ export function VoiceRecorder({
     setPartial("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Wire up the Web Audio analyser for the live waveform visualisation.
+      try {
+        const ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.7;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+      } catch {
+        // Non-fatal: waveform degrades to nothing if WebAudio is unavailable.
+        analyserRef.current = null;
+      }
+
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
       rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data);
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        // Tear down the audio context; the canvas stops drawing on next frame.
+        analyserRef.current = null;
+        audioCtxRef.current?.close().catch(() => {});
+        audioCtxRef.current = null;
+
         setState("transcribing");
         try {
           const blob = new Blob(chunksRef.current, { type: "audio/webm" });
@@ -104,21 +187,14 @@ export function VoiceRecorder({
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-fg">{meta.label}</span>
-          {active && (
-            <span className="flex items-center gap-0.5" aria-hidden>
-              {[0, 1, 2, 3].map((i) => (
-                <span
-                  key={i}
-                  className="inline-block w-1 rounded-full bg-bad animate-pulse"
-                  style={{ height: `${8 + ((i * 7) % 16)}px`, animationDelay: `${i * 120}ms` }}
-                />
-              ))}
-            </span>
-          )}
         </div>
-        {partial ? (
+        {active ? (
+          <div className="mt-0.5" aria-hidden>
+            <WaveformBars analyserRef={analyserRef} />
+          </div>
+        ) : partial ? (
           <p className="truncate text-xs text-fg3" title={partial}>
-            “{partial}”
+            "{partial}"
           </p>
         ) : (
           !compact && <p className="text-xs text-fg3">{meta.hint}</p>

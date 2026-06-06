@@ -45,6 +45,7 @@ class PathEvidence(BaseModel):
     nodes: list[str] = Field(default_factory=list)
     relations: list[str] = Field(default_factory=list)
     reliability: float = 0.0
+    ppr_score: float = 0.0  # Personalised PageRank terminal-node authority (0-1)
     text: str = ""
     chunk_ids: list[str] = Field(default_factory=list)
 

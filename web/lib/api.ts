@@ -13,12 +13,15 @@ export interface Citation {
   start_s?: number | null;
   end_s?: number | null;
   page?: number | null;
+  score?: number | null;   // retrieval score (0-1) — evidence quality
+  method?: string | null;  // retrieval method: "hybrid" | "pathrag" | …
 }
 
 export interface PathEvidence {
   nodes: string[];
   relations: string[];
   reliability: number;
+  ppr_score?: number;  // Personalised PageRank terminal-node authority (0-1)
   text: string;
   chunk_ids: string[];
 }

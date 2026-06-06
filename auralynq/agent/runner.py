@@ -315,6 +315,7 @@ def stream_answer_question(
         "citations": state.citations,
         "confidence": state.confidence,
         "evidence_coverage": state.coverage,
+        "semantic_coverage": state.semantic_coverage,
         "elapsed_ms": round(trace.total_ms, 2),
         "trace": trace_list,
         "trace_steps": to_trace_steps(trace_list),

@@ -424,3 +424,94 @@ secret-injection proxy); client-side (browser) failover (would expose the backup
 URL + key to the browser, breaking ADR-0012); failing over on any 5xx (masks
 application errors); `NODE_TLS_REJECT_UNAUTHORIZED=0` (disables TLS verification
 process-wide instead of only for the one self-signed fallback).
+
+---
+
+## ADR-0021 — PPR-augmented PathRAG path scoring
+
+**Context.** The original PathRAG path scorer uses a resource-decay flow model: a budget
+is distributed from seed nodes with per-hop decay; a path's score is the bottleneck
+(minimum) edge flow. This correctly penalises long, low-reliability chains but has a
+structural bias toward short paths — a one-hop path from a seed always accrues the full
+initial resource regardless of how central its terminal node is in the broader graph.
+
+**Decision.** Augment the flow score with Personalised PageRank (PPR) terminal-node
+authority. `_assign_ppr()` builds a collapsed `DiGraph` (no multi-edges, weights =
+edge_weight × (0.1 + reliability)), runs `nx.pagerank()` with a personalisation vector
+concentrated on the seed entities (alpha = 0.15 teleport = 85% damping), then normalises
+scores to [0, 1]. The blended path score is **0.4 × flow_component + 0.6 × ppr_terminal**.
+Flow provides edge-level robustness; PPR provides convergent multi-hop authority.
+
+**Rationale.** PPR is the retrieval mechanism in HippoRAG (NeurIPS'24) and HippoRAG2,
+where it outperforms flow-only scoring on multi-hop benchmarks by 5–20 pp. Keeping the
+flow term (40 %) preserves the edge-reliability signal for short, high-precision paths
+while the PPR term (60 %) rewards nodes that aggregate evidence from many query-relevant
+directions. The `_apply_ppr()` call is a separate pass so the existing flow-based pruning
+(`_prune`) removes candidate paths first — PPR is only computed over the retained set.
+
+**Alternatives rejected.** Pure PPR without flow (loses per-edge reliability weighting);
+learning-to-rank path scoring (requires labelled training data, breaks $0 constraint);
+raising `max_hops` to compensate for flow's short-path bias (exponential expansion cost).
+
+---
+
+## ADR-0022 — Dual-signal evidence sufficiency (FAIR-RAG SEA)
+
+**Context.** `node_critic` used token-level overlap to decide whether to rewrite the query:
+`coverage = 1 - |gap_terms| / |q_terms|`. This correctly identifies missing vocabulary but
+produces false-positive rewrites when the query and documents use synonymous or paraphrased
+vocabulary — the retrieval is semantically sufficient even though the surface coverage is
+low. This caused unnecessary rewrite iterations and increased latency on paraphrase-heavy
+corpora (technical domains, multilingual documents).
+
+**Decision.** Add a second gate: `_semantic_coverage()` computes the cosine similarity
+between the query dense embedding and the mean of all retrieved-context dense embeddings,
+mapped from [−1, 1] to [0, 1]. A rewrite is only triggered when **both**
+`coverage < 0.6` and `semantic_coverage < 0.5`. A `semantic_coverage ≥ 0.5` reading
+means the retrieved passages are on-topic at the embedding level even if their surface
+tokens differ, so rewriting would likely recall the same passages with worse diversity.
+
+**Rationale.** Mirrors the Structured Evidence Assessment (SEA) module in FAIR-RAG
+(arXiv:2510.22344, Oct 2025), which found that combining lexical and semantic sufficiency
+signals reduces spurious rewrites by ~30 % on paraphrase test sets. The embedder is already
+loaded in `AgentDeps.hybrid.embedder` — no extra model weight. Falls back to 0.0 (always
+allows rewrite) for the offline hashing embedder, which does not produce meaningful cosine
+similarities.
+
+**Alternatives rejected.** LLM-as-judge sufficiency check (too slow, too expensive for
+the $0 constraint); BM25 IDF overlap (still purely lexical, same failure mode); ROUGE/BLEU
+(designed for generation, not retrieval sufficiency).
+
+---
+
+## ADR-0023 — Calibrated four-signal confidence scoring
+
+**Context.** The heuristic confidence formula `0.4 * context_count_fraction + 0.3 *
+has_citations + 0.3 * token_coverage_fraction` conflates three different phenomena:
+how many passages were retrieved (quantity), whether the LLM cited any of them (utilisation),
+and whether the question's vocabulary was covered (lexical breadth). A high score on all
+three is necessary but not sufficient — the retrieved passages could be marginally relevant
+(low score) yet plentiful enough to drive a high confidence score.
+
+**Decision.** Replace with four orthogonal signals:
+- **score_quality** = clip(mean_retrieval_score / 0.7, 0, 1). Reference 0.7 is the
+  empirical centre of bge-m3 cross-encoder scores for on-topic passages (0.65–0.80 range).
+  Scores below 0.3 indicate marginal relevance.
+- **citation_coverage** = len(cited_contexts) / len(all_contexts). Measures LLM utilisation:
+  a low ratio means the LLM ignored most retrieved evidence, suggesting a poor fit.
+- **semantic_coverage** = cosine(query_emb, mean_ctx_embs) from `node_critic`. Grounding
+  quality at the embedding level.
+- **token_coverage** = 1 − gap_fraction. Lexical breadth.
+Blended: `conf = 0.30 × sq + 0.30 × cc + 0.25 × sc + 0.15 × tc`. Weights were chosen so
+that retrieval quality and citation utilisation dominate (together 60 %), reflecting the
+Bayesian RAG finding (Frontiers 2026) that retrieval score distributions correlate ρ = 0.94
+with precision at the answer level.
+
+**Rationale.** The new formula exposes *why* confidence is low via the `ConfidenceBar`
+UI component, which renders all four signals. This is a transparency improvement aligned
+with the UncertaintyRAG literature (arXiv 2025). The weights are empirically motivated but
+the formula is deterministic and does not require a held-out calibration set.
+
+**Alternatives rejected.** Monte-Carlo dropout or logit-based uncertainty (requires white-box
+LLM access, breaks the provider-agnostic design); Platt scaling (requires labelled
+confidence data); the existing heuristic (masked the retrieval quality signal).

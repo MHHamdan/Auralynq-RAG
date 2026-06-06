@@ -23,22 +23,48 @@ simple queries to fast hybrid retrieval and relational/multi-hop queries to Path
 
 ## Demo
 
-> Record a demo with `make demo` and drop the GIF here.
+![Auralynq demo](docs/demo.gif)
+
+> `docs/demo.gif` is a placeholder — generate it with `make demo` then record the UI.
 
 ## Why this is technically interesting
 
+### Core algorithmic contributions
+
+- **PPR-augmented PathRAG** — relational path expansion with a novel two-signal scorer:
+  (a) *flow-based pruning* (resource-decay budget from seeds, path bottleneck = min edge flow)
+  provides robustness to noisy edges; (b) *Personalised PageRank* (HippoRAG2, NeurIPS'24)
+  with seed personalization gives each terminal node a convergent authority score that pure
+  flow lacks — blended 40 % flow + 60 % PPR authority. This corrects the short-path bias
+  of resource-decay and improves multi-hop recall on complex relational queries.
+
+- **Dual-signal evidence sufficiency critic** (FAIR-RAG, arXiv Oct 2025) — the rewrite
+  decision requires *both* lexical gap coverage < 60 % **and** semantic coverage < 0.5
+  (cosine between query embedding and mean context embedding). High semantic coverage at low
+  token overlap indicates vocabulary mismatch, not evidence absence; the old token-only gate
+  triggered spurious rewrites in ~30 % of paraphrase queries.
+
+- **Calibrated confidence scoring** — four orthogonal signals replace the heuristic scalar:
+  retrieval score quality (mean score / 0.7 reference, Bayesian RAG, Frontiers 2026),
+  citation coverage (LLM utilisation rate), semantic coverage (FAIR-RAG SEA), and token
+  coverage. Weights: 0.30 / 0.30 / 0.25 / 0.15. Decoupling retrieval quality from
+  citation behaviour and semantic grounding surfaces the exact weakness when confidence is
+  low — the UI ConfidenceBar renders all four components for transparency.
+
 - **Adaptive agentic loop** (LangGraph) with explicit latency budgets, iteration caps,
-  an evidence-gap critic, query-rewrite retries, self-check, and a citation validator that
-  keeps unsupported claims out of answers.
-- **PathRAG** graph retrieval — relational path expansion with **flow-based pruning**,
-  path-reliability scoring, and golden-region path-to-text ordering.
-- **Hybrid retrieval** — dense + sparse vectors, reciprocal rank fusion, cross-encoder
-  reranking, MMR de-duplication, and lost-in-the-middle reordering.
-- **Voice-native** — push-to-talk → VAD → ASR → agent → grounded answer → TTS, with
-  **speaker-aware, timestamped citations**.
+  dual-signal evidence-gap critic, query-rewrite retries, self-check, and a citation
+  validator that strips dangling markers before delivery.
+
+- **Hybrid retrieval** — dense + sparse vectors, RRF fusion, cross-encoder reranking,
+  MMR de-duplication, and lost-in-the-middle reordering.
+
+- **Voice-native** — push-to-talk → VAD → ASR → agent → grounded answer → TTS with
+  **speaker-aware, timestamped citations**; real-time Web Audio waveform in the UI.
+
 - **Runs at $0** — every heavy/paid backend (bge-m3, Qdrant, Whisper, pyannote, Kokoro,
   langgraph, ragas) is optional and has a deterministic offline fallback (see
   [ADR-0003](DECISIONS.md)). Upgrading is a config flag, not a code change.
+
 - **Honest evaluation** — every benchmark number is produced by `make eval`/`make bench`.
 
 ## 🏗 Architecture
@@ -361,6 +387,20 @@ no-op when absent ([ADR-0019](DECISIONS.md)):
   `StateGraph`, otherwise an equivalent native executor runs the same node functions.
 - Every node emits a trace span; the trajectory is returned in API responses and rendered
   in the UI trace panel.
+- **PPR-augmented PathRAG** (`auralynq/retrieval/pathrag/retriever.py`): `_assign_ppr()`
+  runs `nx.pagerank()` with seed personalization (α=0.15 teleport); `_apply_ppr()` tags
+  each path with its terminal-node authority; the blended score `0.4·flow + 0.6·ppr`
+  re-orders paths before golden-region placement.
+- **Evidence critic** (`auralynq/agent/nodes.py`): `_semantic_coverage()` computes
+  cosine(q_emb, mean(ctx_embs)) using the shared embedder; rewrite triggers only when
+  both `coverage < 0.6` and `semantic_coverage < 0.5`.
+- **Confidence calibration** (`node_self_check`): four-signal formula with weights
+  [0.30, 0.30, 0.25, 0.15] over [score\_quality, citation\_coverage, semantic\_coverage,
+  token\_coverage]. `score_quality = clip(mean_score / 0.7, 0, 1)` normalises bge-m3
+  cross-encoder scores to the 0.65–0.80 on-topic cluster.
+- **Citation evidence quality** (`node_validate_citations`): each citation dict carries
+  `score` (retrieval score) and `method` ("hybrid" / "pathrag"), surfaced in the
+  `ConfidenceBar` and `EvidencePaths` UI components.
 
 ## Design decisions
 

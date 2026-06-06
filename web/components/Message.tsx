@@ -1,6 +1,7 @@
 "use client";
 import type { Citation, CorpusSummary, InsufficientReason } from "@/lib/api";
 import { Citations } from "@/components/Citations";
+import { ConfidenceBar } from "@/components/ConfidenceBar";
 import { Markdown } from "@/components/Markdown";
 import { CopyButton } from "@/components/CopyButton";
 import { InsufficientEvidence } from "@/components/InsufficientEvidence";
@@ -18,6 +19,8 @@ export interface Turn {
   insufficient?: InsufficientReason | null;
   inventory?: CorpusSummary | null;
   question?: string;
+  confidence?: number;
+  semanticCoverage?: number;
 }
 
 function TypingDots() {
@@ -108,6 +111,15 @@ export function Message({
         )}
 
         {hasCitations && <Citations citations={turn.citations!} />}
+
+        {!streaming && !turn.error && turn.confidence != null && turn.confidence > 0 && (
+          <ConfidenceBar
+            data={{
+              overall: turn.confidence,
+              semanticCoverage: turn.semanticCoverage,
+            }}
+          />
+        )}
 
         {!streaming && !empty && !turn.error && (
           <div className="mt-2.5 flex items-center gap-4 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
