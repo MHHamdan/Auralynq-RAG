@@ -405,6 +405,26 @@ input:focus-visible {
   }
 }
 
+/* ===================================================== answer prose ======= */
+/* Wrapper for assistant answer text — slightly larger, full-color, generous
+   line-height so citations [n] read cleanly inline. */
+.prose-answer {
+  color: rgb(var(--c-text));
+  font-size: 0.9375rem; /* 15px */
+  line-height: 1.7;
+}
+.prose-answer > :first-child { margin-top: 0; }
+.prose-answer > :last-child  { margin-bottom: 0; }
+.prose-answer p { margin: 0.45em 0; }
+/* Inline citation markers [n] rendered via Markdown get a teal tint */
+.prose-answer sup,
+.prose-answer [data-citation] {
+  color: rgb(var(--c-ok));
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
 /* ===================================================== markdown ========== */
 .prose-auralynq {
   @apply text-[0.95rem] leading-relaxed;
