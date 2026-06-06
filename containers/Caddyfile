@@ -27,6 +27,27 @@
 
 	encode gzip
 
+	# Hard cap on incoming request bodies — prevents DoS via massive audio/file
+	# uploads before the request reaches the API layer's per-endpoint limit.
+	# Override with AURALYNQ_MAX_BODY_SIZE for environments that need larger uploads.
+	request_body {
+		max_size {$AURALYNQ_MAX_BODY_SIZE:100MB}
+	}
+
+	# Deny path traversal attempts at the proxy layer.
+	@dotpath {
+		path_regexp \.\.
+	}
+	respond @dotpath 400
+
+	# Minimal security headers for browser clients.
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
 	# Stream-friendly: disable response buffering so SSE token streaming and the
 	# voice WebSocket pass through without latency/aggregation.
 	reverse_proxy {$AURALYNQ_WEB_UPSTREAM:http://web:3000} {

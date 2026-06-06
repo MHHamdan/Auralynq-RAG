@@ -63,7 +63,12 @@ def build_llm(provider: str | None = None) -> LLM:
     provider = provider or s.llm.provider
 
     if provider == "auto":
-        if s.anthropic_api_key and importlib.util.find_spec("anthropic"):
+        # Air-gap mode: external commercial providers are forbidden regardless of
+        # which keys are present in the environment.
+        if s.air_gapped:
+            _log.info("llm.air_gapped", skipped=["anthropic", "openai", "cohere"])
+            provider = "ollama" if _ollama_reachable(s.llm.base_url) else "extractive"
+        elif s.anthropic_api_key and importlib.util.find_spec("anthropic"):
             provider = "anthropic"
         elif s.openai_api_key and importlib.util.find_spec("openai"):
             provider = "openai"
@@ -73,6 +78,16 @@ def build_llm(provider: str | None = None) -> LLM:
             provider = "ollama"
         else:
             provider = "extractive"
+
+    # Hard-fail: if air-gapped and a commercial provider was explicitly configured,
+    # refuse rather than silently sending data out.
+    if s.air_gapped and provider in ("openai", "anthropic", "cohere"):
+        _log.warning(
+            "llm.air_gapped_block",
+            provider=provider,
+            action="falling back to extractive",
+        )
+        return ExtractiveLLM()
 
     # Networked/commercial providers are wrapped so a request-time failure (bad
     # key, inactive billing, rate limit, network blip) degrades to extractive
@@ -110,7 +125,11 @@ def build_llm(provider: str | None = None) -> LLM:
 def resolved_provider() -> str:
     s = get_settings()
     if s.llm.provider != "auto":
+        if s.air_gapped and s.llm.provider in ("openai", "anthropic", "cohere"):
+            return "extractive"
         return s.llm.provider
+    if s.air_gapped:
+        return "ollama" if _ollama_reachable(s.llm.base_url) else "extractive"
     if s.anthropic_api_key and importlib.util.find_spec("anthropic"):
         return "anthropic"
     if s.openai_api_key and importlib.util.find_spec("openai"):

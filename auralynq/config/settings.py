@@ -92,6 +92,9 @@ class TelemetrySettings(BaseSettings):
     # Langfuse (optional hosted trace/eval). Activated when both LANGFUSE_* keys
     # are set; host defaults to Langfuse Cloud, override for self-hosted.
     langfuse_host: str = "https://cloud.langfuse.com"
+    # Strip common PII patterns from trace inputs/outputs before export.
+    # Set to false only if you have a legal basis to store raw user queries.
+    pii_filter: bool = True
 
 
 class Settings(BaseSettings):
@@ -122,6 +125,11 @@ class Settings(BaseSettings):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     serve: ServeSettings = Field(default_factory=ServeSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
+
+    # When true, blocks all outbound calls to external LLM/embedding/telemetry
+    # providers regardless of which API keys are set. Guarantees zero data
+    # egress for strict air-gapped deployments. Env: AURALYNQ_AIR_GAPPED=true
+    air_gapped: bool = False
 
     # Well-known secrets (not prefixed). Empty string == "not configured".
     huggingface_token: str = Field(default="", alias="HUGGINGFACE_TOKEN")

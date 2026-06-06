@@ -269,7 +269,11 @@ def create_app() -> FastAPI:
         from auralynq.pipeline import build_index
         from auralynq.serving.corpus import invalidate_corpus_cache
 
-        stats = build_index(inbox, rebuild=False)
+        try:
+            stats = build_index(inbox, rebuild=False)
+        finally:
+            # Remove the raw upload after indexing; only embeddings are retained.
+            dest.unlink(missing_ok=True)
         invalidate_corpus_cache()  # refresh corpus stats/suggestions immediately
         _METRICS["ingest_total"] += 1
         return IngestResponse(
@@ -287,10 +291,28 @@ def create_app() -> FastAPI:
         tmp = s.storage_dir / "voice_in"
         tmp.mkdir(parents=True, exist_ok=True)
         dest = tmp / safe
-        dest.write_bytes(await file.read())
-        from auralynq.voice.loop import run_voice_turn
+        # Stream with the same per-upload size cap as /ingest so a large audio
+        # file cannot exhaust memory or disk before we even start ASR.
+        size = 0
+        limit = s.serve.max_upload_mb * 1024 * 1024
+        try:
+            with dest.open("wb") as fh:
+                while chunk := await file.read(1 << 20):
+                    size += len(chunk)
+                    if size > limit:
+                        dest.unlink(missing_ok=True)
+                        raise AuralynqError(
+                            "file_too_large",
+                            detail=f"max {s.serve.max_upload_mb} MB",
+                            status_code=413,
+                        )
+                    fh.write(chunk)
+            from auralynq.voice.loop import run_voice_turn
 
-        res = run_voice_turn(audio_path=dest, speak=True)
+            res = run_voice_turn(audio_path=dest, speak=True)
+        finally:
+            # Securely unlink the transient audio buffer regardless of outcome.
+            dest.unlink(missing_ok=True)
         _METRICS["voice_total"] += 1
         audio_url = "/voice/audio" if res.audio_out_path else None
         return VoiceResponse(
@@ -318,20 +340,30 @@ def create_app() -> FastAPI:
         tmp = s.storage_dir / "ws_voice"
         tmp.mkdir(parents=True, exist_ok=True)
         buffer = bytearray()
+        ws_limit = s.serve.max_upload_mb * 1024 * 1024
         try:
             while True:
                 msg = await ws.receive()
                 if msg.get("bytes") is not None:
+                    if len(buffer) + len(msg["bytes"]) > ws_limit:
+                        await ws.send_json(
+                            {"type": "error", "detail": f"buffer exceeds {s.serve.max_upload_mb} MB"}
+                        )
+                        buffer.clear()
+                        continue
                     buffer += msg["bytes"]
                     await ws.send_json({"type": "ack", "bytes": len(buffer)})
                 elif msg.get("text") is not None:
                     ctrl = json.loads(msg["text"])
                     if ctrl.get("action") == "end":
                         dest = tmp / f"{uuid.uuid4().hex[:8]}.wav"
-                        dest.write_bytes(bytes(buffer) or _silence())
-                        from auralynq.voice.loop import run_voice_turn
+                        try:
+                            dest.write_bytes(bytes(buffer) or _silence())
+                            from auralynq.voice.loop import run_voice_turn
 
-                        res = run_voice_turn(audio_path=dest, speak=False)
+                            res = run_voice_turn(audio_path=dest, speak=False)
+                        finally:
+                            dest.unlink(missing_ok=True)
                         await ws.send_json({"type": "transcript", "text": res.transcript})
                         await ws.send_json(
                             {
