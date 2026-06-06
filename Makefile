@@ -74,7 +74,7 @@ stack-logs: ## Tail stack logs
 	$(COMPOSE) -f $(COMPOSE_FILE) logs -f
 
 .PHONY: start
-start: ## Run locally on 172.24.50.21:2002 (ports 2002/2004-2010)
+start: ## Run locally on <host>:2002 (ports 2002/2004-2010)
 	./scripts/run_local.sh start
 
 .PHONY: stop
@@ -88,6 +88,10 @@ restart: ## Restart the local run
 .PHONY: status
 status: ## Show local run container status
 	./scripts/run_local.sh status
+
+.PHONY: fresh
+fresh: ## Wipe corpus volumes (auralynq-data + auralynq-qdrant) and start clean
+	./scripts/run_local.sh fresh
 
 # ----------------------------------------------------------------- data -----
 .PHONY: data

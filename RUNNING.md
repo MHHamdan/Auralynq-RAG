@@ -15,16 +15,16 @@ cd /home/mhamdan/Auralynq
 make stack-up      # start;  make stack-down to stop
 ```
 
-Open **https://172.24.50.21:8443** (accept the one-time self-signed cert warning).
+Open **https://<your-server-ip>:8443** (accept the one-time self-signed cert warning).
 
 ### Fixed IP + custom ports (`make start` / `make stop`)
 
-To run on **172.24.50.21** with a custom port range (2002, 2004–2010 — 2003 is
+To run on **<your-server-ip>** with a custom port range (2002, 2004–2010 — 2003 is
 skipped as reserved), use the convenience targets backed by
 `scripts/run_local.sh`:
 
 ```bash
-make start     # → https://172.24.50.21:2002   (Caddy TLS, the browser URL)
+make start     # → https://<your-server-ip>:2002   (Caddy TLS, the browser URL)
 make stop      # stop everything
 make restart   # stop + start
 make status    # container status
@@ -155,7 +155,7 @@ AURALYNQ_RERANK__PROVIDER=auto          # uses Cohere rerank when COHERE_API_KEY
 AURALYNQ_SERVE__API_KEY=...
 
 # --- automatic failover to the server backup ---
-AURALYNQ_API_FALLBACK=https://172.24.50.21:8443/api
+AURALYNQ_API_FALLBACK=https://<your-server-ip>:8443/api
 AURALYNQ_API_FALLBACK_INSECURE_TLS=1    # server uses a self-signed cert
 AURALYNQ_API_PRIMARY_TIMEOUT_MS=12000   # time-to-first-byte before failing over
 EOF
