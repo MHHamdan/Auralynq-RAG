@@ -114,6 +114,9 @@ docs/frontend-premium-redesign-audit.md
 docs/product-ux-competitor-audit.md
 docs/sparknet-design-port.md
 
+# Screenshots / snapshots — local only
+docs/screenshots/
+
 # Podman / compose local artifacts
 .podman/
 containers/.env
