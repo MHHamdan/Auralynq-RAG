@@ -89,6 +89,10 @@ restart: ## Restart the local run
 status: ## Show local run container status
 	./scripts/run_local.sh status
 
+.PHONY: fresh
+fresh: ## Wipe corpus volumes (auralynq-data + auralynq-qdrant) and start clean
+	./scripts/run_local.sh fresh
+
 # ----------------------------------------------------------------- data -----
 .PHONY: data
 data: ## Download sample text + voice datasets (no paid keys)

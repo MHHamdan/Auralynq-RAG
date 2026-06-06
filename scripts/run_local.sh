@@ -43,7 +43,7 @@ COMPOSE="$(./scripts/check_container_runtime.sh)"
 CF="compose.yml"
 URL="https://${PUBLIC_IP}:${AURALYNQ_HTTPS_PORT}"
 
-usage() { echo "usage: $0 {start|stop|restart|status|logs [service]}"; exit 1; }
+usage() { echo "usage: $0 {start|stop|restart|fresh|status|logs [service]}"; exit 1; }
 
 start() {
   echo "→ starting Auralynq on ${URL} (ports 2002/2004-2010)…"
@@ -58,6 +58,16 @@ stop() {
   echo "→ stopping Auralynq…"
   $COMPOSE -f "$CF" down
   echo "✓ stopped."
+}
+
+fresh() {
+  echo "→ stopping Auralynq…"
+  $COMPOSE -f "$CF" down
+  echo "→ wiping corpus volumes (auralynq_auralynq-data, auralynq_auralynq-qdrant)…"
+  podman volume rm -f auralynq_auralynq-data 2>/dev/null || true
+  podman volume rm -f auralynq_auralynq-qdrant 2>/dev/null || true
+  echo "✓ volumes cleared."
+  start
 }
 
 status() {
@@ -76,6 +86,7 @@ case "${1:-}" in
   start)   start ;;
   stop)    stop ;;
   restart) stop; start ;;
+  fresh)   fresh ;;
   status)  status ;;
   logs)    shift || true; logs "${1:-}" ;;
   *)       usage ;;
