@@ -70,19 +70,37 @@ export default function Chat() {
     statusSummary()
       .then((s) => {
         setPhoenixUrl(s?.tracing?.phoenix_endpoint || null);
-        setVectors(s?.index?.vectors ?? s?.corpus?.vector_count ?? null);
+        const vecs = s?.index?.vectors ?? s?.corpus?.vector_count ?? null;
+        setVectors(vecs);
+        // If corpus is empty, stale chat turns referencing old documents are
+        // misleading — wipe them so the UI starts fresh after make fresh / clear.
+        if (vecs === 0) {
+          try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+          return;
+        }
+        try {
+          const raw = localStorage.getItem(STORE_KEY);
+          if (raw) {
+            const restored: Turn[] = JSON.parse(raw);
+            setTurns(restored);
+            if (restored.length) setHasAnswered(true);
+          }
+        } catch {
+          /* ignore corrupt cache */
+        }
       })
-      .catch(() => {});
-    try {
-      const raw = localStorage.getItem(STORE_KEY);
-      if (raw) {
-        const restored: Turn[] = JSON.parse(raw);
-        setTurns(restored);
-        if (restored.length) setHasAnswered(true);
-      }
-    } catch {
-      /* ignore corrupt cache */
-    }
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem(STORE_KEY);
+          if (raw) {
+            const restored: Turn[] = JSON.parse(raw);
+            setTurns(restored);
+            if (restored.length) setHasAnswered(true);
+          }
+        } catch {
+          /* ignore corrupt cache */
+        }
+      });
   }, []);
 
   // Persist after each completed turn (not per token).
