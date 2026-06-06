@@ -23,7 +23,9 @@ simple queries to fast hybrid retrieval and relational/multi-hop queries to Path
 
 ## Demo
 
-> Record a demo with `make demo` and drop the GIF here.
+![Auralynq demo](docs/demo.gif)
+
+> `docs/demo.gif` is a placeholder — generate it with `make demo` then record the UI.
 
 ## Why this is technically interesting
 
