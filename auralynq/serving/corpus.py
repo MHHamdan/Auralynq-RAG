@@ -168,8 +168,23 @@ def _last_indexed() -> str | None:
 
 
 def _last_uploaded_document() -> str | None:
-    """Filename of the most recently uploaded file, for corpus-inventory answers."""
+    """Name of the most recently ingested document, for corpus-inventory answers.
+
+    Checks the last_ingested.json sidecar written by the pipeline (covers both
+    web uploads and CLI ingest), then falls back to scanning the uploads dir so
+    corpora indexed before this sidecar existed still return an answer.
+    """
+    import json as _json
+
     s = get_settings()
+    try:
+        sidecar = s.index_dir / "last_ingested.json"
+        if sidecar.is_file():
+            data = _json.loads(sidecar.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and data.get("name"):
+                return str(data["name"])
+    except Exception:  # pragma: no cover - defensive
+        pass
     uploads = s.storage_dir / "uploads"
     if not uploads.exists():
         return None

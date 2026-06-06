@@ -6,12 +6,13 @@ graph. Persists both indexes so retrieval/agent can run in a fresh process.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 from auralynq.config import get_settings
 from auralynq.embeddings.factory import get_embedder
-from auralynq.ingest.models import Chunk
+from auralynq.ingest.models import Chunk, Document
 from auralynq.ingest.pipeline import ingest_path
 from auralynq.retrieval.pathrag.builder import build_from_chunks
 from auralynq.retrieval.pathrag.graph import KnowledgeGraph
@@ -61,6 +62,9 @@ def build_index(input_dir: Path, rebuild: bool = False) -> dict[str, Any]:
     else:
         kg = load_graph()  # nothing to index and nothing stored; keep existing
 
+    if result.documents:
+        _write_last_ingested(s.index_dir, result.documents)
+
     stats = {
         "backend": store.backend,
         "embedder": embedder.name,
@@ -73,6 +77,36 @@ def build_index(input_dir: Path, rebuild: bool = False) -> dict[str, Any]:
     }
     _log.info("index.built", **stats)
     return stats
+
+
+def _write_last_ingested(index_dir: Path, docs: list[Document]) -> None:
+    """Write last_ingested.json: the document with the newest source mtime."""
+    import datetime as _dt
+
+    newest_doc = docs[-1]  # default: last in ingestion order
+    newest_mtime = 0.0
+    for d in docs:
+        try:
+            mtime = Path(d.source).stat().st_mtime
+            if mtime > newest_mtime:
+                newest_mtime = mtime
+                newest_doc = d
+        except OSError:
+            pass
+    name = newest_doc.title or Path(newest_doc.source).name
+    ts = (
+        _dt.datetime.fromtimestamp(newest_mtime, tz=_dt.UTC).isoformat()
+        if newest_mtime > 0
+        else _dt.datetime.now(tz=_dt.UTC).isoformat()
+    )
+    try:
+        sidecar = index_dir / "last_ingested.json"
+        sidecar.write_text(
+            json.dumps({"name": name, "source": newest_doc.source, "ingested_at": ts}),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
 
 
 def load_graph() -> KnowledgeGraph:
