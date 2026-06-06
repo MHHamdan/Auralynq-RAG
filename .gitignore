@@ -108,7 +108,8 @@ configs/research/
 scripts/research/
 tests/test_research.py
 
-# Private planning / design docs — local only
+# Private planning / design docs and audit notes — local only
+docs/audits/
 docs/research/
 docs/frontend-premium-redesign-audit.md
 docs/product-ux-competitor-audit.md
