@@ -26,6 +26,8 @@ class Citation(BaseModel):
     start_s: float | None = None
     end_s: float | None = None
     page: int | None = None
+    score: float | None = None   # retrieval score (0-1) — evidence quality signal
+    method: str | None = None    # retrieval method: "hybrid" | "pathrag" | …
 
 
 class QueryResponse(BaseModel):

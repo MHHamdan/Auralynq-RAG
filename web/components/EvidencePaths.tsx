@@ -64,6 +64,7 @@ function Breakdown({
 function whySelected(c: Citation): string {
   if (c.source_type === "audio") return "Top-ranked transcript segment matching your question.";
   if (c.source_type === "web") return "High-relevance passage from a retrieved web source.";
+  if (c.method === "pathrag") return "Path-traversal evidence from the relational knowledge graph.";
   return "High-relevance passage from hybrid retrieval, kept after reranking.";
 }
 
@@ -82,9 +83,35 @@ function cleanLocator(c: Citation): string {
   return "";
 }
 
+function ScoreDot({ score }: { score: number }) {
+  const cls =
+    score >= 0.7 ? "bg-ok" : score >= 0.4 ? "bg-warn" : "bg-bad";
+  const label =
+    score >= 0.7 ? "High relevance" : score >= 0.4 ? "Medium relevance" : "Low relevance";
+  return (
+    <span
+      className={`inline-block h-2 w-2 rounded-full ${cls}`}
+      title={`Retrieval score: ${score.toFixed(2)} — ${label}`}
+      aria-label={label}
+    />
+  );
+}
+
+function MethodPill({ method }: { method: string }) {
+  const cls =
+    method === "pathrag"
+      ? "border-accent/40 text-accent"
+      : method === "hybrid"
+        ? "border-brand/40 text-brand"
+        : "border-edge text-fg3";
+  return <span className={`tag shrink-0 ${cls}`}>{method}</span>;
+}
+
 function CitationCard({ c }: { c: Citation }) {
   const loc = cleanLocator(c);
   const showDebug = isInternalPath(c.source) || /\[\d+:\d+\]/.test(c.locator);
+  const hasScore = c.score != null && c.score > 0;
+  const hasMethod = c.method != null && c.method !== "unknown";
   return (
     <li className="evidence-card">
       <div className="flex items-start gap-2">
@@ -96,9 +123,24 @@ function CitationCard({ c }: { c: Citation }) {
             <span className="truncate text-sm font-semibold text-fg" title={displaySource(c.source)}>
               {displaySource(c.source)}
             </span>
-            <span className="pill pill-neutral shrink-0">{c.source_type}</span>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {hasScore && <ScoreDot score={c.score!} />}
+              {hasMethod && <MethodPill method={c.method!} />}
+              <span className="pill pill-neutral">{c.source_type}</span>
+            </div>
           </div>
           {loc && <p className="mt-0.5 text-xs text-fg3">{loc}</p>}
+          {hasScore && (
+            <div className="mt-1 flex items-center gap-1.5">
+              <div className="h-1 w-20 rounded-full bg-edge">
+                <div
+                  className={`h-1 rounded-full ${c.score! >= 0.7 ? "bg-ok" : c.score! >= 0.4 ? "bg-warn" : "bg-bad"}`}
+                  style={{ width: `${Math.round(c.score! * 100)}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-fg3">{Math.round(c.score! * 100)}% relevance</span>
+            </div>
+          )}
           <p className="mt-1.5 text-xs italic text-fg2">{whySelected(c)}</p>
           {showDebug && (
             <details className="mt-1.5">
@@ -201,29 +243,50 @@ export function EvidencePaths({
         )}
         {paths?.length ? (
           <div className="space-y-2">
-            {paths.map((p, i) => (
+            {paths.map((p, i) => {
+              const hasPpr = p.ppr_score != null && p.ppr_score > 0;
+              const relColor =
+                p.reliability >= 0.7 ? "bg-ok" : p.reliability >= 0.4 ? "bg-accent" : "bg-warn";
+              return (
               <div key={i} className="evidence-card">
+                {/* Chain: Node → relation → Node → ... */}
                 <div className="flex flex-wrap items-center gap-1 text-sm">
                   {p.nodes.map((n, j) => (
                     <span key={j} className="flex items-center gap-1">
-                      <span className="rounded-md bg-edge px-2 py-0.5 text-fg">{n}</span>
+                      <span className="rounded-md bg-edge px-2 py-0.5 font-medium text-fg">{n}</span>
                       {j < p.relations.length && (
-                        <span className="text-xs text-accent">—{p.relations[j]}→</span>
+                        <span className="flex items-center gap-0.5 text-xs text-accent">
+                          <span>—</span>
+                          <span className="italic">{p.relations[j]}</span>
+                          <span>→</span>
+                        </span>
                       )}
                     </span>
                   ))}
                 </div>
+                {/* Reliability bar + PPR authority badge */}
                 <div className="mt-2 flex items-center gap-2">
                   <div className="h-1.5 flex-1 rounded-full bg-edge">
                     <div
-                      className="h-1.5 rounded-full bg-accent"
+                      className={`h-1.5 rounded-full ${relColor}`}
                       style={{ width: `${Math.round(p.reliability * 100)}%` }}
                     />
                   </div>
-                  <span className="text-xs text-fg3">reliability {p.reliability.toFixed(2)}</span>
+                  <span className="text-xs text-fg3">
+                    rel {p.reliability.toFixed(2)}
+                  </span>
+                  {hasPpr && (
+                    <span
+                      className="tag border-brand2/40 text-brand2"
+                      title="Personalised PageRank terminal-node authority"
+                    >
+                      ppr {p.ppr_score!.toFixed(2)}
+                    </span>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p className="text-xs text-fg3">
