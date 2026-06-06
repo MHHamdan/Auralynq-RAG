@@ -615,7 +615,7 @@ def create_app() -> FastAPI:
                 if msg.get("bytes") is not None:
                     if len(buffer) + len(msg["bytes"]) > ws_limit:
                         await ws.send_json(
-                            {"type": "error", "detail": f"buffer exceeds {s.serve.max_upload_mb} MB"}
+                            {"type": "error", "detail": f"buffer exceeds {s.serve.max_upload_mb} MB"}  # noqa: E501
                         )
                         buffer.clear()
                         continue

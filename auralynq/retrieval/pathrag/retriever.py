@@ -166,7 +166,7 @@ class PathRAGRetriever(Retriever):
                 return {}
 
             # Uniform weight over seeds; zero for all other nodes.
-            personalisation = {n: 0.0 for n in g.nodes()}
+            personalisation = dict.fromkeys(g.nodes(), 0.0)
             for s in seeds:
                 if s in personalisation:
                     personalisation[s] += 1.0
