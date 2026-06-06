@@ -113,6 +113,18 @@
   font-size: 17px; /* roomier base for long reading sessions */
 }
 
+/* ===================================================== responsive breakpoints =
+   CSS variables for Bootstrap-style breakpoint awareness.
+   Use via calc() or media queries in custom CSS.
+   ========================================================================= */
+:root {
+  --bp-sm: 576px;
+  --bp-md: 768px;
+  --bp-lg: 992px;
+  --bp-xl: 1200px;
+  --bp-xxl: 1400px;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -480,4 +492,123 @@ input:focus-visible {
 }
 .prose-auralynq th {
   @apply bg-panel2;
+}
+
+/* ===================================================== responsive utilities =
+   Lightweight Bootstrap-style layout helpers.
+   ========================================================================= */
+
+/* Full-width containers */
+.container-fluid {
+  width: 100%;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 768px) {
+  .container-fluid {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+@media (min-width: 1200px) {
+  .container-fluid {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+/* Page-width container (max-width with auto centering) */
+.container-page {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  max-width: 1440px;
+}
+@media (min-width: 768px) {
+  .container-page {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+/* Responsive surface card */
+.surface-card {
+  @apply rounded-2xl border border-edge bg-panel;
+  padding: clamp(1rem, 2vw, 1.5rem);
+  box-shadow: var(--shadow-md);
+}
+
+/* Status pills */
+.status-pill {
+  @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold;
+}
+
+/* Show/hide at breakpoints */
+@media (max-width: 767px) {
+  .hide-mobile { display: none !important; }
+}
+@media (min-width: 768px) {
+  .hide-desktop { display: none !important; }
+}
+
+/* Stack children vertically on mobile */
+@media (max-width: 767px) {
+  .stack-mobile {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+}
+
+/* Responsive 2-column grid */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+@media (min-width: 768px) {
+  .grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Responsive 3-column grid */
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+@media (min-width: 640px) {
+  .grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (min-width: 1024px) {
+  .grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Responsive app shell — main content uses full viewport */
+.responsive-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Landing section spacing */
+.section-pad {
+  padding-top: clamp(3rem, 6vw, 5rem);
+  padding-bottom: clamp(3rem, 6vw, 5rem);
+}
+
+/* Inspector panel — always rendered, width adapts to viewport */
+.inspector-panel {
+  width: clamp(300px, 28vw, 520px);
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
 }

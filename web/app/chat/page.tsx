@@ -13,7 +13,7 @@ import {
   health,
   statusSummary,
 } from "@/lib/api";
-import { isInventoryQuestion } from "@/lib/format";
+import { isCorpusManagementQuestion, isInventoryQuestion } from "@/lib/format";
 import { Message, type Turn } from "@/components/Message";
 import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
@@ -290,6 +290,29 @@ export default function Chat() {
     setTab("ingest");
   }, []);
 
+  // Refresh inventory/suggestions after corpus deletion
+  const onCorpusDeleted = useCallback(async () => {
+    setPaths([]);
+    setSeeds([]);
+    try {
+      const [s, sug] = await Promise.all([
+        statusSummary(),
+        fetchSuggestions(4),
+      ]);
+      setVectors(s?.index?.vectors ?? s?.corpus?.vector_count ?? 0);
+      if (sug.suggestions?.length) setSuggestions(sug.suggestions);
+    } catch {
+      setVectors(0);
+    }
+    // Clear stale localStorage chat so old corpus-referencing turns don't persist
+    try {
+      localStorage.removeItem(STORE_KEY);
+    } catch {
+      /* ignore */
+    }
+    flash("Corpus updated — inventory refreshed");
+  }, [flash]);
+
   const recentMeta: RecentMeta | null = hasAnswered
     ? { route: lastRoute, status: lastStatus, coverage, confidence: lastConfidence }
     : null;
@@ -306,7 +329,8 @@ export default function Chat() {
         inspectorOpen={showPanel}
       />
 
-      <div className="mx-auto grid w-full max-w-[1600px] flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_400px]">
+      {/* Full-viewport grid: chat | inspector. Inspector always visible on lg+. */}
+      <div className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_clamp(320px,28vw,520px)]">
         {/* Conversation column */}
         <section className="flex min-h-0 flex-col">
           <div
@@ -314,7 +338,7 @@ export default function Chat() {
             role="log"
             aria-live="polite"
             aria-label="Conversation"
-            className="scroll-thin flex-1 overflow-y-auto px-3 py-4 md:px-6"
+            className="scroll-thin flex-1 overflow-y-auto px-3 py-4 md:px-6 xl:px-8"
           >
             <div className="mx-auto max-w-3xl space-y-4">
               {turns.length === 0 ? (
@@ -337,7 +361,7 @@ export default function Chat() {
           </div>
 
           {/* sticky composer */}
-          <div className="mx-auto w-full max-w-3xl">
+          <div className="mx-auto w-full max-w-3xl px-2 pb-2">
             <Composer
               input={input}
               setInput={setInput}
@@ -352,13 +376,13 @@ export default function Chat() {
           </div>
         </section>
 
-        {/* Inspector — desktop column / mobile drawer */}
+        {/* Inspector — always visible on desktop (lg+), mobile drawer when showPanel */}
         <aside
-          className={`min-h-0 flex-col border-l border-edge bg-panel/60 lg:flex ${
+          className={
             showPanel
-              ? "fixed inset-0 z-50 flex bg-ink/95 backdrop-blur-sm lg:static lg:bg-panel/60"
-              : "hidden"
-          }`}
+              ? "fixed inset-0 z-50 flex flex-col border-l border-edge bg-ink/95 backdrop-blur-sm lg:static lg:min-h-0 lg:bg-panel/60"
+              : "hidden min-h-0 flex-col border-l border-edge bg-panel/60 lg:flex"
+          }
         >
           <div className="flex items-center gap-1 overflow-x-auto border-b border-edge px-3 py-2">
             {TABS.map((t) => (
@@ -409,7 +433,7 @@ export default function Chat() {
                 citations={lastAssistant?.citations || []}
               />
             )}
-            {tab === "ingest" && <IngestPanel onAsk={send} />}
+            {tab === "ingest" && <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />}
             {tab === "eval" && <EvalPanel />}
           </div>
         </aside>

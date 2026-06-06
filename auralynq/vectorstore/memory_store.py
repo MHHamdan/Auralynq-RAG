@@ -137,6 +137,24 @@ class MemoryStore(VectorStore):
             self._vec.clear()
             self._spvec.clear()
 
+    def delete_by_doc_id(self, doc_id: str) -> int:
+        """Remove all chunks for *doc_id* and rebuild the dense/sparse matrices."""
+        to_remove = [cid for cid, ch in self._chunks.items() if ch.doc_id == doc_id]
+        if not to_remove:
+            return 0
+        for cid in to_remove:
+            self._chunks.pop(cid, None)
+            self._vec.pop(cid, None)
+            self._spvec.pop(cid, None)
+        self._order = [cid for cid in self._order if cid not in set(to_remove)]
+        if self._order:
+            self._dense = np.stack([self._vec[cid] for cid in self._order]).astype(np.float32)
+            self._sparse = [self._spvec.get(cid, {}) for cid in self._order]
+        else:
+            self._dense = np.zeros((0, self._dim), dtype=np.float32)
+            self._sparse = []
+        return len(to_remove)
+
     # --------------------------------------------------------- persist -----
     def save(self) -> None:
         self.path.mkdir(parents=True, exist_ok=True)
