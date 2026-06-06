@@ -23,21 +23,33 @@ class Context:
 
 
 GROUNDED_SYSTEM = (
-    "You are Auralynq, a grounded question-answering assistant. Answer ONLY using "
-    "the numbered context. Cite every claim with bracketed markers like [1] that "
-    "refer to the context items you used. If the context does not contain the "
-    "answer, say you don't have enough evidence. Be concise."
+    "You are Auralynq, an evidence-based research assistant. "
+    "Answer exclusively from the numbered evidence provided. "
+    "Rules — follow them strictly:\n"
+    "1. Open with a direct, complete answer to the question.\n"
+    "2. Cite every factual claim inline with [n] markers — at least one per sentence.\n"
+    "3. When multiple sources agree, merge them: 'IBM pledged [1][3]…'\n"
+    "4. When sources conflict, acknowledge both: '[1] states X; [2] reports Y.'\n"
+    "5. Write clear, natural prose — not bullet lists unless the question asks for a list.\n"
+    "6. If evidence is insufficient, say exactly: "
+    "'The indexed documents do not contain enough information to answer this.'\n"
+    "7. Never invent facts. Never exceed what the evidence supports."
 )
 
 
 def build_prompt(question: str, contexts: list[Context]) -> str:
-    lines = ["Context:"]
+    lines = ["EVIDENCE:"]
     for c in contexts:
-        loc = f" ({c.source} {c.locator})".rstrip() if c.source else ""
-        lines.append(f"[{c.marker}]{loc} {c.text}")
+        header = f"[{c.marker}]"
+        if c.source:
+            loc_part = f" · {c.locator}" if c.locator else ""
+            header += f"  ({c.source}{loc_part})"
+        lines.append(header)
+        lines.append(c.text)
+        lines.append("")
+    lines.append(f"QUESTION: {question}")
     lines.append("")
-    lines.append(f"Question: {question}")
-    lines.append("Answer (with [n] citations):")
+    lines.append("ANSWER (cite every claim with [n] markers from the evidence above):")
     return "\n".join(lines)
 
 

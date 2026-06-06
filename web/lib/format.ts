@@ -91,6 +91,10 @@ export function isInventoryQuestion(q: string): boolean {
   if (/\b(in my (?:collection|corpus|library)|in the (?:collection|corpus))\b/.test(s)) return true;
   if (/\bwhat (?:documents?|files?|docs?) /.test(s)) return true;
   if (/\b(languages?|file types?|formats?)\b/.test(s) && corpusWord) return true;
+  // "Last document added/uploaded/ingested" and similar recency queries.
+  if (/\b(last|latest|most recent|recently)\b.*\b(document|file|doc|upload|ingest|added)\b/.test(s)) return true;
+  if (/\bwhat.*\b(last|latest|most recent)\b.*\b(document|file|upload)\b/.test(s)) return true;
+  if (/\b(last|latest)\b.*\b(document|file)\b.*(add|upload|ingest)/.test(s)) return true;
   return corpusWord && inventoryIntent && s.length < 120;
 }
 
