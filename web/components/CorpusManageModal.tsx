@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CorpusClearPreview,
   CorpusDeleteDocumentPreview,
@@ -20,11 +20,12 @@ type DeleteAction = "clear_all" | "delete_last" | "delete_doc";
 interface Props {
   onClose: () => void;
   onDeleted: () => void;
+  initialAction?: DeleteAction;
 }
 
-export function CorpusManageModal({ onClose, onDeleted }: Props) {
+export function CorpusManageModal({ onClose, onDeleted, initialAction }: Props) {
   const [step, setStep] = useState<ModalStep>("idle");
-  const [action, setAction] = useState<DeleteAction>("clear_all");
+  const [action, setAction] = useState<DeleteAction>(initialAction ?? "clear_all");
   const [clearPreview, setClearPreview] = useState<CorpusClearPreview | null>(null);
   const [docPreview, setDocPreview] = useState<CorpusDeleteDocumentPreview | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<DocumentMeta | null>(null);
@@ -58,6 +59,14 @@ export function CorpusManageModal({ onClose, onDeleted }: Props) {
     } finally {
       setBusy(false);
     }
+  }, []);
+
+  // Auto-start preview when a specific action was requested from outside the modal.
+  useEffect(() => {
+    if (initialAction) {
+      void startPreview(initialAction);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const runConfirm = useCallback(async () => {

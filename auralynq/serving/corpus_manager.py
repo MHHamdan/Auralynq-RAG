@@ -291,7 +291,22 @@ def corpus_clear_confirm(phrase: str) -> dict[str, Any]:
         except Exception as e:
             report["errors"].append(f"last_ingested delete: {e}")
 
-    # 6. Invalidate corpus cache
+    # 6. Wipe leftover upload files (ingest deletes each file after indexing, but
+    # partial/failed runs may leave files behind).
+    uploads_dir = get_settings().storage_dir / "uploads"
+    deleted_uploads: list[str] = []
+    if uploads_dir.exists():
+        for p in uploads_dir.iterdir():
+            if p.is_file():
+                try:
+                    p.unlink()
+                    deleted_uploads.append(p.name)
+                except Exception as e:
+                    report["errors"].append(f"upload file {p.name}: {e}")
+    if deleted_uploads:
+        report["deleted_upload_files"] = deleted_uploads
+
+    # 7. Invalidate corpus cache
     from auralynq.serving.corpus import invalidate_corpus_cache
     invalidate_corpus_cache()
 

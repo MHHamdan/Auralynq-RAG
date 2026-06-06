@@ -30,7 +30,7 @@ export function Hero() {
         aria-hidden
       />
 
-      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-20 md:px-6 md:py-28 lg:grid-cols-[1.05fr_0.95fr]">
+      <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 md:px-6 md:py-24 lg:grid-cols-[1.05fr_0.95fr]">
         {/* copy */}
         <div className="reveal">
           <span className="chip mb-5 border-brand/30">

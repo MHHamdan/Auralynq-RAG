@@ -154,6 +154,22 @@ def test_corpus_clear_confirm_correct_phrase(client, tmp_path):
     assert data["errors"] == [] or isinstance(data["errors"], list)
 
 
+def test_corpus_clear_confirm_wipes_uploads(client, tmp_path):
+    """clear_all must remove leftover files in the uploads directory."""
+    from auralynq.config import get_settings
+    # _isolated_env sets AURALYNQ_DATA_DIR = tmp_path / "data"
+    settings = get_settings()
+    uploads_dir = settings.storage_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    leftover = uploads_dir / "leftover.pdf"
+    leftover.write_bytes(b"%PDF-1.4 placeholder")
+
+    r = client.post("/corpus/clear/confirm", json={"phrase": "CLEAR CORPUS"})
+    assert r.status_code == 200
+    # Leftover upload file must be gone
+    assert not leftover.exists()
+
+
 def test_corpus_delete_last_preview_empty(client):
     r = client.get("/corpus/documents/last/preview")
     assert r.status_code == 200

@@ -22,7 +22,7 @@ const TECH = [
 
 export function Stack() {
   return (
-    <section id="stack" className="relative mx-auto max-w-6xl px-4 py-20 md:px-6">
+    <section id="stack" className="relative mx-auto max-w-7xl px-4 py-14 md:px-6">
       <div className="glass overflow-hidden p-8 md:p-10">
         {/* stats */}
         <div className="grid grid-cols-2 gap-6 border-b border-edge pb-8 md:grid-cols-4">

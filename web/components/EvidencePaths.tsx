@@ -141,6 +141,14 @@ function CitationCard({ c }: { c: Citation }) {
             </div>
           )}
           <p className="mt-1.5 text-xs italic text-fg2">{whySelected(c)}</p>
+          {c.source && c.source !== displaySource(c.source) && (
+            <details className="mt-1.5">
+              <summary className="cursor-pointer text-[10px] text-fg3 hover:text-fg2">
+                Debug · raw source
+              </summary>
+              <p className="mt-0.5 break-all font-mono text-[10px] text-fg3">{c.source}</p>
+            </details>
+          )}
         </div>
       </div>
     </li>
