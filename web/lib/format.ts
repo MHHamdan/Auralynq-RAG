@@ -104,3 +104,20 @@ export function relevanceLabel(score: number): string {
   if (score >= 0.4) return "medium";
   return "low";
 }
+
+/**
+ * Heuristic: does this question request a corpus management action (delete,
+ * clear, reset) rather than asking about corpus content?
+ */
+export function isCorpusManagementQuestion(q: string): boolean {
+  if (!q) return false;
+  const s = q.toLowerCase();
+  // Explicit destructive intent
+  if (/\b(delete|remove|wipe|clear|purge|erase|drop|reset)\b/.test(s) &&
+      /\b(document|file|corpus|collection|index|vector|upload|pdf|docx|everything|all|data|last)\b/.test(s)) return true;
+  if (/\b(how|can i|how do i|can you)\b.*\b(delete|remove|clear|wipe)\b/.test(s)) return true;
+  if (/\bremove.*permanently\b/.test(s) || /\bdelete.*permanently\b/.test(s)) return true;
+  if (/\b(clear|wipe|reset)\b.*\b(corpus|collection|vectors?|index|everything|all)\b/.test(s)) return true;
+  if (/\b(delete|remove)\b.*\b(last|latest|most recent)\b.*\b(document|file|upload)\b/.test(s)) return true;
+  return false;
+}
