@@ -52,6 +52,7 @@ export default function Chat() {
   const [online, setOnline] = useState<boolean | null>(null);
   const [vectors, setVectors] = useState<number | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
+  const [corpusRefreshKey, setCorpusRefreshKey] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -310,6 +311,7 @@ export default function Chat() {
     } catch {
       /* ignore */
     }
+    setCorpusRefreshKey((k) => k + 1);
     flash("Corpus updated — inventory refreshed");
   }, [flash]);
 
@@ -329,8 +331,9 @@ export default function Chat() {
         inspectorOpen={showPanel}
       />
 
-      {/* Full-viewport grid: chat | inspector. Inspector always visible on lg+. */}
-      <div className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_clamp(320px,28vw,520px)]">
+      {/* Full-viewport grid: chat | inspector. Inspector always visible on lg+.
+          Inspector width grows with viewport so large screens stay filled. */}
+      <div className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_clamp(360px,30vw,560px)] xl:grid-cols-[minmax(0,1fr)_clamp(400px,32vw,640px)]">
         {/* Conversation column */}
         <section className="flex min-h-0 flex-col">
           <div
@@ -340,7 +343,7 @@ export default function Chat() {
             aria-label="Conversation"
             className="scroll-thin flex-1 overflow-y-auto px-3 py-4 md:px-6 xl:px-8"
           >
-            <div className="mx-auto max-w-3xl space-y-4">
+            <div className="mx-auto max-w-3xl space-y-4 xl:max-w-4xl 2xl:max-w-5xl">
               {turns.length === 0 ? (
                 <EmptyConversation suggestions={suggestions} onAsk={send} onIngest={openIngest} />
               ) : (
@@ -361,7 +364,7 @@ export default function Chat() {
           </div>
 
           {/* sticky composer */}
-          <div className="mx-auto w-full max-w-3xl px-2 pb-2">
+          <div className="mx-auto w-full max-w-3xl px-2 pb-2 xl:max-w-4xl 2xl:max-w-5xl">
             <Composer
               input={input}
               setInput={setInput}
@@ -410,6 +413,7 @@ export default function Chat() {
                 recent={recentMeta}
                 onAsk={send}
                 onIngest={openIngest}
+                refreshKey={corpusRefreshKey}
               />
             )}
             {tab === "trace" && (
@@ -472,7 +476,7 @@ function EmptyConversation({
           pick a suggestion to begin.
         </p>
       </div>
-      <div className="flex w-full max-w-xl flex-col gap-2">
+      <div className="flex w-full max-w-xl flex-col gap-2 xl:max-w-2xl">
         {suggestions.slice(0, 4).map((s) => (
           <button
             key={s}

@@ -23,6 +23,7 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
   const [samples, setSamples] = useState<string[]>([]);
   const [recent, setRecent] = useState<Recent[]>([]);
   const [showManage, setShowManage] = useState(false);
+  const [manageAction, setManageAction] = useState<"clear_all" | "delete_last" | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     try {
@@ -92,7 +93,7 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
               </button>
               {summary.indexed && (
                 <button
-                  onClick={() => setShowManage(true)}
+                  onClick={() => { setManageAction(undefined); setShowManage(true); }}
                   className="rounded-md border border-bad/40 px-2 py-0.5 text-[11px] text-bad transition hover:bg-bad/10"
                 >
                   Manage
@@ -142,13 +143,13 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
           {summary.indexed && (
             <div className="mt-3 flex flex-wrap gap-2">
               <button
-                onClick={() => setShowManage(true)}
+                onClick={() => { setManageAction("delete_last"); setShowManage(true); }}
                 className="flex-1 rounded-lg border border-bad/30 py-1.5 text-xs text-bad transition hover:bg-bad/10"
               >
                 Delete last document
               </button>
               <button
-                onClick={() => setShowManage(true)}
+                onClick={() => { setManageAction("clear_all"); setShowManage(true); }}
                 className="flex-1 rounded-lg border border-bad/30 py-1.5 text-xs text-bad transition hover:bg-bad/10"
               >
                 Clear all corpus
@@ -278,12 +279,14 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
       {/* Corpus manage modal */}
       {showManage && (
         <CorpusManageModal
-          onClose={() => setShowManage(false)}
+          onClose={() => { setShowManage(false); setManageAction(undefined); }}
           onDeleted={() => {
             void refresh();
             setShowManage(false);
+            setManageAction(undefined);
             onDeleted?.();
           }}
+          initialAction={manageAction}
         />
       )}
     </div>

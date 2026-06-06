@@ -4,7 +4,7 @@ const REPO = "https://github.com/MHHamdan/Auralynq";
 
 export function CTA() {
   return (
-    <section className="relative mx-auto max-w-6xl px-4 py-20 md:px-6">
+    <section className="relative mx-auto max-w-7xl px-4 py-14 md:px-6">
       <div className="glass relative overflow-hidden p-10 text-center md:p-16">
         <div className="orb left-1/2 top-[-4rem] h-72 w-72 -translate-x-1/2 bg-brand2/25" aria-hidden />
         <div className="orb right-10 bottom-[-4rem] h-56 w-56 bg-brand/20" aria-hidden />

@@ -94,7 +94,7 @@ const FEATURES = [
 
 export function Features() {
   return (
-    <section id="features" className="relative mx-auto max-w-6xl px-4 py-20 md:px-6">
+    <section id="features" className="relative mx-auto max-w-7xl px-4 py-14 md:px-6">
       <div className="mb-12 max-w-2xl">
         <p className="overline mb-2">Capabilities</p>
         <h2 className="section-title">Everything a serious RAG stack needs — in one local binary</h2>

@@ -1,7 +1,7 @@
 // Failover policy for the /api proxy (ADR-0020): try the local/primary backend
 // first; if it is unreachable or returns a gateway-class error, replay the same
 // request against an optional remote fallback (e.g. the server at
-// https://172.24.50.21:8443/api). Kept pure so it can be unit-tested without
+// https://<your-server>:8443/api). Kept pure so it can be unit-tested without
 // next/server or undici.
 
 // Gateway-class statuses mean "the upstream is down / cannot serve", as opposed

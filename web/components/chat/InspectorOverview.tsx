@@ -18,11 +18,13 @@ export function InspectorOverview({
   recent,
   onAsk,
   onIngest,
+  refreshKey = 0,
 }: {
   suggestions: string[];
   recent: RecentMeta | null;
   onAsk: (q: string) => void;
   onIngest: () => void;
+  refreshKey?: number;
 }) {
   const [summary, setSummary] = useState<CorpusSummary | null>(null);
   const [providers, setProviders] = useState<{ subsystem: string; provider: string }[]>([]);
@@ -38,7 +40,7 @@ export function InspectorOverview({
         setOnline(true);
       })
       .catch(() => setOnline(false));
-  }, []);
+  }, [refreshKey]);
 
   const types = summary ? Object.entries(summary.source_types || {}) : [];
   const topics = summary?.top_entities?.slice(0, 6) || [];

@@ -39,7 +39,7 @@ function StepGlyph({ children, tint }: { children: ReactNode; tint: string }) {
 
 export function HowItWorks() {
   return (
-    <section id="how" className="relative mx-auto max-w-6xl px-4 py-20 md:px-6">
+    <section id="how" className="relative mx-auto max-w-7xl px-4 py-14 md:px-6">
       <div className="mb-12 max-w-2xl">
         <p className="overline mb-2 text-brand2">How it works</p>
         <h2 className="section-title">From documents to cited, observable answers</h2>
