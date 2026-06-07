@@ -7,6 +7,7 @@ import {
   StreamEvent,
   TraceSpan,
   TraceStep,
+  VisualGrounding,
   askStream,
   corpusSummary,
   fetchSuggestions,
@@ -21,6 +22,7 @@ import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
 import { EvalPanel } from "@/components/EvalPanel";
+import { SourceViewPanel } from "@/components/SourceViewPanel";
 import { AppBar } from "@/components/chat/AppBar";
 import { Composer, type ChatMode } from "@/components/chat/Composer";
 import { InspectorOverview, type RecentMeta } from "@/components/chat/InspectorOverview";
@@ -33,7 +35,7 @@ const FALLBACK_SUGGESTIONS = [
   "What are the key entities and how do they relate?",
 ];
 const STORE_KEY = "auralynq.chat.v1";
-const TABS = ["overview", "trace", "evidence", "ingest", "eval"] as const;
+const TABS = ["overview", "trace", "evidence", "source", "ingest", "eval"] as const;
 type Tab = (typeof TABS)[number];
 
 function computeRisk(confidence: number, coverage: number): AgentActivity["riskLevel"] {
@@ -69,6 +71,8 @@ export default function Chat() {
   const [ragStrategy, setRagStrategy] = useState<string>("auralynq_rag");
   const [showSettings, setShowSettings] = useState(false);
   const [agentActivity, setAgentActivity] = useState<AgentActivity>({ phase: "idle" });
+  const [visualGrounding, setVisualGrounding] = useState<VisualGrounding | null>(null);
+  const [activeCitation, setActiveCitation] = useState<string | null>(null);
   // new-chat corpus-clear confirmation state
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
@@ -166,6 +170,8 @@ export default function Chat() {
     setSeeds([]);
     setCoverage(0);
     setLastStatus("answered");
+    setVisualGrounding(null);
+    setActiveCitation(null);
     setAgentActivity({ phase: "query_received", algorithm: ragStrategy });
     const ac = new AbortController();
     abortRef.current = ac;
@@ -214,6 +220,10 @@ export default function Chat() {
               warnings: e.warnings,
               fallback: (e as any).fallback_strategy || null,
             });
+            // Capture visual grounding for Source View panel
+            if (e.visual_grounding) {
+              setVisualGrounding(e.visual_grounding);
+            }
             patchLast({
               text: e.answer,
               citations: e.citations,
@@ -619,6 +629,18 @@ export default function Chat() {
                 seeds={seeds}
                 coverage={coverage}
                 citations={lastAssistant?.citations || []}
+                visualGrounding={visualGrounding}
+                onOpenSource={(cid) => {
+                  setActiveCitation(cid);
+                  setTab("source");
+                }}
+                onOpenSourceTab={() => setTab("source")}
+              />
+            )}
+            {tab === "source" && (
+              <SourceViewPanel
+                grounding={visualGrounding}
+                activeCitation={activeCitation}
               />
             )}
             {tab === "ingest" && <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />}

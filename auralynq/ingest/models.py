@@ -3,6 +3,9 @@
 A ``Chunk`` is the atomic retrievable unit. It always carries enough provenance
 to produce an honest citation: the source document, a character ``SourceSpan``,
 and — for audio — an ``AudioSegment`` with speaker and timestamps.
+
+Visual grounding fields (bbox, normalized_bbox, block_type) are stored in
+chunk.metadata["visual_grounding"] and populated by layout-aware parsers.
 """
 
 from __future__ import annotations
@@ -13,6 +16,24 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from auralynq.utils import stable_id
+
+# Bump this when grounding schema changes require re-ingest
+VISUAL_GROUNDING_VERSION = 1
+
+
+class LayoutBlock(BaseModel):
+    """A positioned text/visual block on a PDF page."""
+
+    block_id: str = ""
+    page: int = 1
+    bbox: list[float] = Field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])
+    normalized_bbox: list[float] = Field(default_factory=lambda: [0.0, 0.0, 1.0, 1.0])
+    text: str = ""
+    block_type: str = "paragraph"  # paragraph|title|table|figure|caption|footer|header
+    reading_order: int = 0
+    confidence: float = 1.0
+    page_width: float = 0.0
+    page_height: float = 0.0
 
 
 class SourceType(str, Enum):
@@ -105,10 +126,17 @@ class Document(BaseModel):
     language: str = "en"
     metadata: dict[str, Any] = Field(default_factory=dict)
     chunks: list[Chunk] = Field(default_factory=list)
+    # Visual grounding: list of (page, width, height) tuples stored as dicts
+    page_dimensions: list[dict[str, Any]] = Field(default_factory=list)
+    visual_grounding_version: int = 0  # 0 = no grounding; 1+ = grounding metadata present
 
     @property
     def n_chunks(self) -> int:
         return len(self.chunks)
+
+    @property
+    def has_visual_grounding(self) -> bool:
+        return self.visual_grounding_version >= VISUAL_GROUNDING_VERSION
 
 
 class IngestResult(BaseModel):

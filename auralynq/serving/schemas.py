@@ -60,6 +60,8 @@ class QueryResponse(BaseModel):
     fallback_strategy: str | None = None
     fallback_reason: str | None = None
     strategy_warnings: list[str] = Field(default_factory=list)
+    # Visual grounding
+    visual_grounding: dict[str, Any] | None = None
 
 
 class CorpusSummaryResponse(BaseModel):
@@ -227,3 +229,42 @@ class QueryRequestV2(BaseModel):
     rag_strategy: str | None = Field(default=None, description="RAG strategy id from /api/rag/strategies")
     force_strategy: bool = Field(default=False, description="Fail if strategy is unavailable (no fallback)")
     fallback_allowed: bool = Field(default=True, description="Allow fallback to default strategy")
+
+
+# ---------------------------------------------------------------------- visual grounding --
+class PageInfo(BaseModel):
+    page: int
+    width: float = 0.0
+    height: float = 0.0
+    image_url: str = ""
+    has_image: bool = False
+
+
+class DocumentPagesResponse(BaseModel):
+    doc_id: str
+    source_title: str = ""
+    source_type: str = "unknown"
+    n_pages: int = 0
+    pages: list[PageInfo] = Field(default_factory=list)
+    visual_grounding_version: int = 0
+    reindex_required: bool = False
+
+
+class VisualGroundingResponse(BaseModel):
+    answer_id: str
+    highlights: list[dict[str, Any]] = Field(default_factory=list)
+    claim_grounding: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    visual_grounding_available: bool = False
+    grounding_stage: str = "unavailable"  # span | page | unavailable
+
+
+class DocumentGroundingStatusResponse(BaseModel):
+    doc_id: str
+    source_title: str = ""
+    visual_grounding_version: int = 0
+    reindex_required: bool = True
+    grounding_available: bool = False
+    n_pages: int = 0
+    n_chunks_with_bbox: int = 0
+    page_images_cached: int = 0
