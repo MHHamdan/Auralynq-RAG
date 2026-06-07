@@ -17,7 +17,15 @@ from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    File,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from sse_starlette.sse import EventSourceResponse
@@ -953,27 +961,27 @@ def create_app() -> FastAPI:
     async def eval_export_run() -> JSONResponse:
         return JSONResponse({"last_eval": _last_eval, "feedback": _eval_feedback[-10:]})
 
-    @app.post("/eval/run")
-    async def eval_run_ep() -> JSONResponse:
-        """Run a quick in-process eval against the indexed corpus.
+    _eval_running = False  # simple mutex — one eval at a time
 
-        Fetches up to 5 suggested questions from the corpus, queries each one via
-        the auralynq_rag pipeline, aggregates metrics, writes reports/eval_report.json
-        and returns the report dict.
-        """
+    @app.post("/eval/run")
+    async def eval_run_ep(background_tasks: BackgroundTasks) -> JSONResponse:
+        """Start an async eval run. Returns immediately; poll GET /eval/report for results."""
+        nonlocal _eval_running
+        if _eval_running:
+            return JSONResponse({"status": "running", "detail": "Eval already in progress."})
+
         s = get_settings()
         from auralynq.agent.runner import answer_question
 
-        # Pull candidate questions from the suggestion endpoint logic.
+        # Collect candidate questions
         suggest_path = s.storage_dir / "suggestions_cache.json"
         questions: list[str] = []
         if suggest_path.exists():
             try:
-                questions = json.loads(suggest_path.read_text(encoding="utf-8"))[:5]
+                questions = json.loads(suggest_path.read_text(encoding="utf-8"))[:3]
             except Exception:
                 pass
         if not questions:
-            # Fallback: generate questions from corpus summary
             doc_meta = _doc_store()
             for meta in list(doc_meta.values())[:3]:
                 title = meta.get("title", "")
@@ -982,48 +990,67 @@ def create_app() -> FastAPI:
         if not questions:
             return JSONResponse({"status": "error", "detail": "No corpus content to evaluate."}, status_code=400)
 
-        results = []
-        for q in questions[:5]:
-            try:
-                r = await asyncio.to_thread(answer_question, q)
-                results.append({
-                    "question": q,
-                    "status": r.status,
-                    "citations": len(r.citations or []),
-                    "confidence": r.confidence,
-                    "evidence_coverage": r.evidence_coverage,
-                    "elapsed_ms": r.elapsed_ms,
-                })
-            except Exception as exc:
-                results.append({"question": q, "status": "error", "error": str(exc)})
-
-        answered = [r for r in results if r.get("status") == "answered"]
-        n = len(answered) or 1
-        report = {
-            "status": "ok",
-            "n_questions": len(questions[:5]),
-            "n_answered": len(answered),
-            "citation_rate": round(sum(1 for r in answered if r["citations"] > 0) / n, 3),
-            "avg_confidence": round(sum(r["confidence"] for r in answered) / n, 3),
-            "avg_evidence_coverage": round(sum(r["evidence_coverage"] for r in answered) / n, 3),
-            "avg_latency_ms": round(sum(r["elapsed_ms"] for r in answered) / n, 1),
-            "abstention_rate": round(sum(1 for r in results if r.get("status") == "insufficient_evidence") / len(results), 3),
-            "per_question": results,
-            "feedback_summary": {
-                "total": len(_eval_feedback),
-                "avg_rating": (
-                    round(sum(f["answer_rating"] for f in _eval_feedback if f.get("answer_rating")) /
-                          max(1, sum(1 for f in _eval_feedback if f.get("answer_rating"))), 2)
-                    if _eval_feedback else None
-                ),
-            },
-        }
+        # Write "running" sentinel so the frontend can show a spinner
         try:
             s.reports_dir.mkdir(parents=True, exist_ok=True)
-            (s.reports_dir / "eval_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+            (s.reports_dir / "eval_report.json").write_text(
+                json.dumps({"status": "running", "n_questions": len(questions[:3])}),
+                encoding="utf-8",
+            )
         except Exception:
             pass
-        return JSONResponse(report)
+
+        async def _run():
+            nonlocal _eval_running
+            _eval_running = True
+            results = []
+            for q in questions[:3]:
+                try:
+                    r = await asyncio.to_thread(answer_question, q)
+                    results.append({
+                        "question": q,
+                        "status": r.status,
+                        "citations": len(r.citations or []),
+                        "confidence": r.confidence,
+                        "evidence_coverage": r.evidence_coverage,
+                        "elapsed_ms": r.elapsed_ms,
+                    })
+                except Exception as exc:
+                    results.append({"question": q, "status": "error", "error": str(exc)})
+            answered = [r for r in results if r.get("status") == "answered"]
+            n = len(answered) or 1
+            report = {
+                "status": "ok",
+                "n_questions": len(questions[:3]),
+                "n_answered": len(answered),
+                "citation_rate": round(sum(1 for r in answered if r["citations"] > 0) / n, 3),
+                "avg_confidence": round(sum(r["confidence"] for r in answered) / n, 3),
+                "avg_evidence_coverage": round(sum(r["evidence_coverage"] for r in answered) / n, 3),
+                "avg_latency_ms": round(sum(r["elapsed_ms"] for r in answered) / n, 1),
+                "abstention_rate": round(
+                    sum(1 for r in results if r.get("status") == "insufficient_evidence") / len(results), 3
+                ),
+                "per_question": results,
+                "feedback_summary": {
+                    "total": len(_eval_feedback),
+                    "avg_rating": (
+                        round(
+                            sum(f["answer_rating"] for f in _eval_feedback if f.get("answer_rating")) /
+                            max(1, sum(1 for f in _eval_feedback if f.get("answer_rating"))), 2
+                        ) if _eval_feedback else None
+                    ),
+                },
+            }
+            try:
+                (s.reports_dir / "eval_report.json").write_text(
+                    json.dumps(report, indent=2), encoding="utf-8"
+                )
+            except Exception:
+                pass
+            _eval_running = False
+
+        background_tasks.add_task(_run)
+        return JSONResponse({"status": "running", "n_questions": len(questions[:3])})
 
     @app.get("/eval/report")
     async def eval_report() -> JSONResponse:
