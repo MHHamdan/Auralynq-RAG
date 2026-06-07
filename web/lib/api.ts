@@ -493,6 +493,35 @@ export async function fetchGroundingSummary(): Promise<GroundingSummary> {
   return r.json();
 }
 
+export interface PageLayoutBlock {
+  block_id: string;
+  page: number;
+  bbox: number[];
+  normalized_bbox: number[];
+  text: string;
+  block_type: string;
+  chunk_id: string;
+  relevance: number;
+  confidence: number;
+  is_cited: boolean;
+  citation_ids: string[];
+}
+
+export interface PageLayoutResponse {
+  doc_id: string;
+  page: number;
+  blocks: PageLayoutBlock[];
+  source_title: string;
+  page_width: number;
+  page_height: number;
+}
+
+export async function fetchPageLayout(docId: string, page: number): Promise<PageLayoutResponse> {
+  const r = await fetch(`${API_BASE}/documents/${encodeURIComponent(docId)}/pages/${page}/layout`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`page layout failed: ${r.status}`);
+  return r.json();
+}
+
 // Stream with strategy selection
 export async function askStreamWithStrategy(
   question: string,
