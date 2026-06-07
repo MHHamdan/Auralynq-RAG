@@ -67,8 +67,23 @@ export function EvalPanel() {
     setRunning(true);
     setRunError(null);
     try {
-      const result = await runEval();
-      setReport(result);
+      await runEval(); // returns immediately with status=running
+      // Poll /eval/report every 5s until status != "running"
+      let attempts = 0;
+      const poll = async (): Promise<void> => {
+        await new Promise((r) => setTimeout(r, 5000));
+        attempts++;
+        try {
+          const r = await evalReport();
+          if (r.status === "running" && attempts < 30) {
+            return poll();
+          }
+          setReport(r);
+        } catch {
+          if (attempts < 30) return poll();
+        }
+      };
+      await poll();
     } catch (e) {
       setRunError((e as Error).message);
     } finally {
