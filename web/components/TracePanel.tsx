@@ -1,4 +1,4 @@
-import { TraceSpan, TraceStep } from "@/lib/api";
+import { TraceSpan, TraceStep, VisualGrounding } from "@/lib/api";
 
 const STATUS_META: Record<string, { icon: string; cls: string; bar: string }> = {
   success: { icon: "✓", cls: "text-ok", bar: "bg-brand" },
@@ -15,6 +15,35 @@ const RISK_CLS: Record<string, string> = {
   medium: "text-warn",
   high: "text-bad",
 };
+
+function _vgSteps(vg: VisualGrounding): Array<{ label: string; status: string; detail: string }> {
+  const nH = vg.highlights.length;
+  const nC = vg.claim_grounding.length;
+  const hasImg = vg.highlights.some((h) => h.page_image_url);
+  const imgCount = vg.highlights.filter((h) => h.page_image_url).length;
+  return [
+    {
+      label: "Visual metadata lookup",
+      status: nH > 0 ? "success" : "warning",
+      detail: `${nH} citation${nH !== 1 ? "s" : ""} resolved`,
+    },
+    {
+      label: "Grounding resolver",
+      status: vg.visual_grounding_available ? "success" : "warning",
+      detail: `stage: ${vg.grounding_stage}`,
+    },
+    {
+      label: "Page image cache",
+      status: hasImg ? "success" : "skipped",
+      detail: hasImg ? `${imgCount} page${imgCount !== 1 ? "s" : ""} ready` : "no images cached",
+    },
+    {
+      label: "Claim alignment",
+      status: nC > 0 ? "success" : "skipped",
+      detail: `${nC} claim${nC !== 1 ? "s" : ""} analysed`,
+    },
+  ];
+}
 
 export interface TraceMeta {
   route?: string;
@@ -73,10 +102,12 @@ export function TracePanel({
   trace,
   steps,
   meta,
+  visualGrounding,
 }: {
   trace: TraceSpan[];
   steps?: TraceStep[];
   meta?: TraceMeta;
+  visualGrounding?: VisualGrounding | null;
 }) {
   // Prefer structured steps; fall back to raw spans so old payloads still render.
   const rows: TraceStep[] =
@@ -187,6 +218,43 @@ export function TracePanel({
           );
         })}
       </ol>
+
+      {/* Visual grounding pipeline steps */}
+      {visualGrounding && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <p className="stat-label">Visual Grounding Pipeline</p>
+            <span
+              className={`pill ${
+                visualGrounding.grounding_stage === "span"
+                  ? "pill-ok"
+                  : visualGrounding.grounding_stage === "page"
+                    ? "pill-warn"
+                    : "pill-neutral"
+              }`}
+            >
+              {visualGrounding.grounding_stage}
+            </span>
+          </div>
+          <ol className="space-y-1">
+            {_vgSteps(visualGrounding).map((step, i) => {
+              const sm = STATUS_META[step.status] || STATUS_META.success;
+              return (
+                <li key={i} className="flex items-center gap-2 text-sm">
+                  <span className={`shrink-0 font-mono ${sm.cls}`} aria-hidden>
+                    {sm.icon}
+                  </span>
+                  <span className="flex-1 text-fg">{step.label}</span>
+                  <span className="tag shrink-0">{step.detail}</span>
+                </li>
+              );
+            })}
+          </ol>
+          {visualGrounding.warnings.length > 0 && (
+            <p className="text-[11px] text-warn">{visualGrounding.warnings[0]}</p>
+          )}
+        </div>
+      )}
 
       <PhoenixCard url={meta?.phoenixUrl} />
     </div>

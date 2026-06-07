@@ -64,6 +64,7 @@ def build_index(input_dir: Path, rebuild: bool = False) -> dict[str, Any]:
 
     if result.documents:
         _write_last_ingested(s.index_dir, result.documents)
+        _write_doc_meta(s.storage_dir, result.documents)
 
     stats = {
         "backend": store.backend,
@@ -107,6 +108,34 @@ def _write_last_ingested(index_dir: Path, docs: list[Document]) -> None:
         )
     except Exception:
         pass
+
+
+def _write_doc_meta(storage_dir: Path, docs: list[Document]) -> None:
+    """Write/merge doc_meta.json — consumed by visual grounding endpoints."""
+    import contextlib
+
+    meta_path = storage_dir / "doc_meta.json"
+    existing: dict[str, dict] = {}
+    if meta_path.exists():
+        with contextlib.suppress(Exception):
+            existing = json.loads(meta_path.read_text(encoding="utf-8"))
+    for doc in docs:
+        existing[doc.id] = {
+            "title": doc.title or Path(doc.source).name,
+            "source": doc.source,
+            "source_type": doc.source_type.value,
+            "page_dimensions": doc.page_dimensions,
+            "visual_grounding_version": doc.visual_grounding_version,
+            "n_pages": len(doc.page_dimensions),
+            "n_chunks": doc.n_chunks,
+            "n_chunks_with_bbox": sum(
+                1
+                for c in doc.chunks
+                if (c.metadata.get("visual_grounding") or {}).get("has_bbox")
+            ),
+        }
+    with contextlib.suppress(Exception):
+        meta_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
 
 def load_graph() -> KnowledgeGraph:

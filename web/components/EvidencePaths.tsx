@@ -1,4 +1,4 @@
-import { Citation, PathEvidence } from "@/lib/api";
+import { Citation, PathEvidence, VisualGrounding } from "@/lib/api";
 import { coverageTier, displaySource } from "@/lib/format";
 
 const TIER_META = {
@@ -107,7 +107,11 @@ function MethodPill({ method }: { method: string }) {
   return <span className={`tag shrink-0 ${cls}`}>{method}</span>;
 }
 
-function CitationCard({ c }: { c: Citation }) {
+function CitationCard({ c, onOpenSource, hasVisualGrounding }: {
+  c: Citation;
+  onOpenSource?: (citationId: string) => void;
+  hasVisualGrounding?: boolean;
+}) {
   const loc = cleanLocator(c);
   const hasScore = c.score != null && c.score > 0;
   const hasMethod = c.method != null && c.method !== "unknown";
@@ -141,6 +145,17 @@ function CitationCard({ c }: { c: Citation }) {
             </div>
           )}
           <p className="mt-1.5 text-xs italic text-fg2">{whySelected(c)}</p>
+          <div className="mt-1.5 flex items-center gap-2">
+            {onOpenSource && (
+              <button
+                className="tag border-brand/40 text-brand hover:border-brand hover:bg-brand/10 transition text-[11px]"
+                onClick={() => onOpenSource(String(c.marker))}
+                title="Open source page in Source View"
+              >
+                {hasVisualGrounding ? "📄 Source" : "📄 Source (page-level)"}
+              </button>
+            )}
+          </div>
           {c.source && c.source !== displaySource(c.source) && (
             <details className="mt-1.5">
               <summary className="cursor-pointer text-[10px] text-fg3 hover:text-fg2">
@@ -184,11 +199,17 @@ export function EvidencePaths({
   seeds,
   coverage = 0,
   citations = [],
+  visualGrounding,
+  onOpenSource,
+  onOpenSourceTab,
 }: {
   paths: PathEvidence[];
   seeds: string[];
   coverage?: number;
   citations?: Citation[];
+  visualGrounding?: VisualGrounding | null;
+  onOpenSource?: (citationId: string) => void;
+  onOpenSourceTab?: () => void;
 }) {
   const hasAnything = paths?.length || citations?.length || seeds?.length;
   if (!hasAnything)
@@ -205,6 +226,9 @@ export function EvidencePaths({
       </div>
     );
 
+  const vgAvailable = visualGrounding?.visual_grounding_available;
+  const vgStage = visualGrounding?.grounding_stage ?? "unavailable";
+
   return (
     <div className="space-y-3">
       <CoverageHeader coverage={coverage} />
@@ -213,12 +237,39 @@ export function EvidencePaths({
         graph={paths?.length || 0}
         citations={citations.length}
       />
+      {/* Visual grounding status bar */}
+      {visualGrounding !== undefined && visualGrounding !== null && (
+        <div className={`rounded-xl border px-3 py-2 flex items-center justify-between gap-2 ${vgAvailable ? "border-brand/30 bg-brand/5" : "border-edge bg-surface"}`}>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-fg">Visual grounding</span>
+            <span className={`pill ${vgStage === "span" ? "pill-ok" : vgStage === "page" ? "pill-warn" : "pill-neutral"}`}>
+              {vgStage}
+            </span>
+          </div>
+          {vgAvailable && onOpenSourceTab && (
+            <button
+              className="tag border-brand/40 text-brand hover:border-brand hover:bg-brand/10 transition text-[11px]"
+              onClick={onOpenSourceTab}
+            >
+              Open Source View →
+            </button>
+          )}
+          {!vgAvailable && (
+            <span className="text-[11px] text-fg3">Reindex to enable</span>
+          )}
+        </div>
+      )}
 
       <Section title="Citations" count={citations.length} open={citations.length > 0}>
         {citations.length ? (
           <ol className="space-y-2">
             {citations.map((c) => (
-              <CitationCard key={c.marker} c={c} />
+              <CitationCard
+                key={c.marker}
+                c={c}
+                onOpenSource={onOpenSource}
+                hasVisualGrounding={visualGrounding?.visual_grounding_available}
+              />
             ))}
           </ol>
         ) : (
