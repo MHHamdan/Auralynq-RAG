@@ -8,7 +8,7 @@ import {
   TraceSpan,
   TraceStep,
   VisualGrounding,
-  askStream,
+  askStreamWithStrategy,
   corpusSummary,
   fetchSuggestions,
   health,
@@ -176,8 +176,9 @@ export default function Chat() {
     const ac = new AbortController();
     abortRef.current = ac;
     try {
-      await askStream(
+      await askStreamWithStrategy(
         q,
+        ragStrategy,
         (e: StreamEvent) => {
           if (e.type === "meta") {
             setPaths(e.path_evidence || []);
@@ -621,6 +622,7 @@ export default function Chat() {
                   coverage,
                   phoenixUrl,
                 }}
+                visualGrounding={visualGrounding}
               />
             )}
             {tab === "evidence" && (
