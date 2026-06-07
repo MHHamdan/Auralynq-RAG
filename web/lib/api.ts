@@ -400,6 +400,12 @@ export async function exportEvalRun() {
   return r.json();
 }
 
+export async function runEval(): Promise<any> {
+  const r = await fetch(`${API_BASE}/eval/run`, { method: "POST", cache: "no-store" });
+  if (!r.ok) throw new Error(`eval run failed: ${r.status}`);
+  return r.json();
+}
+
 // --- Visual grounding -------------------------------------------------------
 
 export interface VisualHighlight {

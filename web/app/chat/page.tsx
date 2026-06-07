@@ -38,6 +38,44 @@ const STORE_KEY = "auralynq.chat.v1";
 const TABS = ["overview", "trace", "evidence", "source", "ingest", "eval"] as const;
 type Tab = (typeof TABS)[number];
 
+function InlineSourceStrip({
+  grounding,
+  onOpen,
+}: {
+  grounding: import("@/lib/api").VisualGrounding;
+  onOpen: () => void;
+}) {
+  const h = grounding.highlights[0];
+  if (!h) return null;
+  const stageCls =
+    grounding.grounding_stage === "span"
+      ? "text-ok"
+      : grounding.grounding_stage === "page"
+      ? "text-warn"
+      : "text-fg3";
+  return (
+    <div className="mt-2 flex items-center gap-2 rounded-lg border border-edge bg-panel2 px-3 py-2 text-xs">
+      <span className={`shrink-0 font-medium ${stageCls}`}>
+        {grounding.grounding_stage === "span" ? "◉" : grounding.grounding_stage === "page" ? "◎" : "○"}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-fg3">
+        <span className="font-medium text-fg">{h.source_title.split("/").pop() || h.source_title}</span>
+        {h.page != null && <span className="ml-1">· p.{h.page}</span>}
+        <span className="ml-1 capitalize">{grounding.grounding_stage} match</span>
+        {grounding.highlights.length > 1 && (
+          <span className="ml-1 text-fg3">+{grounding.highlights.length - 1} more</span>
+        )}
+      </span>
+      <button
+        onClick={onOpen}
+        className="shrink-0 rounded border border-brand/40 px-2 py-0.5 text-brand hover:bg-brand/10 transition"
+      >
+        View source ↗
+      </button>
+    </div>
+  );
+}
+
 function computeRisk(confidence: number, coverage: number): AgentActivity["riskLevel"] {
   if (confidence >= 0.8 && coverage >= 0.8) return "none";
   if (confidence >= 0.6 && coverage >= 0.6) return "low";
@@ -221,9 +259,13 @@ export default function Chat() {
               warnings: e.warnings,
               fallback: (e as any).fallback_strategy || null,
             });
-            // Capture visual grounding for Source View panel
+            // Capture visual grounding — auto-show Source View side-by-side
             if (e.visual_grounding) {
               setVisualGrounding(e.visual_grounding);
+              if (e.visual_grounding.visual_grounding_available) {
+                setTab("source");
+                setShowPanel(true);
+              }
             }
             patchLast({
               text: e.answer,
@@ -529,18 +571,33 @@ export default function Chat() {
               {turns.length === 0 ? (
                 <EmptyConversation suggestions={suggestions} onAsk={send} onIngest={openIngest} />
               ) : (
-                turns.map((t, i) => (
-                  <div key={i} className="msg-in">
-                    <Message
-                      turn={t}
-                      streaming={streaming}
-                      isLast={i === turns.length - 1}
-                      onRegenerate={t.role === "assistant" ? regenerate : undefined}
-                      onAsk={send}
-                      onIngest={openIngest}
-                    />
-                  </div>
-                ))
+                turns.map((t, i) => {
+                  const isLastAssistant =
+                    i === turns.length - 1 && t.role === "assistant";
+                  const showVG =
+                    isLastAssistant &&
+                    !streaming &&
+                    visualGrounding?.visual_grounding_available &&
+                    (t.citations?.length ?? 0) > 0;
+                  return (
+                    <div key={i} className="msg-in">
+                      <Message
+                        turn={t}
+                        streaming={streaming}
+                        isLast={i === turns.length - 1}
+                        onRegenerate={t.role === "assistant" ? regenerate : undefined}
+                        onAsk={send}
+                        onIngest={openIngest}
+                      />
+                      {showVG && (
+                        <InlineSourceStrip
+                          grounding={visualGrounding!}
+                          onOpen={() => { setTab("source"); setShowPanel(true); }}
+                        />
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

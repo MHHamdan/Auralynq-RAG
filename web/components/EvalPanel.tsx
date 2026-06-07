@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { evalReport, evalLast, postEvalFeedback, exportEvalRun, type EvalMetrics } from "@/lib/api";
+import { evalReport, evalLast, postEvalFeedback, exportEvalRun, runEval, type EvalMetrics } from "@/lib/api";
 
 const FEEDBACK_KEY = "auralynq.feedback.v1";
 type Vote = "helpful" | "not-helpful" | "citation-ok" | "citation-wrong" | "unsupported";
@@ -34,6 +34,8 @@ function MetricRow({ label, value, cls }: { label: string; value: string; cls?: 
 export function EvalPanel() {
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const [lastMetrics, setLastMetrics] = useState<EvalMetrics | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [flash, setFlash] = useState<string | null>(null);
@@ -58,6 +60,19 @@ export function EvalPanel() {
       setReport(await evalReport());
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRunEval() {
+    setRunning(true);
+    setRunError(null);
+    try {
+      const result = await runEval();
+      setReport(result);
+    } catch (e) {
+      setRunError((e as Error).message);
+    } finally {
+      setRunning(false);
     }
   }
 
@@ -166,14 +181,81 @@ export function EvalPanel() {
 
       {/* report (if available) */}
       <section className="card-inset">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-fg">Evaluation report</h3>
-          <button className="btn-ghost px-2.5 py-1 text-xs" onClick={loadReport} disabled={loading}>
-            {loading ? "Loading…" : hasReport ? "Reload" : "Load report"}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {hasReport && (
+              <button className="btn-ghost px-2.5 py-1 text-xs" onClick={loadReport} disabled={loading}>
+                {loading ? "Loading…" : "Reload"}
+              </button>
+            )}
+            <button
+              className="btn-ghost px-2.5 py-1 text-xs font-medium text-brand"
+              onClick={handleRunEval}
+              disabled={running}
+              title="Run 3–5 queries against indexed corpus and compute live metrics"
+            >
+              {running ? "Running…" : "▶ Run evaluation"}
+            </button>
+          </div>
         </div>
 
-        {hasReport ? (
+        {running && (
+          <div className="flex items-center gap-2 py-3 text-xs text-fg3">
+            <span className="animate-spin">⟳</span>
+            Running queries against corpus — this may take 30–60 s…
+          </div>
+        )}
+
+        {runError && (
+          <p className="text-xs text-bad">{runError}</p>
+        )}
+
+        {/* Inline eval report (from /eval/run) */}
+        {report?.n_questions != null && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
+              <div className="rounded-lg border border-edge bg-panel2 p-2 text-center">
+                <div className="text-fg3">Questions run</div>
+                <div className="text-base font-bold text-fg">{report.n_questions}</div>
+              </div>
+              <div className="rounded-lg border border-edge bg-panel2 p-2 text-center">
+                <div className="text-fg3">Citation rate</div>
+                <div className={`text-base font-bold ${report.citation_rate >= 0.6 ? "text-ok" : "text-warn"}`}>
+                  {Math.round(report.citation_rate * 100)}%
+                </div>
+              </div>
+              <div className="rounded-lg border border-edge bg-panel2 p-2 text-center">
+                <div className="text-fg3">Avg confidence</div>
+                <div className={`text-base font-bold ${report.avg_confidence >= 0.6 ? "text-ok" : "text-warn"}`}>
+                  {report.avg_confidence?.toFixed(2)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-edge bg-panel2 p-2 text-center">
+                <div className="text-fg3">Avg latency</div>
+                <div className="text-base font-bold text-fg">{report.avg_latency_ms?.toFixed(0)}ms</div>
+              </div>
+            </div>
+            {report.per_question?.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-[11px] font-medium text-fg3">Per-question results</p>
+                {report.per_question.map((r: any, i: number) => (
+                  <div key={i} className="flex items-start gap-2 rounded border border-edge bg-panel2 px-2 py-1 text-[11px]">
+                    <span className={`mt-0.5 shrink-0 font-mono ${r.status === "answered" ? "text-ok" : "text-warn"}`}>
+                      {r.status === "answered" ? "✓" : "–"}
+                    </span>
+                    <span className="min-w-0 flex-1 text-fg3 truncate" title={r.question}>{r.question}</span>
+                    {r.citations != null && <span className="shrink-0 text-fg3">{r.citations} cit</span>}
+                    {r.confidence != null && <span className="shrink-0 text-fg3">{r.confidence.toFixed(2)}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Full retrieval report (from make eval) */}
+        {hasReport && !report?.n_questions && (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-fg3">
@@ -189,10 +271,10 @@ export function EvalPanel() {
                 {variants.map(([name, m]) => (
                   <tr key={name} className="border-t border-edge">
                     <td className="py-1 text-fg">{name}</td>
-                    <td className="text-center text-fg2">{m.recall_at_k}</td>
-                    <td className="text-center text-fg2">{m.ndcg_at_10}</td>
-                    <td className="text-center text-fg2">{m.mrr}</td>
-                    <td className="text-center text-fg2">{m.latency_p50_ms}</td>
+                    <td className="text-center text-fg2">{(m as any).recall_at_k}</td>
+                    <td className="text-center text-fg2">{(m as any).ndcg_at_10}</td>
+                    <td className="text-center text-fg2">{(m as any).mrr}</td>
+                    <td className="text-center text-fg2">{(m as any).latency_p50_ms}</td>
                   </tr>
                 ))}
               </tbody>
@@ -205,10 +287,12 @@ export function EvalPanel() {
               </p>
             )}
           </div>
-        ) : (
-          <p className="text-sm text-fg3">
-            No report yet — run <code className="text-brand">make eval</code> to generate retrieval &
-            groundedness metrics.
+        )}
+
+        {!hasReport && !report?.n_questions && !running && (
+          <p className="text-xs text-fg3">
+            Click <strong>▶ Run evaluation</strong> to score the corpus live, or run{" "}
+            <code className="text-brand">make eval</code> for a full retrieval benchmark.
           </p>
         )}
       </section>
