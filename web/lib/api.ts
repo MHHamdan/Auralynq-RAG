@@ -472,6 +472,21 @@ export async function fetchGroundingStatus(docId: string) {
   return r.json();
 }
 
+export interface GroundingSummary {
+  enabled: boolean;
+  page_rendering_enabled: boolean;
+  total_docs: number;
+  grounded_docs: number;
+  needs_reindex: number;
+  visual_grounding_version: number;
+}
+
+export async function fetchGroundingSummary(): Promise<GroundingSummary> {
+  const r = await fetch(`${API_BASE}/corpus/grounding-summary`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`grounding summary failed: ${r.status}`);
+  return r.json();
+}
+
 // Stream with strategy selection
 export async function askStreamWithStrategy(
   question: string,

@@ -52,7 +52,6 @@ from auralynq.serving.schemas import (
     RAGStrategiesResponse,
     StatusResponse,
     SuggestionsResponse,
-    VisualGroundingResponse,
     VoiceResponse,
 )
 from auralynq.telemetry import configure_logging, get_logger, init_telemetry
@@ -964,7 +963,6 @@ def create_app() -> FastAPI:
         Returns doc_id → {title, source_type, page_dimensions, visual_grounding_version, n_pages}.
         """
         s = get_settings()
-        manifest_path = s.storage_dir / "ingest_manifest.json"
         doc_meta_path = s.storage_dir / "doc_meta.json"
         if doc_meta_path.exists():
             try:
@@ -1051,6 +1049,24 @@ def create_app() -> FastAPI:
             n_chunks_with_bbox=meta.get("n_chunks_with_bbox", 0),
             page_images_cached=n_cached,
         )
+
+    @app.get("/corpus/grounding-summary")
+    async def corpus_grounding_summary_ep() -> JSONResponse:
+        """Return visual grounding statistics for the whole corpus."""
+        s = get_settings()
+        doc_store = _doc_store()
+        from auralynq.ingest.models import VISUAL_GROUNDING_VERSION as _VGV
+
+        total = len(doc_store)
+        grounded = sum(1 for m in doc_store.values() if m.get("visual_grounding_version", 0) >= _VGV)
+        return JSONResponse({
+            "enabled": s.visual.enabled,
+            "page_rendering_enabled": s.visual.page_rendering_enabled,
+            "total_docs": total,
+            "grounded_docs": grounded,
+            "needs_reindex": total - grounded,
+            "visual_grounding_version": _VGV,
+        })
 
     @app.get("/visual-grounding/settings")
     async def visual_grounding_settings_ep() -> JSONResponse:

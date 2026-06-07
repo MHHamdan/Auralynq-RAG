@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { CorpusSummary, DocumentMeta, corpusSummary, fetchSuggestions, ingestFile } from "@/lib/api";
+import { CorpusSummary, DocumentMeta, GroundingSummary, corpusSummary, fetchGroundingSummary, fetchSuggestions, ingestFile } from "@/lib/api";
 import { displaySource, timeAgo } from "@/lib/format";
 import { CorpusManageModal } from "@/components/CorpusManageModal";
 
@@ -20,6 +20,8 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
   const [summary, setSummary] = useState<CorpusSummary | null>(null);
+  const [groundingSummary, setGroundingSummary] = useState<GroundingSummary | null>(null);
+  const [showReindexInfo, setShowReindexInfo] = useState(false);
   const [samples, setSamples] = useState<string[]>([]);
   const [recent, setRecent] = useState<Recent[]>([]);
   const [showManage, setShowManage] = useState(false);
@@ -32,6 +34,12 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
       setSamples(sug.suggestions);
     } catch {
       /* backend may be warming up */
+    }
+    try {
+      const gs = await fetchGroundingSummary();
+      setGroundingSummary(gs);
+    } catch {
+      /* visual grounding endpoint unavailable */
     }
   }, []);
 
@@ -160,6 +168,68 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
           {!summary.indexed && (
             <p className="mt-3 rounded-lg border border-edge bg-panel2 p-2.5 text-xs text-fg3">
               No documents indexed yet. Upload a file to begin.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* visual grounding status */}
+      {groundingSummary && (
+        <div className="card-inset space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-fg">Visual Grounding</h3>
+            <span className={`pill ${groundingSummary.enabled ? "pill-ok" : "pill-neutral"}`}>
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${groundingSummary.enabled ? "bg-ok" : "bg-edge2"}`}
+              />
+              {groundingSummary.enabled ? "enabled" : "disabled"}
+            </span>
+          </div>
+          {groundingSummary.total_docs > 0 && (
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div className="stat">
+                <div className="stat-value">{groundingSummary.total_docs}</div>
+                <div className="stat-label">total</div>
+              </div>
+              <div className="stat">
+                <div className="stat-value text-ok">{groundingSummary.grounded_docs}</div>
+                <div className="stat-label">grounded</div>
+              </div>
+              <div className="stat">
+                <div className={`stat-value ${groundingSummary.needs_reindex > 0 ? "text-warn" : "text-ok"}`}>
+                  {groundingSummary.needs_reindex}
+                </div>
+                <div className="stat-label">need reindex</div>
+              </div>
+            </div>
+          )}
+          {groundingSummary.needs_reindex > 0 && (
+            <div>
+              <button
+                onClick={() => setShowReindexInfo((v) => !v)}
+                className="w-full rounded-lg border border-warn/40 py-1.5 text-xs text-warn transition hover:bg-warn/10"
+              >
+                {showReindexInfo ? "Hide" : "Reindex for visual grounding ↓"}
+              </button>
+              {showReindexInfo && (
+                <div className="mt-2 rounded-lg border border-edge bg-panel2 p-2.5 text-[11px] text-fg3 space-y-1">
+                  <p className="font-semibold text-fg2">How to enable visual grounding</p>
+                  <p>
+                    {groundingSummary.needs_reindex} document
+                    {groundingSummary.needs_reindex !== 1 ? "s were" : " was"} indexed before visual
+                    grounding metadata was available.
+                  </p>
+                  <p>
+                    Re-upload those documents above — the indexer will automatically attach bounding-box
+                    and page metadata so citations show highlighted source regions.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          {groundingSummary.total_docs === 0 && (
+            <p className="text-[11px] text-fg3">
+              Upload a PDF to enable source highlights with bounding-box grounding.
             </p>
           )}
         </div>
