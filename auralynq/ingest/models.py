@@ -108,6 +108,7 @@ class Chunk(BaseModel):
             "start_s": self.audio.start_s if self.audio else None,
             "end_s": self.audio.end_s if self.audio else None,
             "page": self.span.page,
+            "visual_grounding": self.metadata.get("visual_grounding"),
         }
 
     @staticmethod

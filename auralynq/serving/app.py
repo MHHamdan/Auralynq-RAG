@@ -601,6 +601,20 @@ def create_app() -> FastAPI:
                         event["fallback_strategy"] = fallback_strategy
                         event["fallback_reason"] = fallback_reason
                         event["strategy_warnings"] = strategy_warnings
+                        # Resolve visual grounding for the auralynq_rag streaming path.
+                        try:
+                            from auralynq.grounding.resolver import GroundingResolver
+                            _gr = GroundingResolver()
+                            _gr_results = _gr.resolve(
+                                answer_id=str(id(event)),
+                                answer=event.get("answer", ""),
+                                citations=event.get("citations", []),
+                            )
+                            event["visual_grounding"] = (
+                                _gr.to_api_response(_gr_results) if _gr_results else None
+                            )
+                        except Exception:
+                            event["visual_grounding"] = None
                         try:
                             _last_eval.clear()
                             _last_eval.update({
@@ -1027,6 +1041,36 @@ def create_app() -> FastAPI:
         except ValueError:
             return JSONResponse({"error": "Access denied"}, status_code=403)  # type: ignore[return-value]
         return FileResponse(str(img_path), media_type="image/png")
+
+    @app.post("/documents/{doc_id}/render-pages")
+    async def document_render_pages(doc_id: str, file: UploadFile = File(...)) -> JSONResponse:
+        """Render page images for an existing document from a re-uploaded PDF.
+
+        Does NOT re-index; only populates the page cache so Source View can
+        show page images for a document whose pages were never rendered.
+        """
+        s = get_settings()
+        if not re.match(r"^[a-f0-9]{8,64}$", doc_id):
+            return JSONResponse({"error": "Invalid document ID"}, status_code=400)
+        if not s.visual.page_rendering_enabled:
+            return JSONResponse({"error": "Page rendering is disabled"}, status_code=400)
+        # Save to a temp location in the uploads dir
+        inbox = s.storage_dir / "uploads"
+        inbox.mkdir(parents=True, exist_ok=True)
+        safe = _SAFE_NAME.sub("_", Path(file.filename or "upload.pdf").name)
+        dest = inbox / f"_rerender_{doc_id}_{safe}"
+        try:
+            with dest.open("wb") as fh:
+                while chunk := await file.read(1 << 20):
+                    fh.write(chunk)
+            from auralynq.ingest.models import SourceType
+            from auralynq.ingest.pipeline import _render_page_images
+            _render_page_images(dest, doc_id, SourceType.pdf)
+            cache_dir = s.page_cache_dir / doc_id
+            n_cached = len(list(cache_dir.glob("page_*.png"))) if cache_dir.exists() else 0
+            return JSONResponse({"doc_id": doc_id, "pages_rendered": n_cached, "status": "ok"})
+        finally:
+            dest.unlink(missing_ok=True)
 
     @app.get("/documents/{doc_id}/grounding-status", response_model=DocumentGroundingStatusResponse)
     async def document_grounding_status(doc_id: str) -> DocumentGroundingStatusResponse:
