@@ -113,6 +113,27 @@
   font-size: 17px; /* roomier base for long reading sessions */
 }
 
+/* ===================================================== typography & density =
+   CSS variables for font scale, density, and layout widths.
+   Controlled by SettingsPanel — persisted in localStorage and applied via JS.
+   Defaults are set here; overridden via document.documentElement.style.setProperty.
+   ========================================================================= */
+:root {
+  /* typography scale — multiplied into base font-size */
+  --font-scale: 1.1;
+  /* spacing/density multiplier — applied to padding/gap tokens */
+  --density-scale: 1;
+  /* layout widths */
+  --chat-max-width: min(900px, 90vw);
+  --inspector-width: clamp(360px, 30vw, 560px);
+  --trace-rail-width: 240px;
+  --composer-height: auto;
+}
+
+html {
+  font-size: calc(15px * var(--font-scale, 1));
+}
+
 /* ===================================================== responsive breakpoints =
    CSS variables for Bootstrap-style breakpoint awareness.
    Use via calc() or media queries in custom CSS.
@@ -125,11 +146,12 @@
   --bp-xxl: 1400px;
 }
 
-html {
-  scroll-behavior: smooth;
-}
 ::selection {
   background: rgba(129, 140, 248, 0.3);
+}
+html {
+  scroll-behavior: smooth;
+  line-height: 1.6;
 }
 
 body {
