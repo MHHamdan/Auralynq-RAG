@@ -236,4 +236,89 @@ t("eval panel shows last query metrics from backend", () => {
   has(ev, "Strategy comparison");
 });
 
+// ---- visual grounding & source view ----------------------------------------
+
+t("source view tab added to chat inspector", () => {
+  const page = read("app/chat/page.tsx");
+  has(page, '"source"');
+  has(page, "SourceViewPanel");
+  has(page, "visualGrounding");
+  has(page, "activeCitation");
+});
+
+t("source view panel has page viewer, overlay and legend", () => {
+  const sv = read("components/SourceViewPanel.tsx");
+  has(sv, "PageViewer");
+  has(sv, "HighlightBox");
+  has(sv, "ClaimGroundingView");
+  has(sv, "normalized_bbox");
+  has(sv, "reindex_required");
+  has(sv, "visual_grounding_available");
+  has(sv, "Source View");
+  has(sv, "Reindex");
+  has(sv, "grounding_stage");
+});
+
+t("source view panel handles unavailable grounding gracefully", () => {
+  const sv = read("components/SourceViewPanel.tsx");
+  has(sv, "Visual grounding not available");
+  has(sv, "Ask a question to see source grounding");
+});
+
+t("source view panel has zoom controls", () => {
+  const sv = read("components/SourceViewPanel.tsx");
+  has(sv, "Zoom in");
+  has(sv, "Zoom out");
+  has(sv, "fit");
+});
+
+t("evidence panel has source view open button on citations", () => {
+  const ev = read("components/EvidencePaths.tsx");
+  has(ev, "onOpenSource");
+  has(ev, "onOpenSourceTab");
+  has(ev, "Open Source View");
+  has(ev, "hasVisualGrounding");
+  has(ev, "Visual grounding");
+});
+
+t("api has visual grounding types and fetchers", () => {
+  const api = read("lib/api.ts");
+  has(api, "VisualGrounding");
+  has(api, "VisualHighlight");
+  has(api, "ClaimGrounding");
+  has(api, "fetchDocumentPages");
+  has(api, "documentPageImageUrl");
+  has(api, "visual_grounding_available");
+  has(api, "grounding_stage");
+  has(api, "normalized_bbox");
+});
+
+t("answer result type includes visual grounding field", () => {
+  const api = read("lib/api.ts");
+  has(api, "visual_grounding?: VisualGrounding | null");
+});
+
+t("source view panel renders highlight boxes with citation colors", () => {
+  const sv = read("components/SourceViewPanel.tsx");
+  has(sv, "CITATION_COLORS");
+  has(sv, "colorFor");
+  has(sv, "borderFor");
+  has(sv, "color_index");
+});
+
+t("source view panel shows claim grounding with support status", () => {
+  const sv = read("components/SourceViewPanel.tsx");
+  has(sv, "supported");
+  has(sv, "partial");
+  has(sv, "unsupported");
+  has(sv, "SUPPORT_CLS");
+  has(sv, "SUPPORT_LABEL");
+});
+
+t("chat page clears visual grounding on new query", () => {
+  const page = read("app/chat/page.tsx");
+  has(page, "setVisualGrounding(null)");
+  has(page, "setActiveCitation(null)");
+});
+
 console.log(`\n${passed} ui structure tests passed`);

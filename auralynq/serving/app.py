@@ -39,16 +39,20 @@ from auralynq.serving.schemas import (
     CorpusDeleteDocumentPreviewResponse,
     CorpusDeleteReportResponse,
     CorpusSummaryResponse,
+    DocumentGroundingStatusResponse,
+    DocumentPagesResponse,
     EvalFeedbackRequest,
     HealthResponse,
     IngestResponse,
     ObservabilitySummaryResponse,
+    PageInfo,
     QueryRequest,
     QueryRequestV2,
     QueryResponse,
     RAGStrategiesResponse,
     StatusResponse,
     SuggestionsResponse,
+    VisualGroundingResponse,
     VoiceResponse,
 )
 from auralynq.telemetry import configure_logging, get_logger, init_telemetry
@@ -655,6 +659,20 @@ def create_app() -> FastAPI:
                     })
                 except Exception:
                     pass
+                # Compute visual grounding for non-streaming strategies
+                _vg_data = None
+                try:
+                    from auralynq.grounding.resolver import GroundingResolver
+                    _gr = GroundingResolver()
+                    _gr_results = _gr.resolve(
+                        answer_id=str(request.state.request_id),
+                        answer=result.answer,
+                        citations=result.citations or [],
+                    )
+                    _vg_data = _gr.to_api_response(_gr_results)
+                except Exception:
+                    pass
+
                 yield {"event": "final", "data": json.dumps({
                     "type": "final",
                     "answer": result.answer,
@@ -672,6 +690,7 @@ def create_app() -> FastAPI:
                     "selected_rag_strategy": effective_id,
                     "fallback_strategy": None,
                     "fallback_reason": None,
+                    "visual_grounding": _vg_data,
                 })}
 
         return EventSourceResponse(event_gen())
@@ -847,6 +866,20 @@ def create_app() -> FastAPI:
             use_cache=req.use_cache if req.use_cache is not None else True,
             route_hint=req.route_hint or "",
         )
+        # Build visual grounding for the response
+        vg_data = None
+        try:
+            from auralynq.grounding.resolver import GroundingResolver
+            _gresolver = GroundingResolver()
+            _gresults = _gresolver.resolve(
+                answer_id=request.state.request_id,
+                answer=result.answer,
+                citations=result.citations,
+            )
+            vg_data = _gresolver.to_api_response(_gresults)
+        except Exception:
+            pass
+
         data = {
             "answer": result.answer,
             "status": result.status,
@@ -866,6 +899,11 @@ def create_app() -> FastAPI:
             "detected_entities": result.detected_entities,
             "suggested_questions": result.suggested_questions,
             "warnings": result.warnings + (result.strategy_warnings or []),
+            "selected_rag_strategy": result.strategy_id,
+            "fallback_strategy": result.fallback_strategy,
+            "fallback_reason": result.fallback_reason,
+            "strategy_warnings": result.strategy_warnings or [],
+            "visual_grounding": vg_data,
         }
         return QueryResponse(request_id=request.state.request_id, **data)
 
@@ -917,6 +955,116 @@ def create_app() -> FastAPI:
         if not path.exists():
             return JSONResponse({"status": "pending", "detail": "run `make bench`"})
         return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+
+    # ------------------------------------------ visual grounding endpoints ---
+
+    def _doc_store() -> dict[str, dict]:
+        """Load document metadata from ingest manifest + storage.
+
+        Returns doc_id → {title, source_type, page_dimensions, visual_grounding_version, n_pages}.
+        """
+        s = get_settings()
+        manifest_path = s.storage_dir / "ingest_manifest.json"
+        doc_meta_path = s.storage_dir / "doc_meta.json"
+        if doc_meta_path.exists():
+            try:
+                return json.loads(doc_meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return {}
+
+    @app.get("/documents/{doc_id}/pages", response_model=DocumentPagesResponse)
+    async def document_pages(doc_id: str) -> DocumentPagesResponse:
+        """List pages and their metadata for a document."""
+        s = get_settings()
+        doc_store = _doc_store()
+        meta = doc_store.get(doc_id, {})
+        page_dims: list[dict] = meta.get("page_dimensions", [])
+        n_pages = meta.get("n_pages", len(page_dims))
+        vg_version = meta.get("visual_grounding_version", 0)
+        from auralynq.ingest.models import VISUAL_GROUNDING_VERSION as _VGV
+        reindex_required = vg_version < _VGV
+
+        pages_info: list[PageInfo] = []
+        for pd in page_dims:
+            pg = pd.get("page", 0)
+            img_path = s.page_cache_dir / doc_id / f"page_{pg:04d}.png"
+            has_img = img_path.exists()
+            pages_info.append(PageInfo(
+                page=pg,
+                width=pd.get("width", 0.0),
+                height=pd.get("height", 0.0),
+                image_url=f"/documents/{doc_id}/pages/{pg}/image" if has_img else "",
+                has_image=has_img,
+            ))
+
+        return DocumentPagesResponse(
+            doc_id=doc_id,
+            source_title=meta.get("title", ""),
+            source_type=meta.get("source_type", "unknown"),
+            n_pages=n_pages,
+            pages=pages_info,
+            visual_grounding_version=vg_version,
+            reindex_required=reindex_required,
+        )
+
+    @app.get("/documents/{doc_id}/pages/{page_number}/image")
+    async def document_page_image(doc_id: str, page_number: int) -> FileResponse:
+        """Serve a rendered page image (PNG). Only serves files in the page cache."""
+        s = get_settings()
+        # Validate doc_id: only alphanumeric + _ - (safe subset of stable_id output)
+        if not re.match(r"^[a-f0-9]{8,64}$", doc_id):
+            return JSONResponse({"error": "Invalid document ID"}, status_code=400)  # type: ignore[return-value]
+        if page_number < 1 or page_number > 9999:
+            return JSONResponse({"error": "Invalid page number"}, status_code=400)  # type: ignore[return-value]
+        img_path = s.page_cache_dir / doc_id / f"page_{page_number:04d}.png"
+        if not img_path.exists():
+            return JSONResponse(
+                {"error": "Page image not available", "detail": "Reindex the document to generate page images"},
+                status_code=404,
+            )  # type: ignore[return-value]
+        # Security: ensure the resolved path is inside page_cache_dir
+        try:
+            img_path.resolve().relative_to(s.page_cache_dir.resolve())
+        except ValueError:
+            return JSONResponse({"error": "Access denied"}, status_code=403)  # type: ignore[return-value]
+        return FileResponse(str(img_path), media_type="image/png")
+
+    @app.get("/documents/{doc_id}/grounding-status", response_model=DocumentGroundingStatusResponse)
+    async def document_grounding_status(doc_id: str) -> DocumentGroundingStatusResponse:
+        """Return visual grounding status for a document."""
+        s = get_settings()
+        doc_store = _doc_store()
+        meta = doc_store.get(doc_id, {})
+        vg_version = meta.get("visual_grounding_version", 0)
+        from auralynq.ingest.models import VISUAL_GROUNDING_VERSION as _VGV
+        reindex_required = vg_version < _VGV
+        cache_dir = s.page_cache_dir / doc_id
+        n_cached = len(list(cache_dir.glob("page_*.png"))) if cache_dir.exists() else 0
+        return DocumentGroundingStatusResponse(
+            doc_id=doc_id,
+            source_title=meta.get("title", ""),
+            visual_grounding_version=vg_version,
+            reindex_required=reindex_required,
+            grounding_available=not reindex_required and n_cached > 0,
+            n_pages=meta.get("n_pages", 0),
+            n_chunks_with_bbox=meta.get("n_chunks_with_bbox", 0),
+            page_images_cached=n_cached,
+        )
+
+    @app.get("/visual-grounding/settings")
+    async def visual_grounding_settings_ep() -> JSONResponse:
+        """Return visual grounding configuration."""
+        s = get_settings()
+        return JSONResponse({
+            "enabled": s.visual.enabled,
+            "page_rendering_enabled": s.visual.page_rendering_enabled,
+            "render_dpi": s.visual.render_dpi,
+            "max_cached_pages": s.visual.max_cached_pages,
+            "visual_retrieval_enabled": s.visual.visual_retrieval_enabled,
+            "visual_retrieval_provider": s.visual.visual_retrieval_provider,
+            "metadata_version": s.visual.metadata_version,
+        })
 
     return app
 
