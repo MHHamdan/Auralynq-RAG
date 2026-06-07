@@ -88,15 +88,80 @@ def _parse_html(path: Path) -> ParsedDoc:
     return ParsedDoc(text=normalize_text(text), source_type=SourceType.html, title=title)
 
 
+def _extract_pdf_layout_blocks(path: Path) -> list[dict]:
+    """Extract layout blocks with bboxes using pdfplumber (optional dep).
+
+    Returns [] if pdfplumber is not installed — callers fall back to page-level grounding.
+    Each block: {page, bbox, normalized_bbox, text, block_type, reading_order, page_width, page_height}
+    """
+    try:
+        import pdfplumber  # type: ignore[import-untyped]
+    except ImportError:
+        return []
+
+    blocks: list[dict] = []
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            for page_num, page in enumerate(pdf.pages, start=1):
+                w = float(page.width or 1)
+                h = float(page.height or 1)
+                words = page.extract_words(x_tolerance=3, y_tolerance=3) or []
+                if not words:
+                    continue
+                # Cluster words into lines, then merge into block spans
+                lines: list[list[dict]] = []
+                cur_line: list[dict] = []
+                last_y = None
+                for word in sorted(words, key=lambda w_: (round(w_["top"] / 5), w_["x0"])):
+                    y_key = round(word["top"] / 5)
+                    if last_y is not None and y_key != last_y:
+                        if cur_line:
+                            lines.append(cur_line)
+                        cur_line = []
+                    cur_line.append(word)
+                    last_y = y_key
+                if cur_line:
+                    lines.append(cur_line)
+
+                for order, line in enumerate(lines):
+                    if not line:
+                        continue
+                    text = " ".join(w_["text"] for w_ in line)
+                    x0 = min(w_["x0"] for w_ in line)
+                    y0 = min(w_["top"] for w_ in line)
+                    x1 = max(w_["x1"] for w_ in line)
+                    y1 = max(w_["bottom"] for w_ in line)
+                    blocks.append({
+                        "page": page_num,
+                        "bbox": [x0, y0, x1, y1],
+                        "normalized_bbox": [x0 / w, y0 / h, x1 / w, y1 / h],
+                        "text": text,
+                        "block_type": "paragraph",
+                        "reading_order": order,
+                        "page_width": w,
+                        "page_height": h,
+                        "confidence": 1.0,
+                    })
+    except Exception:
+        return []
+    return blocks
+
+
 def _parse_pdf(path: Path) -> ParsedDoc:
     from pypdf import PdfReader
 
     reader = PdfReader(str(path))
     parts: list[str] = []
     pages: list[tuple[int, int, int]] = []
+    page_dims: list[dict] = []
     cursor = 0
     for i, page in enumerate(reader.pages, start=1):
         text = normalize_text(page.extract_text() or "")
+        # Store page dimensions from the PDF mediabox
+        mb = page.mediabox
+        w = float(mb.width) if mb else 612.0
+        h = float(mb.height) if mb else 792.0
+        page_dims.append({"page": i, "width": w, "height": h})
         if not text:
             continue
         parts.append(text)
@@ -106,12 +171,21 @@ def _parse_pdf(path: Path) -> ParsedDoc:
     full = "\n\n".join(parts)
     meta: object = reader.metadata or {}
     title = getattr(meta, "title", None) or path.stem
+
+    # Try extracting layout blocks with bboxes via pdfplumber
+    layout_blocks = _extract_pdf_layout_blocks(path)
+
     return ParsedDoc(
         text=full,
         source_type=SourceType.pdf,
         title=str(title),
         pages=pages,
-        metadata={"n_pages": len(reader.pages)},
+        metadata={
+            "n_pages": len(reader.pages),
+            "page_dimensions": page_dims,
+            "layout_blocks": layout_blocks,
+            "has_layout_blocks": len(layout_blocks) > 0,
+        },
     )
 
 

@@ -97,6 +97,21 @@ class TelemetrySettings(BaseSettings):
     pii_filter: bool = True
 
 
+class VisualGroundingSettings(BaseSettings):
+    enabled: bool = True
+    # Render and cache PDF page images for source view overlay
+    page_rendering_enabled: bool = True
+    render_dpi: int = 144
+    max_cached_pages: int = 500
+    # Sub-dir under data_dir for page image cache
+    page_cache_subdir: str = "page_cache"
+    # Enable experimental ColPali-style visual retrieval
+    visual_retrieval_enabled: bool = False
+    visual_retrieval_provider: Literal["none", "colpali", "local_vlm"] = "none"
+    # Grounding metadata schema version — bump when schema changes requiring reindex
+    metadata_version: int = 1
+
+
 class Settings(BaseSettings):
     """Root settings object. Instantiate via :func:`get_settings`."""
 
@@ -125,6 +140,7 @@ class Settings(BaseSettings):
     voice: VoiceSettings = Field(default_factory=VoiceSettings)
     serve: ServeSettings = Field(default_factory=ServeSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
+    visual: VisualGroundingSettings = Field(default_factory=VisualGroundingSettings)
 
     # When true, blocks all outbound calls to external LLM/embedding/telemetry
     # providers regardless of which API keys are set. Guarantees zero data
@@ -147,9 +163,15 @@ class Settings(BaseSettings):
     def storage_dir(self) -> Path:
         return self.data_dir / "storage"
 
+    @property
+    def page_cache_dir(self) -> Path:
+        return self.data_dir / self.visual.page_cache_subdir
+
     def ensure_dirs(self) -> None:
         for p in (self.data_dir, self.reports_dir, self.index_dir, self.storage_dir):
             p.mkdir(parents=True, exist_ok=True)
+        if self.visual.page_rendering_enabled:
+            self.page_cache_dir.mkdir(parents=True, exist_ok=True)
 
 
 @functools.lru_cache(maxsize=1)

@@ -76,6 +76,10 @@ export interface AnswerResult {
   insufficient_evidence_reason?: InsufficientReason | null;
   warnings?: string[];
   provider_status?: { subsystem: string; provider: string }[];
+  visual_grounding?: VisualGrounding | null;
+  selected_rag_strategy?: string | null;
+  fallback_strategy?: string | null;
+  strategy_warnings?: string[];
 }
 
 export interface CorpusSummary {
@@ -123,6 +127,7 @@ export type StreamEvent =
       fallback_strategy?: string | null;
       fallback_reason?: string | null;
       strategy_warnings?: string[];
+      visual_grounding?: VisualGrounding | null;
     };
 
 export interface RAGStrategyInfo {
@@ -392,6 +397,93 @@ export async function postEvalFeedback(payload: {
 export async function exportEvalRun() {
   const r = await fetch(`${API_BASE}/eval/export-run`, { method: "POST", cache: "no-store" });
   if (!r.ok) throw new Error(`export failed: ${r.status}`);
+  return r.json();
+}
+
+// --- Visual grounding -------------------------------------------------------
+
+export interface VisualHighlight {
+  citation_id: string;
+  chunk_id: string;
+  doc_id: string;
+  source_title: string;
+  page: number | null;
+  page_image_url: string;
+  bbox: [number, number, number, number] | null;
+  normalized_bbox: [number, number, number, number] | null;
+  color_index: number;
+  snippet: string;
+  support_type: "span" | "page" | "unavailable" | "graph";
+  relevance: number;
+  confidence: number;
+  block_type: string;
+  grounding_version: number;
+  reindex_required: boolean;
+}
+
+export interface ClaimGrounding {
+  claim_id: string;
+  text: string;
+  citation_ids: string[];
+  support_status: "supported" | "partial" | "weak" | "unsupported";
+  visual_evidence_ids: string[];
+  confidence: number;
+}
+
+export interface VisualGrounding {
+  highlights: VisualHighlight[];
+  claim_grounding: ClaimGrounding[];
+  warnings: string[];
+  visual_grounding_available: boolean;
+  grounding_stage: "span" | "page" | "unavailable";
+}
+
+export interface PageInfo {
+  page: number;
+  width: number;
+  height: number;
+  image_url: string;
+  has_image: boolean;
+}
+
+export interface DocumentPagesResponse {
+  doc_id: string;
+  source_title: string;
+  source_type: string;
+  n_pages: number;
+  pages: PageInfo[];
+  visual_grounding_version: number;
+  reindex_required: boolean;
+}
+
+export async function fetchDocumentPages(docId: string): Promise<DocumentPagesResponse> {
+  const r = await fetch(`${API_BASE}/documents/${encodeURIComponent(docId)}/pages`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`document pages failed: ${r.status}`);
+  return r.json();
+}
+
+export function documentPageImageUrl(docId: string, page: number): string {
+  return `${API_BASE}/documents/${encodeURIComponent(docId)}/pages/${page}/image`;
+}
+
+export async function fetchGroundingStatus(docId: string) {
+  const r = await fetch(`${API_BASE}/documents/${encodeURIComponent(docId)}/grounding-status`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`grounding status failed: ${r.status}`);
+  return r.json();
+}
+
+export interface GroundingSummary {
+  enabled: boolean;
+  page_rendering_enabled: boolean;
+  total_docs: number;
+  grounded_docs: number;
+  needs_reindex: number;
+  visual_grounding_version: number;
+}
+
+export async function fetchGroundingSummary(): Promise<GroundingSummary> {
+  const r = await fetch(`${API_BASE}/corpus/grounding-summary`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`grounding summary failed: ${r.status}`);
   return r.json();
 }
 
