@@ -12,9 +12,14 @@ const POINTS: { title: string; body: string; icon: ReactNode }[] = [
     icon: <path d="M12 3 2 21h20L12 3ZM12 9v5M12 17h.01" />,
   },
   {
-    title: "Evidence & trace are visible",
-    body: "Every answer ships with its citations, evidence coverage, retrieval paths and a step-by-step trace. You can always check exactly how a claim was reached.",
-    icon: <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />,
+    title: "Auralynq-RAG: observable agentic pipeline",
+    body: "Auralynq-RAG is our own RAG strategy: calibrated confidence, intent routing, evidence sufficiency control, citation validation, and hallucination risk scoring — with a full trace for every query.",
+    icon: <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />,
+  },
+  {
+    title: "Choose your RAG algorithm",
+    body: "Switch between 13+ strategies at runtime: Naive Vector, Hybrid, GraphRAG, PathRAG, and the full Auralynq-RAG pipeline — each with an availability status and latency estimate.",
+    icon: <path d="M4 19V5M4 19h16M8 16v-5M12 16V8M16 16v-3" />,
   },
   {
     title: "Voice and text, one pipeline",
@@ -22,14 +27,19 @@ const POINTS: { title: string; body: string; icon: ReactNode }[] = [
     icon: <path d="M9 3h6v8a3 3 0 0 1-6 0Z M5 11a7 7 0 0 0 14 0M12 18v3" />,
   },
   {
+    title: "Research-ready open RAG lab",
+    body: "Every query produces a structured trace log with retrieval metrics, citation coverage, and confidence scores — ready to export for RAGAS evaluation and strategy comparison.",
+    icon: <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />,
+  },
+  {
+    title: "Evidence & trace always visible",
+    body: "A persistent Agent Activity rail shows live retrieval status, selected algorithm, coverage, confidence, and risk — no tab-clicking required.",
+    icon: <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />,
+  },
+  {
     title: "Open-source & provider-agnostic",
     body: "MIT-spirited, inspectable, swappable. Start fully local, then bring your own Cohere / OpenAI / Anthropic keys to upgrade any single layer without lock-in.",
     icon: <path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4Z M9 12l2 2 4-4" />,
-  },
-  {
-    title: "Observable like a real platform",
-    body: "Phoenix / Langfuse-style tracing, evidence-coverage scoring and per-step latencies are built in — observability isn't an afterthought, it's part of the answer.",
-    icon: <path d="M4 19V5M4 19h16M8 16v-5M12 16V8M16 16v-3" />,
   },
 ];
 
@@ -61,7 +71,7 @@ export function Differentiators() {
           product.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {POINTS.map((p) => (
           <div key={p.title} className="card card-hover flex gap-3 p-5">
             <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-edge bg-panel2">

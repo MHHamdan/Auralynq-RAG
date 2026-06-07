@@ -12,8 +12,10 @@ import {
   fetchSuggestions,
   health,
   statusSummary,
+  corpusClearPreview,
+  corpusClearConfirm,
 } from "@/lib/api";
-import { isCorpusManagementQuestion, isInventoryQuestion } from "@/lib/format";
+import { isInventoryQuestion } from "@/lib/format";
 import { Message, type Turn } from "@/components/Message";
 import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
@@ -22,6 +24,9 @@ import { EvalPanel } from "@/components/EvalPanel";
 import { AppBar } from "@/components/chat/AppBar";
 import { Composer, type ChatMode } from "@/components/chat/Composer";
 import { InspectorOverview, type RecentMeta } from "@/components/chat/InspectorOverview";
+import { AgentActivityRail, type AgentActivity } from "@/components/chat/AgentActivityRail";
+import { SettingsPanel, useUISettings } from "@/components/chat/SettingsPanel";
+import { loadStoredStrategy } from "@/components/chat/AlgorithmSelector";
 
 const FALLBACK_SUGGESTIONS = [
   "Summarize the main topics in the indexed documents.",
@@ -30,6 +35,13 @@ const FALLBACK_SUGGESTIONS = [
 const STORE_KEY = "auralynq.chat.v1";
 const TABS = ["overview", "trace", "evidence", "ingest", "eval"] as const;
 type Tab = (typeof TABS)[number];
+
+function computeRisk(confidence: number, coverage: number): AgentActivity["riskLevel"] {
+  if (confidence >= 0.8 && coverage >= 0.8) return "none";
+  if (confidence >= 0.6 && coverage >= 0.6) return "low";
+  if (confidence >= 0.4) return "medium";
+  return "high";
+}
 
 export default function Chat() {
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -51,13 +63,28 @@ export default function Chat() {
   const [phoenixUrl, setPhoenixUrl] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean | null>(null);
   const [vectors, setVectors] = useState<number | null>(null);
+  const [entities, setEntities] = useState<number | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [corpusRefreshKey, setCorpusRefreshKey] = useState(0);
+  const [ragStrategy, setRagStrategy] = useState<string>("auralynq_rag");
+  const [showSettings, setShowSettings] = useState(false);
+  const [agentActivity, setAgentActivity] = useState<AgentActivity>({ phase: "idle" });
+  // new-chat corpus-clear confirmation state
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [clearLoading, setClearLoading] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+
+  const { settings, update: updateSettings } = useUISettings();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // --- bootstrap: status, suggestions, persisted conversation -------------
+  // Load persisted RAG strategy
+  useEffect(() => {
+    setRagStrategy(loadStoredStrategy());
+  }, []);
+
+  // Bootstrap: status, suggestions, persisted conversation
   useEffect(() => {
     health()
       .then(() => setOnline(true))
@@ -71,11 +98,12 @@ export default function Chat() {
       .then((s) => {
         setPhoenixUrl(s?.tracing?.phoenix_endpoint || null);
         const vecs = s?.index?.vectors ?? s?.corpus?.vector_count ?? null;
+        const ents = s?.corpus?.entity_count ?? null;
         setVectors(vecs);
-        // If corpus is empty, stale chat turns referencing old documents are
-        // misleading — wipe them so the UI starts fresh after make fresh / clear.
+        setEntities(ents);
         if (vecs === 0) {
           try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+          setAgentActivity({ phase: "corpus_empty" });
           return;
         }
         try {
@@ -103,13 +131,13 @@ export default function Chat() {
       });
   }, []);
 
-  // Persist after each completed turn (not per token).
+  // Persist after each completed turn
   useEffect(() => {
     if (streaming) return;
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify(turns.slice(-50)));
     } catch {
-      /* quota / private mode — non-fatal */
+      /* quota / private mode */
     }
   }, [turns, streaming]);
 
@@ -138,6 +166,7 @@ export default function Chat() {
     setSeeds([]);
     setCoverage(0);
     setLastStatus("answered");
+    setAgentActivity({ phase: "query_received", algorithm: ragStrategy });
     const ac = new AbortController();
     abortRef.current = ac;
     try {
@@ -149,9 +178,17 @@ export default function Chat() {
             setSeeds(e.seeds || []);
             setCoverage(e.evidence_coverage ?? 0);
             setLastRoute(e.route);
-            setTab(e.route === "fast" ? "trace" : "evidence");
+            const isSystemRoute = ["corpus_inventory", "corpus_management", "app_help"].includes(e.route);
+            setAgentActivity({
+              phase: isSystemRoute ? "system_route" : "retrieval_started",
+              route: e.route,
+              algorithm: (e as any).rag_strategy || ragStrategy,
+              coverage: e.evidence_coverage ?? 0,
+            });
+            setTab(e.route === "fast" ? "overview" : "evidence");
             patchLast({ route: e.route, rationale: e.rationale });
           } else if (e.type === "token") {
+            setAgentActivity((prev) => ({ ...prev, phase: "generating" }));
             setTurns((t) => {
               const c = [...t];
               c[c.length - 1] = { ...c[c.length - 1], text: c[c.length - 1].text + e.text };
@@ -160,9 +197,23 @@ export default function Chat() {
           } else if (e.type === "final") {
             setTrace(e.trace || []);
             setTraceSteps(e.trace_steps || []);
-            setCoverage(e.evidence_coverage ?? 0);
-            setLastConfidence(e.confidence ?? 0);
+            const finalCov = e.evidence_coverage ?? 0;
+            const finalConf = e.confidence ?? 0;
+            setCoverage(finalCov);
+            setLastConfidence(finalConf);
             setLastStatus(e.status || "answered");
+            const risk = computeRisk(finalConf, finalCov);
+            setAgentActivity({
+              phase: e.status === "insufficient_evidence" ? "abstained" : "done",
+              route: lastRoute,
+              algorithm: (e as any).selected_rag_strategy || ragStrategy,
+              coverage: finalCov,
+              confidence: finalConf,
+              riskLevel: risk,
+              latencyMs: e.elapsed_ms,
+              warnings: e.warnings,
+              fallback: (e as any).fallback_strategy || null,
+            });
             patchLast({
               text: e.answer,
               citations: e.citations,
@@ -185,24 +236,25 @@ export default function Chat() {
             c[c.length - 1] = { ...last, text: "⏹ Stopped." };
           return c;
         });
+        setAgentActivity({ phase: "idle" });
       } else {
         patchLast({ text: `Couldn't reach the backend: ${(err as Error).message}`, error: true });
+        setAgentActivity({ phase: "error", error: (err as Error).message });
       }
     } finally {
       setStreaming(false);
       setHasAnswered(true);
       abortRef.current = null;
     }
-  }, []);
+  }, [ragStrategy, lastRoute]);
 
-  // Inventory questions are answered from corpus metadata, not the evidence
-  // pipeline — so "what's in my collection?" never reads as a failure.
   const answerInventory = useCallback(async (q: string) => {
+    setAgentActivity({ phase: "system_route", route: "corpus_inventory" });
     let summary: CorpusSummary | null = null;
     try {
       summary = await corpusSummary();
     } catch {
-      /* fall through to a graceful message */
+      /* fall through */
     }
     setTurns((t) => {
       const c = [...t];
@@ -217,9 +269,9 @@ export default function Chat() {
     });
     setHasAnswered(true);
     setTab("overview");
+    setAgentActivity({ phase: "done", route: "corpus_inventory" });
   }, []);
 
-  // Shape the outgoing query by composer mode.
   const shapeQuery = useCallback((q: string, m: ChatMode): string => {
     const t = q.trim();
     if (m === "summarize") {
@@ -263,34 +315,81 @@ export default function Chat() {
     flash("Generation stopped");
   }, [flash]);
 
-  const newChat = useCallback(() => {
-    abortRef.current?.abort();
-    setTurns([]);
-    setTrace([]);
-    setPaths([]);
-    setSeeds([]);
-    setHasAnswered(false);
-    setTab("overview");
-    try {
-      localStorage.removeItem(STORE_KEY);
-    } catch {
-      /* ignore */
+  const handleNewChat = useCallback(() => {
+    const m = settings.newChatMode;
+    if (m === "chat_only") {
+      abortRef.current?.abort();
+      setTurns([]);
+      setTrace([]);
+      setPaths([]);
+      setSeeds([]);
+      setHasAnswered(false);
+      setTab("overview");
+      setAgentActivity({ phase: "idle" });
+      try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+      flash("New chat");
+    } else if (m === "new_workspace") {
+      abortRef.current?.abort();
+      setTurns([]);
+      setTrace([]);
+      setPaths([]);
+      setSeeds([]);
+      setHasAnswered(false);
+      setTab("ingest");
+      setShowPanel(true);
+      setAgentActivity({ phase: "idle" });
+      try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+      flash("New workspace — manage your corpus in the Ingest panel");
+    } else {
+      // clear_corpus — open confirmation dialog
+      setClearConfirmOpen(true);
+      setClearError(null);
     }
-    flash("New chat");
+  }, [settings.newChatMode, flash]);
+
+  const executeClearCorpus = useCallback(async () => {
+    setClearLoading(true);
+    setClearError(null);
+    try {
+      const preview = await corpusClearPreview();
+      await corpusClearConfirm(preview.confirmation_phrase);
+      // Clear all local state
+      abortRef.current?.abort();
+      setTurns([]);
+      setTrace([]);
+      setPaths([]);
+      setSeeds([]);
+      setHasAnswered(false);
+      setTab("overview");
+      setAgentActivity({ phase: "corpus_empty" });
+      try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+      // Refresh inventory
+      const [s, sug] = await Promise.all([statusSummary(), fetchSuggestions(4)]);
+      setVectors(s?.index?.vectors ?? s?.corpus?.vector_count ?? 0);
+      setEntities(s?.corpus?.entity_count ?? 0);
+      if (sug.suggestions?.length) setSuggestions(sug.suggestions);
+      setCorpusRefreshKey((k) => k + 1);
+      setClearConfirmOpen(false);
+      flash("Corpus cleared — fresh workspace ready");
+    } catch (err) {
+      setClearError((err as Error).message || "Clear failed");
+    } finally {
+      setClearLoading(false);
+    }
   }, [flash]);
 
-  // Global shortcuts: Esc stops a stream, Cmd/Ctrl+K starts a new chat.
+  // Global shortcuts: Esc stops, Cmd+K new chat
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && streaming) stop();
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        newChat();
+        handleNewChat();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [streaming, stop, newChat]);
+  }, [streaming, stop, handleNewChat]);
 
   function onVoice(r: AnswerResult & { transcript?: string }) {
     setTurns((t) => [
@@ -309,26 +408,20 @@ export default function Chat() {
     setTab("ingest");
   }, []);
 
-  // Refresh inventory/suggestions after corpus deletion
   const onCorpusDeleted = useCallback(async () => {
     setPaths([]);
     setSeeds([]);
     try {
-      const [s, sug] = await Promise.all([
-        statusSummary(),
-        fetchSuggestions(4),
-      ]);
-      setVectors(s?.index?.vectors ?? s?.corpus?.vector_count ?? 0);
+      const [s, sug] = await Promise.all([statusSummary(), fetchSuggestions(4)]);
+      const vecs = s?.index?.vectors ?? s?.corpus?.vector_count ?? 0;
+      setVectors(vecs);
+      setEntities(s?.corpus?.entity_count ?? 0);
       if (sug.suggestions?.length) setSuggestions(sug.suggestions);
+      if (vecs === 0) setAgentActivity({ phase: "corpus_empty" });
     } catch {
       setVectors(0);
     }
-    // Clear stale localStorage chat so old corpus-referencing turns don't persist
-    try {
-      localStorage.removeItem(STORE_KEY);
-    } catch {
-      /* ignore */
-    }
+    try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
     setCorpusRefreshKey((k) => k + 1);
     flash("Corpus updated — inventory refreshed");
   }, [flash]);
@@ -339,19 +432,79 @@ export default function Chat() {
 
   const lastAssistant = [...turns].reverse().find((t) => t.role === "assistant");
 
+  const traceAlwaysVisible = settings.traceVisibility === "always" || settings.traceVisibility === "auto";
+
   return (
     <div className="flex h-[100dvh] flex-col bg-ink text-fg">
       <AppBar
         online={online}
         vectors={vectors}
-        onNewChat={newChat}
+        entities={entities}
+        onNewChat={handleNewChat}
         onToggleInspector={() => setShowPanel((v) => !v)}
         inspectorOpen={showPanel}
+        onToggleSettings={() => setShowSettings((v) => !v)}
       />
 
-      {/* Full-viewport grid: chat | inspector. Inspector always visible on lg+.
-          Inspector width grows with viewport so large screens stay filled. */}
-      <div className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_clamp(360px,30vw,560px)] xl:grid-cols-[minmax(0,1fr)_clamp(400px,32vw,640px)]">
+      {/* Settings overlay */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-start justify-end">
+          <div
+            className="fixed inset-0 bg-ink/60 backdrop-blur-sm"
+            onClick={() => setShowSettings(false)}
+          />
+          <div className="relative z-10 mt-14 mr-3 w-80 rounded-xl border border-edge bg-panel shadow-lg">
+            <div className="scroll-thin max-h-[80vh] overflow-y-auto p-3">
+              <SettingsPanel
+                settings={settings}
+                onChange={updateSettings}
+                onClose={() => setShowSettings(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear corpus confirmation dialog */}
+      {clearConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-ink/70 backdrop-blur-sm"
+            onClick={() => !clearLoading && setClearConfirmOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-edge bg-panel p-6 shadow-xl">
+            <h2 className="mb-2 text-base font-bold text-fg">Clear corpus and start fresh?</h2>
+            <p className="mb-4 text-sm text-fg2">
+              This will remove all indexed documents, vectors, and entities. Your chat history will also be cleared.
+              This action cannot be undone.
+            </p>
+            {clearError && (
+              <p className="mb-3 rounded border border-bad/30 bg-bad/10 p-2 text-sm text-bad">{clearError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                className="btn-ghost flex-1"
+                onClick={() => setClearConfirmOpen(false)}
+                disabled={clearLoading}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 rounded-xl border border-bad/40 bg-bad/10 px-4 py-2 text-sm font-medium text-bad transition hover:bg-bad/20 disabled:opacity-50"
+                onClick={executeClearCorpus}
+                disabled={clearLoading}
+              >
+                {clearLoading ? "Clearing…" : "Clear everything"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-viewport grid: chat | inspector */}
+      <div
+        className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_var(--inspector-width,clamp(360px,30vw,560px))]"
+      >
         {/* Conversation column */}
         <section className="flex min-h-0 flex-col">
           <div
@@ -361,7 +514,7 @@ export default function Chat() {
             aria-label="Conversation"
             className="scroll-thin flex-1 overflow-y-auto px-3 py-4 md:px-6 xl:px-8"
           >
-            <div className="mx-auto max-w-3xl space-y-4 xl:max-w-4xl 2xl:max-w-5xl">
+            <div className="mx-auto max-w-[var(--chat-max-width,900px)] space-y-4">
               {turns.length === 0 ? (
                 <EmptyConversation suggestions={suggestions} onAsk={send} onIngest={openIngest} />
               ) : (
@@ -382,7 +535,7 @@ export default function Chat() {
           </div>
 
           {/* sticky composer */}
-          <div className="mx-auto w-full max-w-3xl px-2 pb-2 xl:max-w-4xl 2xl:max-w-5xl">
+          <div className="mx-auto w-full max-w-[var(--chat-max-width,900px)] px-2 pb-2">
             <Composer
               input={input}
               setInput={setInput}
@@ -393,6 +546,8 @@ export default function Chat() {
               onStop={stop}
               onVoiceResult={onVoice}
               onUploadClick={openIngest}
+              ragStrategy={ragStrategy}
+              onRagStrategyChange={setRagStrategy}
             />
           </div>
         </section>
@@ -405,6 +560,17 @@ export default function Chat() {
               : "hidden min-h-0 flex-col border-l border-edge bg-panel/60 lg:flex"
           }
         >
+          {/* Always-visible Agent Activity Rail */}
+          {traceAlwaysVisible && (
+            <div className="border-b border-edge px-3 py-2">
+              <AgentActivityRail
+                activity={agentActivity}
+                traceSteps={traceSteps}
+                streaming={streaming}
+              />
+            </div>
+          )}
+
           <div className="flex items-center gap-1 overflow-x-auto border-b border-edge px-3 py-2">
             {TABS.map((t) => (
               <button
@@ -485,21 +651,21 @@ function EmptyConversation({
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center gap-6 text-center">
       <div className="space-y-2">
-        <div className="text-4xl" aria-hidden>
+        <div className="text-5xl" aria-hidden>
           🎙️
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-fg">Talk to your data</h1>
-        <p className="mx-auto max-w-md text-fg2">
-          Grounded, cited answers from your indexed documents — by text or voice. Ask a question or
-          pick a suggestion to begin.
+        <h1 className="text-3xl font-bold tracking-tight text-fg">Talk to your data</h1>
+        <p className="mx-auto max-w-lg text-base text-fg2">
+          Grounded, cited answers from your indexed documents — by text or voice. Observable agentic
+          RAG with full trace and evidence.
         </p>
       </div>
-      <div className="flex w-full max-w-xl flex-col gap-2 xl:max-w-2xl">
+      <div className="flex w-full max-w-2xl flex-col gap-2">
         {suggestions.slice(0, 4).map((s) => (
           <button
             key={s}
             onClick={() => onAsk(s)}
-            className="card card-hover px-4 py-3 text-left text-sm text-fg2"
+            className="card card-hover px-4 py-3.5 text-left text-sm text-fg2"
           >
             <span className="mr-2 text-brand" aria-hidden>
               ↳

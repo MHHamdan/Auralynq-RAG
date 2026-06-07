@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
+import { AlgorithmSelector } from "@/components/chat/AlgorithmSelector";
 
 export type ChatMode = "corpus" | "web" | "inventory" | "summarize";
 
@@ -13,8 +14,8 @@ export const MODES: { id: ChatMode; label: string; hint: string; enabled: boolea
 
 const PLACEHOLDER: Record<ChatMode, string> = {
   corpus: "Ask Auralynq about your documents…",
-  summarize: "Summarize a topic (e.g. “key findings on infection control”)…",
-  inventory: "Ask about your collection (e.g. “any Arabic documents?”)…",
+  summarize: "Summarize a topic (e.g. ‘key findings on infection control’)…",
+  inventory: "Ask about your collection (e.g. ‘any Arabic documents?’)…",
   web: "Web search is disabled",
 };
 
@@ -28,6 +29,8 @@ export function Composer({
   onStop,
   onVoiceResult,
   onUploadClick,
+  ragStrategy,
+  onRagStrategyChange,
 }: {
   input: string;
   setInput: (v: string) => void;
@@ -38,6 +41,8 @@ export function Composer({
   onStop: () => void;
   onVoiceResult: (r: any) => void;
   onUploadClick: () => void;
+  ragStrategy: string;
+  onRagStrategyChange: (id: string) => void;
 }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -51,7 +56,7 @@ export function Composer({
 
   return (
     <div className="border-t border-edge bg-panel/95 px-3 py-3 backdrop-blur md:px-4">
-      {/* mode selector */}
+      {/* mode + algorithm selector row */}
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         {MODES.map((m) => (
           <button
@@ -71,6 +76,9 @@ export function Composer({
             {!m.enabled && <span className="ml-1 opacity-70">·off</span>}
           </button>
         ))}
+        <div className="ml-auto">
+          <AlgorithmSelector value={ragStrategy} onChange={onRagStrategyChange} />
+        </div>
       </div>
 
       <div className="rounded-2xl border border-edge bg-panel2 p-2 shadow-sm transition focus-within:border-brand/60">

@@ -102,6 +102,7 @@ export type StreamEvent =
       path_evidence: PathEvidence[];
       detected_entities?: string[];
       evidence_coverage?: number;
+      rag_strategy?: string;
     }
   | { type: "token"; text: string }
   | {
@@ -118,7 +119,40 @@ export type StreamEvent =
       suggested_questions?: string[];
       insufficient_evidence_reason?: InsufficientReason | null;
       warnings?: string[];
+      selected_rag_strategy?: string;
+      fallback_strategy?: string | null;
+      fallback_reason?: string | null;
+      strategy_warnings?: string[];
     };
+
+export interface RAGStrategyInfo {
+  id: string;
+  name: string;
+  description: string;
+  status: "available" | "experimental" | "planned";
+  required_features: string[];
+  supports_streaming: boolean;
+  supports_graph: boolean;
+  supports_rerank: boolean;
+  supports_web: boolean;
+  supports_abstention: boolean;
+  expected_latency: "fast" | "medium" | "slow";
+  best_for: string;
+  limitations: string;
+  available: boolean;
+  unavailable_reason: string | null;
+}
+
+export interface EvalMetrics {
+  strategy?: string;
+  route?: string;
+  confidence?: number;
+  evidence_coverage?: number;
+  citations?: number;
+  elapsed_ms?: number;
+  status?: string;
+  warnings?: string[];
+}
 
 export async function health() {
   const r = await fetch(`${API_BASE}/health`, { cache: "no-store" });
@@ -320,4 +354,78 @@ export async function corpusDeleteDocumentConfirm(docId: string, phrase: string)
     throw new Error(detail.detail || `confirm failed: ${r.status}`);
   }
   return r.json();
+}
+
+// --- RAG strategies -------------------------------------------------------
+
+export async function fetchRAGStrategies(): Promise<{ strategies: RAGStrategyInfo[]; default_strategy: string }> {
+  const r = await fetch(`${API_BASE}/rag/strategies`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`strategies failed: ${r.status}`);
+  return r.json();
+}
+
+// --- Eval -----------------------------------------------------------------
+
+export async function evalLast(): Promise<EvalMetrics | null> {
+  const r = await fetch(`${API_BASE}/eval/last`, { cache: "no-store" });
+  if (!r.ok) return null;
+  const data = await r.json();
+  if (data.status === "pending") return null;
+  return data as EvalMetrics;
+}
+
+export async function postEvalFeedback(payload: {
+  answer_rating?: number;
+  citation_correct?: boolean;
+  answer_supported?: boolean;
+  notes?: string;
+}) {
+  const r = await fetch(`${API_BASE}/eval/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) throw new Error(`feedback failed: ${r.status}`);
+  return r.json();
+}
+
+export async function exportEvalRun() {
+  const r = await fetch(`${API_BASE}/eval/export-run`, { method: "POST", cache: "no-store" });
+  if (!r.ok) throw new Error(`export failed: ${r.status}`);
+  return r.json();
+}
+
+// Stream with strategy selection
+export async function askStreamWithStrategy(
+  question: string,
+  strategyId: string | null,
+  onEvent: (e: StreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const r = await fetch(`${API_BASE}/query/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, rag_strategy: strategyId }),
+    signal,
+  });
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`stream failed: ${r.status} ${detail.slice(0, 200)}`);
+  }
+  if (!r.body) throw new Error("no stream body");
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const { events, rest } = consumeSSE<StreamEvent>(buf);
+    buf = rest;
+    for (const ev of events) onEvent(ev);
+  }
+  if (buf.trim()) {
+    const ev = parseSSEFrame<StreamEvent>(buf);
+    if (ev) onEvent(ev);
+  }
 }

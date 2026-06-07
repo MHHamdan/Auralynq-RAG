@@ -153,4 +153,87 @@ t("design tokens define all three themes with status + text scale", () => {
   has(css, ".evidence-strong");
 });
 
+// ---- new: trace rail, algorithm selector, settings -----------------------
+t("agent activity rail is always visible in chat inspector", () => {
+  const page = read("app/chat/page.tsx");
+  has(page, "AgentActivityRail");
+  has(page, "traceAlwaysVisible");
+  has(page, "agentActivity");
+});
+
+t("agent activity rail has all required states", () => {
+  const rail = read("components/chat/AgentActivityRail.tsx");
+  has(rail, "idle");
+  has(rail, "generating");
+  has(rail, "abstained");
+  has(rail, "corpus_empty");
+  has(rail, "system_route");
+  has(rail, "TraceMiniTimeline");
+  has(rail, "AlgorithmBadge");
+  has(rail, "RiskBadge");
+  has(rail, "Ready — ask a question to see agent activity");
+});
+
+t("algorithm selector renders strategy dropdown near composer", () => {
+  const sel = read("components/chat/AlgorithmSelector.tsx");
+  has(sel, "RAG Algorithm");
+  has(sel, "Available");
+  has(sel, "Experimental");
+  has(sel, "Planned");
+  has(sel, "auralynq_rag");
+  has(sel, "fetchRAGStrategies");
+  has(sel, "auralynq.rag_strategy.v1");
+});
+
+t("composer includes algorithm selector", () => {
+  const c = read("components/chat/Composer.tsx");
+  has(c, "AlgorithmSelector");
+  has(c, "ragStrategy");
+  has(c, "onRagStrategyChange");
+});
+
+t("settings panel has all configurable options", () => {
+  const sp = read("components/chat/SettingsPanel.tsx");
+  has(sp, "Font Size");
+  has(sp, "Density");
+  has(sp, "Inspector Width");
+  has(sp, "Trace Visibility");
+  has(sp, "New Chat Behavior");
+  has(sp, "chat_only");
+  has(sp, "clear_corpus");
+  has(sp, "--font-scale");
+  has(sp, "--inspector-width");
+});
+
+t("css defines font-scale and density CSS variables", () => {
+  const css = read("app/globals.css");
+  has(css, "--font-scale");
+  has(css, "--density-scale");
+  has(css, "--inspector-width");
+  has(css, "--chat-max-width");
+});
+
+t("new chat supports clear-corpus mode with confirmation", () => {
+  const page = read("app/chat/page.tsx");
+  has(page, "clear_corpus");
+  has(page, "clearConfirmOpen");
+  has(page, "executeClearCorpus");
+  has(page, "This will remove all indexed documents");
+});
+
+t("app bar shows entities count and settings button", () => {
+  const bar = read("components/chat/AppBar.tsx");
+  has(bar, "entities");
+  has(bar, "onToggleSettings");
+  has(bar, "Display settings");
+});
+
+t("eval panel shows last query metrics from backend", () => {
+  const ev = read("components/EvalPanel.tsx");
+  has(ev, "evalLast");
+  has(ev, "Last query metrics");
+  has(ev, "exportEvalRun");
+  has(ev, "Strategy comparison");
+});
+
 console.log(`\n${passed} ui structure tests passed`);
