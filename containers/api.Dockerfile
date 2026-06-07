@@ -8,9 +8,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# System deps for audio + parsing (kept minimal). ffmpeg powers audio decode.
+# System deps for audio + parsing + PDF page rendering.
+# poppler-utils provides pdftoppm which pdf2image uses to render PDF pages to PNG.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg libsndfile1 curl procps \
+    && apt-get install -y --no-install-recommends ffmpeg libsndfile1 curl procps poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies first for layer caching. faster-whisper + soundfile give
