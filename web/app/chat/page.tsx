@@ -23,6 +23,7 @@ import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
 import { EvalPanel } from "@/components/EvalPanel";
 import { SourceViewPanel } from "@/components/SourceViewPanel";
+import { SourceWorkspaceModal } from "@/components/SourceWorkspaceModal";
 import { AppBar } from "@/components/chat/AppBar";
 import { Composer, type ChatMode } from "@/components/chat/Composer";
 import { InspectorOverview, type RecentMeta } from "@/components/chat/InspectorOverview";
@@ -41,9 +42,11 @@ type Tab = (typeof TABS)[number];
 function InlineSourceStrip({
   grounding,
   onOpen,
+  onOpenWorkspace,
 }: {
   grounding: import("@/lib/api").VisualGrounding;
   onOpen: () => void;
+  onOpenWorkspace: () => void;
 }) {
   const h = grounding.highlights[0];
   if (!h) return null;
@@ -68,7 +71,15 @@ function InlineSourceStrip({
       </span>
       <button
         onClick={onOpen}
-        className="shrink-0 rounded border border-brand/40 px-2 py-0.5 text-brand hover:bg-brand/10 transition"
+        className="shrink-0 rounded border border-edge px-2 py-0.5 text-fg3 hover:text-fg transition"
+        title="Preview in inspector panel"
+      >
+        Preview
+      </button>
+      <button
+        onClick={onOpenWorkspace}
+        className="shrink-0 rounded border border-brand/40 bg-brand/5 px-2 py-0.5 font-medium text-brand hover:bg-brand/15 transition"
+        title="Open full Source Workspace"
       >
         View source ↗
       </button>
@@ -111,6 +122,7 @@ export default function Chat() {
   const [agentActivity, setAgentActivity] = useState<AgentActivity>({ phase: "idle" });
   const [visualGrounding, setVisualGrounding] = useState<VisualGrounding | null>(null);
   const [activeCitation, setActiveCitation] = useState<string | null>(null);
+  const [showWorkspace, setShowWorkspace] = useState(false);
   // new-chat corpus-clear confirmation state
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
@@ -210,6 +222,7 @@ export default function Chat() {
     setLastStatus("answered");
     setVisualGrounding(null);
     setActiveCitation(null);
+    setShowWorkspace(false);
     setAgentActivity({ phase: "query_received", algorithm: ragStrategy });
     const ac = new AbortController();
     abortRef.current = ac;
@@ -593,6 +606,7 @@ export default function Chat() {
                         <InlineSourceStrip
                           grounding={visualGrounding!}
                           onOpen={() => { setTab("source"); setShowPanel(true); }}
+                          onOpenWorkspace={() => setShowWorkspace(true)}
                         />
                       )}
                     </div>
@@ -691,15 +705,22 @@ export default function Chat() {
                 visualGrounding={visualGrounding}
                 onOpenSource={(cid) => {
                   setActiveCitation(cid);
-                  setTab("source");
+                  setShowWorkspace(true);
                 }}
-                onOpenSourceTab={() => setTab("source")}
+                onOpenSourceTab={() => {
+                  setShowWorkspace(true);
+                }}
               />
             )}
             {tab === "source" && (
               <SourceViewPanel
                 grounding={visualGrounding}
                 activeCitation={activeCitation}
+                onOpenWorkspace={
+                  visualGrounding?.visual_grounding_available
+                    ? () => setShowWorkspace(true)
+                    : undefined
+                }
               />
             )}
             {tab === "ingest" && <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />}
@@ -707,6 +728,16 @@ export default function Chat() {
           </div>
         </aside>
       </div>
+
+      {/* Source Workspace Modal — full-screen overlay */}
+      {showWorkspace && (
+        <SourceWorkspaceModal
+          grounding={visualGrounding}
+          citations={lastAssistant?.citations || []}
+          activeCitation={activeCitation}
+          onClose={() => setShowWorkspace(false)}
+        />
+      )}
 
       {toast && (
         <div
