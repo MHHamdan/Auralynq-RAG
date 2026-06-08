@@ -34,137 +34,104 @@ scoring. Built for research — every design decision is documented and reversib
 
 ## 🏗 Architecture
 
-### System overview
+Auralynq operates in three phases: **Ingest** (parse → chunk → embed → store),
+**Query** (plan → retrieve → critique → synthesize → ground),
+and **Inspect** (source workspace with span-level visual verification).
+The figures below cover each phase independently.
 
-```
-╔══════════════════════════════════════════════════════════════════════════════════╗
-║                           AURALYNQ — SYSTEM MAP                                ║
-╠════════════════════╦═══════════════════════════════════╦════════════════════════╣
-║      INGEST        ║        AURALYNQ-RAG ENGINE         ║   SOURCE WORKSPACE     ║
-╠════════════════════╣                                    ╠════════════════════════╣
-║                    ║  ┌── Strategy Registry (13) ────┐  ║  ┌── Citation Panel ─┐ ║
-║  PDF  DOCX  HTML   ║  │  ● Auralynq-RAG  [default]  │  ║  │ [1] doc · p.2     │ ║
-║  MD   TXT   WAV    ║  │  ● Hybrid Vector             │  ║  │ [2] doc · p.4     │ ║
-║  MP3  M4A          ║  │  ● Keyword BM25              │  ║  │ [Supported] ...   │ ║
-║         │          ║  │  ○ Self-RAG  (experimental)  │  ║  └───────────────────┘ ║
-║  pdfplumber        ║  │  ○ CRAG      (experimental)  │  ║                        ║
-║  layout blocks     ║  │  ○ Adaptive  (experimental)  │  ║  ┌── PDF Viewer ─────┐ ║
-║  bbox per chunk    ║  │  · GraphRAG  (planned)       │  ║  │ ┌───────────────┐ │ ║
-║         │          ║  │  · RAPTOR    (planned)       │  ║  │ │  PAGE IMAGE   │ │ ║
-║  pdf2image         ║  │  · LightRAG  (planned×3)     │  ║  │ │ [1]▓▓▓▓▓▓▓▓▓ │ │ ║
-║  page PNGs @144DPI ║  │  · Self-RAG+ (planned)       │  ║  │ │ [2]░░░░░░░░░ │ │ ║
-║         │          ║  └──────────────────────────────┘  ║  │ └───────────────┘ │ ║
-║  Chunks + spans    ║                                    ║  │ Zoom · fit · nav  │ ║
-║  VG metadata       ║  ┌── Agentic Loop ──────────────┐  ║  └───────────────────┘ ║
-║                    ║  │  Planner                     │  ║                        ║
-║  Qdrant            ║  │  Adaptive Router             │  ║  ┌── Evidence Panel ─┐ ║
-║  dense + sparse    ║  │  Hybrid Retriever            │  ║  │ paragraph · span  │ ║
-║  hybrid vectors    ║  │  PathRAG + PPR               │  ║  │ "cited snippet…"  │ ║
-║                    ║  │  Dual-Signal Critic          │  ║  │ rel 84% conf 91%  │ ║
-║  Knowledge Graph   ║  │  Query Rewriter              │  ║  └───────────────────┘ ║
-║  entities/rels     ║  │  Synthesizer                 │  ║                        ║
-║  PathRAG traversal ║  │  Self-Check                  │  ║  Full-screen modal     ║
-║                    ║  │  Citation Validator          │  ║  3-panel layout        ║
-║  VG Resolver       ║  └──────────────────────────────┘  ║  Escape to close       ║
-║  span→page→none    ║                                    ║  ← → page navigate     ║
-╚════════════════════╩═══════════════════════════════════╩════════════════════════╝
-         │                        │                               │
-         ▼                        ▼                               ▼
-   /ingest endpoint         /query/stream                  /api/documents/
-   SSE streaming            SSE streaming                  {id}/pages/{n}/
-   VG metadata              visual_grounding               image | layout
-   stored in Qdrant         in final event                 endpoints
+---
+
+### Fig 1 — Ingest Pipeline
+
+When a document is uploaded, Auralynq extracts layout blocks with bounding boxes,
+chunks and embeds the text, builds a knowledge graph, renders page images, and
+stores visual grounding metadata — all in one pass.
+
+```mermaid
+flowchart LR
+    classDef src fill:#1d4ed8,color:#fff,stroke:#1e40af
+    classDef proc fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef store fill:#065f46,color:#fff,stroke:#047857
+    classDef meta fill:#92400e,color:#fff,stroke:#78350f
+
+    subgraph FILES["Input Files"]
+        D["PDF · DOCX\nHTML · MD · TXT"]:::src
+        A["WAV · MP3\nM4A"]:::src
+    end
+
+    subgraph PARSE["Parse & Extract"]
+        PL["pdfplumber\nlayout blocks\n+ bbox per region"]:::proc
+        IMG["pdf2image\n144 DPI PNG\nper page"]:::proc
+        ASR["ASR + diarization\nwith timestamps"]:::proc
+    end
+
+    subgraph CHUNK["Chunk & Enrich"]
+        CH["Chunks + SourceSpan\n+ VG metadata"]:::proc
+        EMB["bge-m3\nEmbeddings"]:::proc
+    end
+
+    subgraph STORES["Persistent Stores"]
+        QD[("Qdrant\ndense + sparse")]:::store
+        KG[("Knowledge Graph\nentities / relations")]:::store
+        PC[("Page Cache\npage_NNNN.png")]:::store
+        DM[("doc_meta.json\ndims · n_pages")]:::meta
+    end
+
+    D --> PL
+    D --> IMG
+    A --> ASR
+    PL --> CH
+    ASR --> CH
+    CH --> EMB --> QD
+    CH --> KG
+    IMG --> PC
+    CH --> DM
 ```
 
-### Detailed pipeline flowchart
+---
+
+### Fig 2 — Auralynq-RAG Agentic Loop
+
+Each query enters an adaptive loop: classify intent, route to the right
+retriever(s), evaluate evidence quality, rewrite if needed (≤ 3 retries),
+synthesize with streaming, self-check confidence, validate citations, resolve
+visual grounding, and emit an SSE response.
 
 ```mermaid
 flowchart TD
-    subgraph Ingest["📥 Ingest Pipeline"]
-        direction TB
-        A["PDF / DOCX / HTML / MD / TXT"] --> PL["pdfplumber\nlayout block extraction\nbbox per text block"]
-        AU["WAV / MP3 / M4A"] --> ASR["ASR + diarization\n+ speaker timestamps"]
-        PL --> CH["Chunks + SourceSpan\n+ VG metadata (page, bbox)"]
-        ASR --> CH
-        CH --> IMG["pdf2image @ 144 DPI\npage PNG cache"]
-        CH --> EMB["Embeddings\nbge-m3 / hash fallback"]
-        EMB --> VS[("Qdrant\ndense + sparse\nhybrid vectors")]
-        CH --> KG[("Knowledge Graph\nentities / relations\nPageRank index")]
-        IMG --> PC["Page cache\ndata/page_cache/{doc_id}/\npage_NNNN.png"]
-        CH --> DM["doc_meta.json\npage_dimensions\nvg_version\nn_pages"]
-    end
+    classDef input fill:#1d4ed8,color:#fff,stroke:#1e40af
+    classDef router fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef retr fill:#0e7490,color:#fff,stroke:#0c5a70
+    classDef critic fill:#92400e,color:#fff,stroke:#78350f
+    classDef synth fill:#065f46,color:#fff,stroke:#047857
+    classDef fix fill:#9f1239,color:#fff,stroke:#881337
 
-    subgraph Strategies["⚡ RAG Strategy Registry (13)"]
-        direction LR
-        S1["● Auralynq-RAG\ndefault · fast"]
-        S2["● Hybrid Vector\nfast"]
-        S3["● Keyword BM25\nfast"]
-        S4["○ Self-RAG\nexperimental"]
-        S5["○ CRAG\nexperimental"]
-        S6["○ Adaptive\nexperimental"]
-        SP["· GraphRAG · RAPTOR\n· LightRAG × 3\n· Self-RAG+ · HippoRAG\nplanned / requires setup"]
-    end
+    Q(["Query\ntext / voice"]):::input
+    PL["Planner\nintent classification"]:::router
+    RT{{"Adaptive Router"}}:::router
 
-    subgraph Agent["🤖 Auralynq Agentic Loop"]
-        direction TB
-        Q["Query\ntext / voice"] --> PLA["Planner\n(intent classification)"]
-        PLA --> RT{{"Adaptive\nRouter"}}
-        RT -->|"fast / hybrid"| HY["Hybrid Retriever\ndense+sparse RRF\ncross-encoder rerank\nMMR dedup"]
-        RT -->|"relational / multi-hop"| PR["PathRAG + PPR\npath expansion\nflow pruning\nPPR authority blending\n0.4·flow + 0.6·ppr"]
-        RT -->|"uncertain / broad"| BOTH["Hybrid + PathRAG\ncombined context"]
-        HY & PR & BOTH --> FU["Context Fusion\nMMR · lost-in-middle"]
-        FU --> CR{{"Dual-Signal\nEvidence Critic"}}
-        CR -->|"lexical gap <60%\nAND semantic <0.5"| RW["Query Rewriter\n+ retry (≤3 iters)"]
-        RW --> RT
-        CR -->|"evidence ok"| SY["Synthesizer\n(LLM streaming)"]
-        SY --> SC["Self-Check\n4-signal confidence\n0.30·score + 0.30·cite\n+ 0.25·semantic + 0.15·token"]
-        SC --> CV["Citation Validator\nstrip dangling\nadd score+method"]
-        CV --> VGR["Visual Grounding\nResolver\nspan → page → unavailable"]
-        VGR --> ST["SSE Response Streamer\nmeta · token · final events\nvisual_grounding in final"]
-    end
+    HY["Hybrid Retriever\ndense + sparse · RRF\ncross-encoder rerank · MMR dedup"]:::retr
+    PR["PathRAG + PPR\npath expansion · flow pruning\n0.4 · flow + 0.6 · ppr"]:::retr
 
-    subgraph Frontend["🖥️ Frontend — Next.js 15"]
-        direction TB
-        CHAT["Chat Column\nMessage + Citations\nInlineSourceStrip"]
-        INS["Inspector (30vw)\n6 tabs"]
-        INS --> TAB1["Overview\nsuggestions · stats"]
-        INS --> TAB2["Trace\nstep-by-step pipeline\nVG section"]
-        INS --> TAB3["Evidence\nPathRAG paths\ncoverage bar"]
-        INS --> TAB4["Source (compact)\n⛶ Expand button"]
-        INS --> TAB5["Ingest\nVG status per doc"]
-        INS --> TAB6["Eval\nmetrics · feedback"]
-        RAIL["Agent Activity Rail\nalways-visible\nphase · algo · coverage"]
-        SEL["Algorithm Selector\n3 groups: available\nexperimental · planned"]
-        WS["Source Workspace Modal\nfull-screen fixed overlay\nEscape / ← → keys"]
-        WS --> CP["Citation Panel\nclick → navigate PDF"]
-        WS --> PV["PDF Viewer\nzoom 50–150% · fit\npage nav rail\nnormalized-bbox overlays"]
-        WS --> EP["Evidence Panel\nsnippet · block type\nrelevance · confidence"]
-    end
+    FU["Context Fusion\nMMR · lost-in-middle ordering"]:::critic
+    CR{{"Dual-Signal\nEvidence Critic"}}:::critic
+    RW["Query Rewriter\n≤ 3 retries"]:::fix
 
-    subgraph API["🔌 REST API"]
-        E1["POST /query/stream\nSSE streaming"]
-        E2["GET /documents/{id}/pages"]
-        E3["GET /documents/{id}/pages/{n}/image"]
-        E4["GET /documents/{id}/pages/{n}/layout"]
-        E5["GET /rag/strategies"]
-        E6["GET /corpus/grounding-summary"]
-        E7["POST /eval/feedback"]
-        E8["GET /eval/last"]
-    end
+    SY["Synthesizer\nstreaming LLM"]:::synth
+    SC["Self-Check\n4-signal confidence"]:::synth
+    CV["Citation Validator\nstrip dangling · add score"]:::synth
+    VGR["VG Resolver\nspan → page → unavailable"]:::synth
+    ST(["SSE Stream\nmeta · token · final events"]):::synth
 
-    VS --> HY
-    KG --> PR
-    PC --> E3
-    DM --> E2
-    ST --> E1
-    E1 --> CHAT
-    E1 --> INS
-    CHAT --> WS
-    TAB3 --> WS
-    TAB4 --> WS
-    E3 --> PV
-    E4 --> EP
-    E5 --> SEL
+    Q --> PL --> RT
+    RT -->|fast / hybrid| HY
+    RT -->|relational| PR
+    RT -->|uncertain| HY & PR
+    HY --> FU
+    PR --> FU
+    FU --> CR
+    CR -->|"lex < 60% AND sem < 0.5"| RW --> RT
+    CR -->|evidence ok| SY --> SC --> CV --> VGR --> ST
 ```
 
 ---
@@ -173,6 +140,8 @@ flowchart TD
 
 Auralynq-RAG is the default strategy — an adaptive hybrid pipeline combining
 four original algorithmic contributions:
+
+---
 
 ### 1 · PPR-Augmented PathRAG
 
@@ -190,7 +159,44 @@ score(path) = 0.4 · flow_score + 0.6 · ppr_authority
 - Blended score re-orders paths before golden-region placement in the context window
 - Inspired by HippoRAG2 (Gutierrez et al., NeurIPS 2024)
 
+**Fig 3 — PPR Score Composition**
+
+```mermaid
+flowchart LR
+    classDef q fill:#1d4ed8,color:#fff,stroke:#1e40af
+    classDef alg fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef score fill:#065f46,color:#fff,stroke:#047857
+    classDef out fill:#0e7490,color:#fff,stroke:#0c5a70
+
+    Q(["Query\nentities"]):::q
+
+    subgraph FLOW["Flow-Based Pruning"]
+        direction TB
+        F1["Resource-decay budget\npropagated from seeds"]:::alg
+        F2["bottleneck score\nmin over edge budgets\nfixes short-path bias"]:::score
+        F1 --> F2
+    end
+
+    subgraph PPR["PPR Authority — nx.pagerank()"]
+        direction TB
+        P1["Personalised PageRank\nα = 0.15 teleport\nseed = query entities"]:::alg
+        P2["Terminal-node\nauthority score"]:::score
+        P1 --> P2
+    end
+
+    BLEND["Blended score\n0.4 · flow_score\n+ 0.6 · ppr_authority"]:::out
+    CTX["Context window\ngolden-region\nplacement"]:::out
+
+    Q --> FLOW
+    Q --> PPR
+    F2 --> BLEND
+    P2 --> BLEND
+    BLEND --> CTX
+```
+
 **Implementation**: `auralynq/retrieval/pathrag/retriever.py` — `_assign_ppr()`, `_apply_ppr()`
+
+---
 
 ### 2 · Dual-Signal Evidence Sufficiency Critic
 
@@ -206,7 +212,39 @@ A query like "What is photosynthesis?" answered by a passage about "carbon fixat
 light-dependent reactions" has low lexical overlap but high semantic coverage → no rewrite.
 This eliminates ~30 % of spurious rewrites observed with the token-only gate.
 
+**Fig 4 — Critic Decision Gate**
+
+```mermaid
+flowchart TD
+    classDef in fill:#1d4ed8,color:#fff,stroke:#1e40af
+    classDef sig fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef gate fill:#92400e,color:#fff,stroke:#78350f
+    classDef ok fill:#065f46,color:#fff,stroke:#047857
+    classDef fix fill:#9f1239,color:#fff,stroke:#881337
+
+    Q(["Query q"]):::in
+    CTX(["Retrieved\ncontext C"]):::in
+
+    subgraph SIGS["Both signals must fire to trigger a rewrite"]
+        direction LR
+        S1["Lexical coverage\nkey-term overlap\nthreshold: 60%"]:::sig
+        S2["Semantic coverage\ncosine(q_emb, mean_ctx)\nthreshold: 0.50"]:::sig
+    end
+
+    GATE{"Both below\nthreshold?"}:::gate
+    OK(["→ Synthesizer"]):::ok
+    RW["Rewrite query\n+ retry  (≤ 3)"]:::fix
+
+    Q --> SIGS
+    CTX --> SIGS
+    SIGS --> GATE
+    GATE -->|YES — gap detected| RW
+    GATE -->|NO — evidence ok| OK
+```
+
 Inspired by FAIR-RAG (arXiv Oct 2025). **Implementation**: `auralynq/agent/nodes.py` — `_semantic_coverage()`
+
+---
 
 ### 3 · Calibrated Four-Signal Confidence
 
@@ -234,28 +272,47 @@ The UI `ConfidenceBar` renders all four components for transparency.
 
 Inspired by Bayesian RAG (Frontiers 2026). **Implementation**: `auralynq/agent/nodes.py` — `node_self_check`
 
+---
+
 ### 4 · Adaptive Strategy Routing
 
 A pluggable strategy registry dispatches to 13 distinct retrieval modes based on
-query complexity, corpus metadata, and available infrastructure:
+query complexity, corpus metadata, and available infrastructure.
 
-```
-Strategy Registry
-├── Available now
-│   ├── auralynq_rag   — full adaptive pipeline (default)
-│   ├── hybrid         — dense+sparse+rerank only
-│   ├── naive_vector   — pure vector, no rerank
-│   └── keyword_bm25   — BM25 only
-├── Experimental
-│   ├── self_rag       — critique-revise loop; SUPPORT/RELEVANT/USEFUL tokens
-│   ├── crag           — corrective RAG; LLM quality check + query rewrite fallback
-│   └── adaptive_rag   — 8-category LLM classifier → route selection
-└── Planned (require setup)
-    ├── graph_rag      — requires entity_count > 0
-    ├── hybrid_rerank  — requires AURALYNQ_RERANKER_ENABLED=true
-    ├── lightrag_local / global / hybrid
-    ├── raptor         — hierarchical summaries
-    └── hipporag       — HippoRAG2 full pipeline
+**Fig 5 — Strategy Registry (13 strategies across 3 groups)**
+
+```mermaid
+flowchart LR
+    classDef avail fill:#064e3b,color:#6ee7b7,stroke:#059669
+    classDef exp fill:#451a03,color:#fcd34d,stroke:#d97706
+    classDef plan fill:#1e293b,color:#94a3b8,stroke:#334155
+
+    REG(["⚡  Strategy Registry"])
+
+    subgraph AV["● Available — 4 strategies"]
+        A1["auralynq_rag\nfull adaptive pipeline · default"]:::avail
+        A2["hybrid\ndense + sparse + rerank"]:::avail
+        A3["naive_vector\npure vector search"]:::avail
+        A4["keyword_bm25\nBM25 only · no embeddings"]:::avail
+    end
+
+    subgraph EX["○ Experimental — 3 strategies"]
+        E1["self_rag\ncritique-revise loop\nSUPPORT / RELEVANT tokens"]:::exp
+        E2["crag\ncorrective RAG\nLLM quality check + rewrite fallback"]:::exp
+        E3["adaptive_rag\n8-category LLM complexity classifier\n→ route selection"]:::exp
+    end
+
+    subgraph PL["· Planned — 6 strategies"]
+        P1["graph_rag\nrequires entity_count > 0"]:::plan
+        P2["raptor\nhierarchical cluster summaries"]:::plan
+        P3["lightrag-local\nlightrag-global\nlightrag-hybrid"]:::plan
+        P4["hipporag\nHippoRAG2 full pipeline"]:::plan
+        P5["hybrid_rerank\nrequires AURALYNQ_RERANKER_ENABLED"]:::plan
+    end
+
+    REG --> AV
+    REG --> EX
+    REG --> PL
 ```
 
 **Implementation**: `auralynq/rag/` — `strategy_registry.py`, `strategies/`
@@ -265,21 +322,52 @@ Strategy Registry
 ## 🔬 Visual Source Grounding
 
 Every cited answer can be visually verified against the original PDF/image.
-This is the first implementation of span-level visual grounding in the Auralynq pipeline.
+Grounding metadata is stored per-chunk at ingest and resolved per-citation at query time.
 
-### How it works
+### Fig 6 — Visual Grounding Pipeline
 
-```
-PDF ingest
-  └─► pdfplumber extracts layout blocks (bbox per text region per page)
-  └─► Chunk ↔ layout block overlap matching → normalized_bbox stored in chunk metadata
-  └─► pdf2image renders page PNGs at 144 DPI into data/page_cache/{doc_id}/
+Two separate phases: layout extraction at ingest, span resolution at query time.
 
-Query response
-  └─► GroundingResolver maps citations → (doc_id, page, normalized_bbox)
-  └─► Stage resolution: span (exact bbox) → page (page known, no bbox) → unavailable
-  └─► visual_grounding injected into SSE final event
-  └─► Frontend renders Source Workspace
+```mermaid
+flowchart LR
+    classDef ingest fill:#1d4ed8,color:#fff,stroke:#1e40af
+    classDef meta fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef stage fill:#065f46,color:#fff,stroke:#047857
+    classDef warn fill:#9f1239,color:#fff,stroke:#881337
+    classDef ui fill:#0e7490,color:#fff,stroke:#0c5a70
+
+    subgraph ING["At Ingest Time"]
+        direction TB
+        PLB["pdfplumber\nlayout blocks\n+ bbox per chunk"]:::ingest
+        PIM["pdf2image\n@ 144 DPI"]:::ingest
+        QP[("Qdrant payload\nnormalized_bbox\nper chunk")]:::meta
+        PNG[("Page cache\npage_NNNN.png\nper document")]:::meta
+        PLB --> QP
+        PIM --> PNG
+    end
+
+    subgraph RES["At Query Time — GroundingResolver"]
+        direction TB
+        CIT["Citations\ndoc_id · page\nvg_metadata"]:::meta
+        SP["span\nexact bbox\nhighlight box"]:::stage
+        PG["page\npage known\nsoft highlight"]:::stage
+        UN["unavailable\nno VG data\nreindex required"]:::warn
+        CIT --> SP
+        CIT --> PG
+        CIT --> UN
+    end
+
+    subgraph WS["Source Workspace"]
+        direction LR
+        CP["Citation\nPanel"]:::ui
+        PV["PDF Viewer\n+ bbox overlays"]:::ui
+        EP["Evidence\nPanel"]:::ui
+    end
+
+    QP --> CIT
+    PNG --> PV
+    SP --> WS
+    PG --> WS
 ```
 
 ### Grounding stages
@@ -290,29 +378,38 @@ Query response
 | `page` | Page number known, no span-level bbox | Soft page-level highlight |
 | `unavailable` | No grounding metadata — doc needs reindex | Warning + reindex prompt |
 
-### Source Workspace — three-panel document viewer
+---
+
+### Fig 7 — Source Workspace: Three-Panel Layout
+
+Click any citation to open the full-screen workspace. Click a highlight box to see the
+evidence snippet in the right panel. Use ← → to navigate pages; Escape to close.
 
 ```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  Grounded Source Workspace                   [50%][75%][fit][125%][150%]  ✕ ║
-║                                              [−][87%][+]  ‹ p.2  1/3 ›  ⛶  ║
-╠═══════════════╦═════════════════════════════════════╦════════════════════════╣
-║ Citations      ║            PDF Viewer               ║  Evidence · Page 2     ║
-║                ║                                     ║                        ║
-║ [1] report.pdf ║  ┌───────────────────────────────┐  ║  ■ [1] paragraph·span ║
-║     p.2 ←here  ║  │                               │  ║  "the cited text      ║
-║                ║  │  Introduction                 │  ║   excerpt goes here…" ║
-║ [2] report.pdf ║  │  ┌─────────────────────────┐  │  ║  rel 84% · conf 91%   ║
-║     p.4        ║  │  │[1]▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │  │  ║                        ║
-║                ║  │  └─────────────────────────┘  │  ║  ■ [2] table·span     ║
-║ ─── Claims ─── ║  │                               │  ║  "related evidence     ║
-║                ║  │  Methods                      │  ║   from this block…"   ║
-║ ✓ Supported    ║  │  ┌─────────────────────────┐  │  ║  rel 71% · conf 88%   ║
-║ "claim text…"  ║  │  │[2]░░░░░░░░░░░░░░░░░░░  │  │  ║                        ║
-║                ║  │  └─────────────────────────┘  │  ║  ─── Legend ─────────  ║
-║ ⚡ Partial     ║  │                               │  ║  ■ Span-level exact    ║
-║ "other claim…" ║  └───────────────────────────────┘  ║  □ Page-level only     ║
-╚═══════════════╩═════════════════════════════════════╩════════════════════════╝
+╔════════════════════════════════════════════════════════════════════════════════════╗
+║  Grounded Source Workspace                    [50%][75%][fit][125%][150%]  ⛶  ✕  ║
+╠═══════════════════╦═══════════════════════════════════════╦════════════════════════╣
+║  CITATION PANEL   ║          PDF VIEWER                   ║  EVIDENCE PANEL        ║
+║  ───────────────  ║  ─────────────────────────────────    ║  ────────────────────  ║
+║                   ║                                       ║                        ║
+║  [1] report.pdf   ║  ┌─────────────────────────────────┐  ║  ■ [1] paragraph·span ║
+║      page 2  ← ●  ║  │  1. Introduction                │  ║  "The model achieves  ║
+║                   ║  │                                   │  ║   state-of-the-art   ║
+║  [2] report.pdf   ║  │  ┌───────────────────────────┐   │  ║   performance..."    ║
+║      page 4       ║  │  │ ▓▓▓[1]▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │   │  ║  relevance  84%      ║
+║                   ║  │  └───────────────────────────┘   │  ║  confidence 91%      ║
+║  ── Claims ─────  ║  │                                   │  ║                      ║
+║                   ║  │  2. Methods                       │  ║  ■ [2] table·span    ║
+║  ✓  Supported     ║  │                                   │  ║  "Table 3 shows a    ║
+║  "Model beats…"   ║  │  ┌───────────────────────────┐   │  ║   12% improvement    ║
+║                   ║  │  │ ░░░[2]░░░░░░░░░░░░░░░░░░  │   │  ║   over baseline..."  ║
+║  ⚡  Partial      ║  │  └───────────────────────────┘   │  ║  relevance  71%      ║
+║  "Table shows…"   ║  │                                   │  ║  confidence 88%      ║
+║                   ║  └─────────────────────────────────┘  ║                        ║
+║                   ║            ‹  page 2 of 3  ›           ║  ── Legend ──────────  ║
+║                   ║                                       ║  ■ span-level exact    ║
+║                   ║                                       ║  □ page-level soft     ║
+╚═══════════════════╩═══════════════════════════════════════╩════════════════════════╝
 ```
 
 **Interactions:**
@@ -338,28 +435,29 @@ Query response
 
 ## 🖥 Frontend
 
-### Chat workspace
+### Fig 8 — Chat Workspace Layout
 
-The chat workspace is a two-column layout: conversation + always-visible inspector.
+Two-column layout: conversation on the left, always-visible inspector on the right.
+The `InlineSourceStrip` under each answer surfaces grounding inline.
 
 ```
-┌─────────────────────────────────────┬──────────────────────────────────────┐
-│  AppBar: status · entities · ⚙ ·☰  │  Agent Activity Rail (always visible) │
-├─────────────────────────────────────┼──────────────────────────────────────┤
-│                                     │  Tabs: Overview · Trace · Evidence ·  │
-│  [User] Summarize the documents.    │         Source · Ingest · Eval        │
-│                                     │                                        │
-│  [Assistant] The documents cover…   │  ┌─ Overview ──────────────────────┐  │
-│              [1] [2]                │  │ suggestions · coverage · stats   │  │
-│                                     │  └──────────────────────────────────┘  │
-│  ◉ report.pdf · p.2 · span match   │  ┌─ Trace ─────────────────────────┐  │
-│  [Preview] [View source ↗]          │  │ planner → router → retriever    │  │
-│                                     │  │ VG: resolver · page cache       │  │
-│  ─────────────────────────────────  │  └──────────────────────────────────┘  │
-│                                     │                                        │
-│  ⚡ auralynq-rag ▾  [────────────]  │  ┌─ Evidence ──────────────────────┐  │
-│  Composer: text input + voice 🎙    │  │ coverage bar · PathRAG paths    │  │
-└─────────────────────────────────────┴──────────────────────────────────────┘
+┌────────────────────────────────────────┬─────────────────────────────────────────┐
+│  AppBar: status · entities · ⚙ · ☰    │  Agent Activity Rail  (always visible)   │
+├────────────────────────────────────────┼─────────────────────────────────────────┤
+│                                        │  Tabs:                                  │
+│  [User] Summarize the documents.       │  Overview · Trace · Evidence ·           │
+│                                        │  Source · Ingest · Eval                 │
+│  [Assistant] The documents cover…      │                                         │
+│              [1] doc·p.2  [2] doc·p.4  │  ┌─ Overview ───────────────────────┐   │
+│                                        │  │ corpus stats · suggestions        │   │
+│  ◉ report.pdf · p.2 · span match       │  └───────────────────────────────────┘   │
+│  [Preview]  [View source ↗]            │                                         │
+│                                        │  ┌─ Trace ────────────────────────────┐  │
+│  ──────────────────────────────────    │  │ planner → router → retriever       │  │
+│                                        │  │ VG: resolver · page cache          │  │
+│  ⚡ auralynq-rag ▾  [────────────────] │  └───────────────────────────────────┘   │
+│  Composer: text input + 🎙 voice       │                                         │
+└────────────────────────────────────────┴─────────────────────────────────────────┘
 ```
 
 ### Inspector tabs
@@ -375,26 +473,29 @@ The chat workspace is a two-column layout: conversation + always-visible inspect
 
 ### Algorithm Selector
 
-The strategy picker sits in the composer bar and groups strategies by availability:
+Strategy picker sits in the composer bar and groups strategies by availability status.
+Planned strategies are shown but non-selectable, with their setup requirements.
 
 ```
 ⚡ Auralynq-RAG ▾
-
-┌──────────────────────────────────────┐
-│ RAG Algorithm                        │
-│ ● Available now                    3 │
-│   ✓ Auralynq-RAG          default   │
-│     Hybrid Vector          fast      │
-│     Keyword BM25           fast      │
-├──────────────────────────────────────┤
-│ ○ Experimental                     3 │
-│     Self-RAG               medium    │
-│     CRAG                   slow      │
-│     Adaptive RAG           slow      │
-├──────────────────────────────────────┤
-│ · Planned / requires setup         7 │
-│   (disabled — shows requirements)    │
-└──────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ RAG Algorithm                            │
+│ Choose how Auralynq retrieves & answers  │
+├──────────────────────────────────────────┤
+│  ●  Available now                      4 │
+│     ✓ Auralynq-RAG       [default] fast  │
+│       Hybrid Vector                fast  │
+│       Naive Vector                 fast  │
+│       Keyword BM25                 fast  │
+├──────────────────────────────────────────┤
+│  ○  Experimental                       3 │
+│       Self-RAG                   medium  │
+│       CRAG                         slow  │
+│       Adaptive RAG                 slow  │
+├──────────────────────────────────────────┤
+│  ·  Planned / requires setup           6 │
+│       (disabled — shows requirements)    │
+└──────────────────────────────────────────┘
 ```
 
 ---
