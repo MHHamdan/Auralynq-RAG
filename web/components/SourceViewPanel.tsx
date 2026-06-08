@@ -208,9 +208,10 @@ interface SourceViewPanelProps {
   grounding: VisualGrounding | null | undefined;
   activeCitation: string | null;
   onClose?: () => void;
+  onOpenWorkspace?: () => void;
 }
 
-export function SourceViewPanel({ grounding, activeCitation, onClose }: SourceViewPanelProps) {
+export function SourceViewPanel({ grounding, activeCitation, onClose, onOpenWorkspace }: SourceViewPanelProps) {
   const [zoom, setZoom] = useState(1.0);
   const [hoveredCitation, setHoveredCitation] = useState<string | null>(activeCitation);
   const [showGrounding, setShowGrounding] = useState(false);
@@ -277,12 +278,21 @@ export function SourceViewPanel({ grounding, activeCitation, onClose }: SourceVi
           <span className="pill pill-neutral">{grounding.grounding_stage}</span>
         </div>
         <div className="flex items-center gap-1.5">
+          {onOpenWorkspace && (
+            <button
+              className="flex items-center gap-1 rounded-lg border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand transition hover:bg-brand/20"
+              onClick={onOpenWorkspace}
+              title="Open full Source Workspace"
+            >
+              ⛶ Expand
+            </button>
+          )}
           <button
             className="tag hover:border-edge2 hover:text-fg"
             onClick={() => setShowGrounding(v => !v)}
             title="Toggle claim grounding view"
           >
-            {showGrounding ? "Hide claims" : "Show claims"}
+            {showGrounding ? "Claims ▴" : "Claims ▾"}
           </button>
           <button
             className="tag hover:border-edge2 hover:text-fg"

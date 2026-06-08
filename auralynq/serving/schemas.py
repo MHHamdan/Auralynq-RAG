@@ -268,3 +268,26 @@ class DocumentGroundingStatusResponse(BaseModel):
     n_pages: int = 0
     n_chunks_with_bbox: int = 0
     page_images_cached: int = 0
+
+
+class PageLayoutBlock(BaseModel):
+    block_id: str = ""
+    page: int = 1
+    bbox: list[float] = Field(default_factory=list)
+    normalized_bbox: list[float] = Field(default_factory=list)
+    text: str = ""
+    block_type: str = "paragraph"
+    chunk_id: str = ""
+    relevance: float = 0.0
+    confidence: float = 1.0
+    is_cited: bool = False
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class PageLayoutResponse(BaseModel):
+    doc_id: str
+    page: int
+    blocks: list[PageLayoutBlock] = Field(default_factory=list)
+    source_title: str = ""
+    page_width: float = 0.0
+    page_height: float = 0.0

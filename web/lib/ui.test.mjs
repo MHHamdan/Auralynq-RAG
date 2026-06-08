@@ -321,4 +321,134 @@ t("chat page clears visual grounding on new query", () => {
   has(page, "setActiveCitation(null)");
 });
 
+// ---- Source Workspace Modal structural tests ----------------------------
+
+t("SourceWorkspaceModal component file exists and exports correctly", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "export function SourceWorkspaceModal");
+  has(sw, "export interface SourceWorkspaceModalProps");
+  has(sw, "grounding: VisualGrounding | null | undefined");
+  has(sw, "citations: Citation[]");
+  has(sw, "activeCitation: string | null");
+  has(sw, "onClose: () => void");
+});
+
+t("SourceWorkspaceModal renders three-panel layout with citation and evidence panels", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "CitationPanel");
+  has(sw, "EvidencePanel");
+  has(sw, "WorkspacePageViewer");
+  has(sw, "grid-cols-[260px_1fr_280px]");
+  has(sw, "Grounded Source Workspace");
+});
+
+t("SourceWorkspaceModal has zoom controls with fit-width preset", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "ZOOM_PRESETS");
+  has(sw, "ZOOM_LABELS");
+  has(sw, "fit");
+  has(sw, "setZoom");
+});
+
+t("SourceWorkspaceModal has page navigation controls", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "navigatePage");
+  has(sw, "hasPrev");
+  has(sw, "hasNext");
+  has(sw, "currentPageKey");
+  has(sw, "ArrowRight");
+});
+
+t("SourceWorkspaceModal supports full-screen mode toggle", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "fullscreen");
+  has(sw, "setFullscreen");
+  has(sw, "Show side panels");
+  has(sw, "Full-screen PDF view");
+});
+
+t("SourceWorkspaceModal handles unavailable grounding gracefully", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "visual_grounding_available");
+  has(sw, "Visual grounding not available");
+  has(sw, "Reindex");
+});
+
+t("SourceWorkspaceModal navigates to active citation page on open", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "activeCitation");
+  has(sw, "initialPageKey");
+  has(sw, "setCurrentPageKey");
+});
+
+t("SourceWorkspaceModal closes on Escape key", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "Escape");
+  has(sw, "onClose");
+  has(sw, "window.addEventListener");
+});
+
+t("WorkspacePageViewer places overlays with normalized bbox percentages", () => {
+  const sw = read("components/SourceWorkspaceModal.tsx");
+  has(sw, "normalized_bbox");
+  has(sw, "position: \"absolute\"");
+  has(sw, ".toFixed(3)}%");
+});
+
+t("chat page opens workspace modal when View source is clicked", () => {
+  const page = read("app/chat/page.tsx");
+  has(page, "showWorkspace");
+  has(page, "setShowWorkspace");
+  has(page, "SourceWorkspaceModal");
+  has(page, "onOpenWorkspace");
+});
+
+t("chat page resets workspace state on new query", () => {
+  const page = read("app/chat/page.tsx");
+  has(page, "setShowWorkspace(false)");
+});
+
+t("InlineSourceStrip has two buttons: preview and view source workspace", () => {
+  const page = read("app/chat/page.tsx");
+  has(page, "onOpenWorkspace");
+  has(page, "View source ↗");
+  has(page, "Preview");
+});
+
+t("SourceViewPanel has Expand button to open workspace", () => {
+  const sv = read("components/SourceViewPanel.tsx");
+  has(sv, "onOpenWorkspace");
+  has(sv, "Expand");
+  has(sv, "Open full Source Workspace");
+});
+
+t("AlgorithmSelector groups strategies by status", () => {
+  const sel = read("components/chat/AlgorithmSelector.tsx");
+  has(sel, "GROUP_CONFIG");
+  has(sel, "Available now");
+  has(sel, "Experimental");
+  has(sel, "Planned / requires setup");
+  has(sel, "StatusGroup");
+});
+
+t("AlgorithmSelector planned strategies are non-selectable", () => {
+  const sel = read("components/chat/AlgorithmSelector.tsx");
+  has(sel, "selectable: false");
+  has(sel, "cursor-not-allowed");
+  has(sel, "disabled={!selectable}");
+});
+
+t("api.ts exports PageLayoutBlock and PageLayoutResponse types", () => {
+  const api = read("lib/api.ts");
+  has(api, "export interface PageLayoutBlock");
+  has(api, "export interface PageLayoutResponse");
+  has(api, "export async function fetchPageLayout");
+});
+
+t("api.ts exports fetchPageLayout with correct URL pattern", () => {
+  const api = read("lib/api.ts");
+  has(api, "/pages/${page}/layout");
+  has(api, "encodeURIComponent(docId)");
+});
+
 console.log(`\n${passed} ui structure tests passed`);
