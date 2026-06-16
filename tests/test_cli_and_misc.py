@@ -111,7 +111,7 @@ def test_llm_model_defaulting_for_cohere():
 
 
 def test_llm_auto_resolves_cohere_when_only_cohere_key(monkeypatch):
-    """With only a Cohere key + sdk present, auto resolution selects cohere."""
+    """With only a Cohere key + sdk present (and no Ollama), auto resolution selects cohere."""
     import sys
     import types
 
@@ -134,6 +134,12 @@ def test_llm_auto_resolves_cohere_when_only_cohere_key(monkeypatch):
         fake.__spec__ = importlib.machinery.ModuleSpec("cohere", loader=None)
         fake.ClientV2 = lambda api_key: object()  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "cohere", fake)
+
+    # Auto-resolution now prefers Ollama when reachable; simulate no local Ollama
+    # to exercise the cloud-provider fallback path.
+    import auralynq.llm.factory as lf
+
+    monkeypatch.setattr(lf, "_ollama_reachable", lambda url: False)
 
     from auralynq.llm.factory import resolved_provider
 

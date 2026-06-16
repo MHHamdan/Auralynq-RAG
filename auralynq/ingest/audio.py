@@ -42,6 +42,19 @@ def transcribe_to_chunks(
             buf.clear()
             return
         seg = AudioSegment(start_s=buf[0].start_s, end_s=buf[-1].end_s, speaker=buf[0].speaker)
+        # Paper §4.5 Eq. 1: grounding metadata for audio chunks stores
+        # (t_start, t_end) in R+^2, analogous to normalized_bbox for PDFs.
+        # The resolver uses this to emit support_type="segment" grounding.
+        vg = {
+            "grounding_version": 1,
+            "source_modality": "audio",
+            "t_start": seg.start_s,
+            "t_end": seg.end_s,
+            "speaker": seg.speaker,
+            "has_bbox": False,
+            "bbox": None,
+            "normalized_bbox": None,
+        }
         chunks.append(
             Chunk(
                 id=Chunk.make_id(doc_id, ordinal),
@@ -52,7 +65,11 @@ def transcribe_to_chunks(
                 source=path.name,
                 source_type=SourceType.audio,
                 title=path.stem,
-                metadata={"asr_provider": transcript.provider, "language": transcript.language},
+                metadata={
+                    "asr_provider": transcript.provider,
+                    "language": transcript.language,
+                    "visual_grounding": vg,
+                },
             )
         )
         ordinal += 1

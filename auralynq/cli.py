@@ -23,6 +23,8 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+config_app = typer.Typer(name="config", help="Manage configuration.", no_args_is_help=True)
+app.add_typer(config_app)
 console = Console()
 
 
@@ -228,6 +230,60 @@ def info() -> None:
     for row in describe_providers():
         table.add_row(row["subsystem"], row["provider"], row["status"])
     console.print(table)
+
+
+# ── config subcommands ────────────────────────────────────────────────────────
+
+@config_app.command("show")
+def config_show() -> None:
+    """Show active configuration (resolved values, config file path, provider chain)."""
+    from auralynq.config import find_config_file
+
+    s = get_settings()
+    cfg_path = find_config_file()
+
+    table = Table(title="Auralynq — active configuration")
+    table.add_column("setting")
+    table.add_column("value")
+
+    table.add_row("config file", str(cfg_path) if cfg_path else "[dim]none (using defaults)[/]")
+    table.add_row("llm.provider", s.llm.provider)
+    table.add_row("llm.model", s.llm.model)
+    table.add_row("llm.base_url", s.llm.base_url)
+    table.add_row("embedding.provider", s.embedding.provider)
+    table.add_row("embedding.ollama_model", s.embedding.ollama_model)
+    table.add_row("vector.backend", s.vector.backend)
+    table.add_row("vector.chroma_persist_dir", str(s.vector.chroma_persist_dir))
+    table.add_row("pdf_source_dir", str(s.pdf_source_dir))
+    table.add_row("air_gapped", str(s.air_gapped))
+    table.add_row("openai_api_key", "[green]set[/]" if s.openai_api_key else "[dim]not set[/]")
+    table.add_row(
+        "anthropic_api_key", "[green]set[/]" if s.anthropic_api_key else "[dim]not set[/]"
+    )
+    console.print(table)
+
+
+@config_app.command("init")
+def config_init(
+    output: Path = typer.Option(Path("config.yaml"), help="Where to write the config file."),
+    force: bool = typer.Option(False, "--force", help="Overwrite if file already exists."),
+) -> None:
+    """Write a config.yaml template to the current directory."""
+    import shutil
+    from pathlib import Path as P
+
+    template = P(__file__).parent.parent / "config.yaml.example"
+    if not template.exists():
+        console.print("[red]config.yaml.example not found — reinstall the package.[/]")
+        raise typer.Exit(1)
+    if output.exists() and not force:
+        console.print(
+            f"[yellow]{output} already exists.[/] Use --force to overwrite."
+        )
+        raise typer.Exit(1)
+    shutil.copy(template, output)
+    console.print(f"[green]✓[/] config template written to [bold]{output}[/]")
+    console.print("Edit it and set [bold]AURALYNQ_CONFIG=config.yaml[/] (or place it in CWD).")
 
 
 if __name__ == "__main__":

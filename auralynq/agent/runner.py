@@ -124,6 +124,8 @@ class AnswerResult(BaseModel):
     seeds: list[str] = Field(default_factory=list)
     iterations: int = 0
     confidence: float = 0.0
+    # Per-signal breakdown (paper §4.3, Eq. 6): s_qual, s_cite, s_sem, s_tok
+    confidence_signals: dict[str, float] = Field(default_factory=dict)
     evidence_coverage: float = 0.0
     cached: bool = False
     elapsed_ms: float = 0.0
@@ -211,6 +213,7 @@ def answer_question(
         seeds=state.seeds,
         iterations=state.iteration,
         confidence=state.confidence,
+        confidence_signals=state.confidence_signals,
         evidence_coverage=state.coverage,
         elapsed_ms=round(trace.total_ms, 2),
         contexts=[c.chunk.text for c in state.contexts],

@@ -139,71 +139,79 @@ def node_fuse(state: AgentState, deps: AgentDeps) -> AgentState:
 
 
 def node_critic(state: AgentState, deps: AgentDeps) -> AgentState:
+    """Dual-signal evidence sufficiency critic — paper §4.2, Eqs. 3-5.
+
+    rewrite(q, R) = 1[ lex(q,R) < tau_l  AND  sem(q,R) < tau_s ]
+      tau_l = 0.60  (lexical key-term coverage threshold)
+      tau_s = 0.50  (semantic cosine coverage threshold)
+
+    The AND gate ensures a rewrite fires only when *both* signals indicate a gap.
+    High semantic coverage (sem >= tau_s) means the context is on-topic despite
+    surface-vocabulary mismatch; rewriting would fetch the same passages with
+    lower diversity (Eq. 10, false-positive bound).
+    """
+    _LEX_TAU = 0.60
+    _SEM_TAU = 0.50
+
     with deps.trace.span("evidence_gap_critic") as sp:
-        # --- token-level coverage (fast, deterministic) ---
+        # lex(q, R) = |T_q intersect union_i T_{c_i}| / |T_q|  (Eq. 3)
         q_terms = {t for t in tokenize(state.original_question) if t not in _STOP and len(t) > 2}
-        covered = set()
+        covered: set[str] = set()
         for c in state.contexts:
             covered |= set(tokenize(c.chunk.text))
         missing = sorted(q_terms - covered)
-        coverage = 1.0 - (len(missing) / max(len(q_terms), 1))
+        lex_cov = len(q_terms & covered) / max(len(q_terms), 1)
         state.gaps = missing
-        state.coverage = round(coverage, 3)
+        state.coverage = round(lex_cov, 3)
 
-        # --- semantic coverage (FAIR-RAG Structured Evidence Assessment) ---
-        # Computes cosine similarity between the query embedding and the mean of
-        # all retrieved-context embeddings. This catches the case where the query
-        # and the document use different surface forms for the same concept — a
-        # failure mode of pure token overlap that triggers spurious rewrites.
+        # sem(q, R) = cos(q, mean_i(c_i))  mapped to [0,1]  (Eq. 4)
         sem_cov = _semantic_coverage(state.original_question, state.contexts, deps)
         state.semantic_coverage = round(sem_cov, 3)
 
-        can_retry = (
-            state.iteration < state.max_iters - 1
-            and not state.out_of_budget()
-            and len(state.contexts) >= 0
-        )
-        # Only rewrite when BOTH lexical AND semantic coverage are low.  High
-        # semantic coverage (≥ 0.5) means the retrieved passages are on-topic
-        # even if the surface vocabulary differs; rewriting would likely fetch
-        # the same passages with worse diversity.
-        state.need_rewrite = (
-            bool(missing) and coverage < 0.6 and sem_cov < 0.5 and can_retry
-        )
+        can_retry = state.iteration < state.max_iters - 1 and not state.out_of_budget()
+
+        # Eq. 5: rewrite iff lex < tau_l AND sem < tau_s
+        state.need_rewrite = lex_cov < _LEX_TAU and sem_cov < _SEM_TAU and can_retry
+
         sp.attributes.update(
-            coverage=round(coverage, 3),
-            semantic_coverage=round(sem_cov, 3),
-            missing=missing,
+            lex_coverage=round(lex_cov, 3),
+            sem_coverage=round(sem_cov, 3),
+            lex_tau=_LEX_TAU,
+            sem_tau=_SEM_TAU,
+            missing_terms=missing,
             need_rewrite=state.need_rewrite,
         )
     return state
 
 
 def _semantic_coverage(question: str, contexts: list, deps: AgentDeps) -> float:
-    """Cosine similarity between query embedding and mean context embedding.
+    """Semantic coverage: sem(q, R) = cos(q, mean_i c_i) mapped to [0,1] — Eq. 4.
 
-    Uses the shared embedder already loaded in deps to avoid extra model loads.
-    Falls back gracefully to 0.0 if the embedder is unavailable (hashing fallback
-    does not support meaningful cosine comparisons — we skip the check).
+    Returns 1.0 (fully covered) when using the hash-embedding fallback because the
+    hash embedder produces random unit vectors that carry no semantic information;
+    letting it return 0.0 would cause the AND-gate (Eq. 5) to fire spuriously on
+    the semantic dimension whenever lexical coverage is also low.
     """
     if not contexts:
         return 0.0
     try:
         emb = deps.hybrid.embedder
-        # Only meaningful for real dense embedders; hashing gives random unit vectors.
         if getattr(emb, "name", "") in ("hashing", "hash"):
-            return 0.0
+            # Hash embedder provides no meaningful cosine signal — treat as covered
+            # so the dual-signal AND gate degrades gracefully to lex-only gating.
+            return 1.0
         q_vec = emb.embed_query(question).dense
         texts = [c.chunk.text[:512] for c in contexts]
         ctx_embs = emb.embed(texts).dense
-        # Mean pooling over contexts, then cosine similarity.
+
         import numpy as np
 
+        # mean pooling over context embeddings, then cosine sim with query
         ctx_mean = np.mean(ctx_embs, axis=0)
         norm_q = float(np.linalg.norm(q_vec)) or 1.0
         norm_c = float(np.linalg.norm(ctx_mean)) or 1.0
         sim = float(np.dot(q_vec, ctx_mean) / (norm_q * norm_c))
-        return max(0.0, min(1.0, (sim + 1.0) / 2.0))  # map [-1,1] → [0,1]
+        return float(max(0.0, min(1.0, (sim + 1.0) / 2.0)))  # map [-1,1] → [0,1]
     except Exception:  # pragma: no cover — embedder error must not break the loop
         return 0.0
 
@@ -248,43 +256,51 @@ def node_synthesize(state: AgentState, deps: AgentDeps) -> AgentState:
 
 
 def node_self_check(state: AgentState, deps: AgentDeps) -> AgentState:
+    """Four-signal calibrated confidence — paper §4.3, Eqs. 6-10.
+
+    p̂ = w^T s  =  0.30·s_qual + 0.30·s_cite + 0.25·s_sem + 0.15·s_tok
+
+    s_qual: clip(r̄ / r_ref, 0, 1)            retrieval score quality  (Eq. 7)
+    s_cite: |K| / |R|                          citation coverage        (Eq. 8)
+    s_sem:  sem(q, R)                          semantic coverage        (Eq. 9, from critic)
+    s_tok:  |T_q ∩ T_a| / |T_q|               answer token coverage    (Eq. 10)
+
+    All four signals are stored in state.confidence_signals for the UI ConfidenceBar.
+    """
     with deps.trace.span("self_check") as sp:
         markers = {int(m) for m in _MARKER_RE.findall(state.answer)}
         valid = {m for m in markers if 1 <= m <= len(state.contexts)}
-        has_support = bool(valid) or not state.contexts
-        if not has_support and state.contexts:
+        if not valid and state.contexts:
             state.notes.append("answer lacked citations; flagged low confidence")
 
-        # Calibrated confidence (Bayesian RAG, Frontiers 2026):
-        # Blend four orthogonal signals rather than weighting context count linearly.
-        #
-        # 1. score_quality: mean retrieval score normalised by a 0.7 reference
-        #    (bge-m3 cross-encoder scores cluster around 0.65-0.80 for on-topic
-        #    passages; scores below ~0.3 indicate marginal relevance).
-        # 2. citation_coverage: fraction of contexts the LLM actually cited — a
-        #    low value often means the contexts were not directly used.
-        # 3. semantic_coverage: cosine(query, mean_context) from the critic node —
-        #    the semantic sufficiency signal (FAIR-RAG SEA).
-        # 4. token_coverage: 1 - gap_fraction (lexical breadth of evidence).
-        score_quality = _retrieval_score_quality(state.contexts)
-        citation_coverage = len(valid) / max(len(state.contexts), 1) if state.contexts else 0.0
-        sem_cov = state.semantic_coverage
-        token_cov = 1.0 - len(state.gaps) / max(len(tokenize(state.original_question)), 1)
+        # s_qual = clip(r̄ / r_ref, 0, 1)  (Eq. 7)
+        s_qual = _retrieval_score_quality(state.contexts)
 
-        state.confidence = round(
-            0.30 * score_quality
-            + 0.30 * citation_coverage
-            + 0.25 * sem_cov
-            + 0.15 * token_cov,
-            3,
-        )
+        # s_cite = |K| / |R|  (Eq. 8): fraction of retrieved chunks cited by LLM
+        s_cite = len(valid) / max(len(state.contexts), 1) if state.contexts else 0.0
+
+        # s_sem from critic node (Eq. 9)
+        s_sem = state.semantic_coverage
+
+        # s_tok = |T_q ∩ T_a| / |T_q|  (Eq. 10): query key-terms present in answer
+        # NOTE: computed against the generated answer, not against context gaps.
+        q_terms = {t for t in tokenize(state.original_question) if t not in _STOP and len(t) > 2}
+        a_terms = {t for t in tokenize(state.answer) if t not in _STOP and len(t) > 2}
+        s_tok = len(q_terms & a_terms) / max(len(q_terms), 1) if q_terms else 1.0
+
+        confidence = round(0.30 * s_qual + 0.30 * s_cite + 0.25 * s_sem + 0.15 * s_tok, 3)
+        state.confidence = confidence
+        state.confidence_signals = {
+            "s_qual": round(s_qual, 3),
+            "s_cite": round(s_cite, 3),
+            "s_sem":  round(s_sem, 3),
+            "s_tok":  round(s_tok, 3),
+        }
+
         sp.attributes.update(
             citations_used=sorted(valid),
-            confidence=state.confidence,
-            score_quality=round(score_quality, 3),
-            citation_coverage=round(citation_coverage, 3),
-            semantic_coverage=round(sem_cov, 3),
-            token_coverage=round(token_cov, 3),
+            confidence=confidence,
+            **state.confidence_signals,
         )
     return state
 

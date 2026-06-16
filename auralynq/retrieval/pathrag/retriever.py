@@ -36,26 +36,34 @@ from auralynq.utils import tokenize
 from auralynq.vectorstore.base import VectorStore
 
 DECAY = 0.8  # per-hop resource decay
-_PPR_ALPHA = 0.15   # PageRank teleport probability (damping = 1 - alpha)
-_PPR_FLOW_W = 0.4   # weight of flow component in blended score
-_PPR_AUTH_W = 0.6   # weight of PPR terminal-node authority in blended score
+
+# Paper §4.1 (Eq. 2): score(p) = lam*flow_score(p) + (1-lam)*ppr(term(p))
+_PPR_TELEPORT = 0.15   # teleportation probability (restart prob.) — alpha in the paper.
+                       # NetworkX pagerank(alpha=...) takes the *damping* factor,
+                       # so we pass alpha=1-_PPR_TELEPORT = 0.85 to nx.pagerank.
+_PPR_FLOW_W = 0.4      # λ   — weight on bottleneck flow score
+_PPR_AUTH_W = 0.6      # 1-λ — weight on PPR terminal-node authority
 
 
 @dataclass
 class _Path:
     nodes: list[str]
     edges: list[dict]
-    flow: float
-    reliability: float
-    ppr_score: float = 0.0  # terminal-node PPR authority (set after _assign_ppr)
+    flow: float         # bottleneck flow: min_{e ∈ p} r(e)  (Eq. 2, flow_score)
+    reliability: float  # mean edge reliability (auxiliary signal, not in score blend)
+    ppr_score: float = 0.0  # terminal-node PPR authority; set by _apply_ppr
 
     @property
     def score(self) -> float:
-        # Blend flow reliability (robustness signal) with PPR authority (graph centrality).
-        # PPR corrects pure flow's bias toward short paths by rewarding nodes that
-        # many query-relevant paths converge on — a convergence property flow lacks.
-        flow_component = self.flow * (0.5 + 0.5 * self.reliability)
-        return _PPR_FLOW_W * flow_component + _PPR_AUTH_W * self.ppr_score
+        """Blended path score — paper Eq. 2.
+
+        score(p) = λ · flow_score(p) + (1-λ) · ppr(term(p))
+
+        flow_score(p) = min_{e ∈ p} r(e)  (bottleneck resource budget, self.flow).
+        PPR authority is path-length-invariant, correcting the short-path bias that
+        pure flow scoring introduces for multi-hop paths.
+        """
+        return _PPR_FLOW_W * self.flow + _PPR_AUTH_W * self.ppr_score
 
 
 class PathRAGRetriever(Retriever):
@@ -175,7 +183,17 @@ class PathRAGRetriever(Retriever):
                 return {}
             personalisation = {k: v / total for k, v in personalisation.items()}
 
-            scores = nx.pagerank(g, alpha=1 - _PPR_ALPHA, personalization=personalisation)
+            # NetworkX pagerank(alpha=...) takes the damping factor.
+            # Our paper uses 0.15 as the teleportation probability, so
+            # damping = 1 - 0.15 = 0.85.  Convergence in <=50 iterations guaranteed
+            # because the contraction ratio of power iteration is (1 - teleport) < 1.
+            scores = nx.pagerank(
+                g,
+                alpha=1.0 - _PPR_TELEPORT,   # damping = 0.85
+                personalization=personalisation,
+                max_iter=50,
+                tol=1e-6,
+            )
             # Normalise to [0, 1] so scores are comparable across graph sizes.
             max_s = max(scores.values(), default=1.0) or 1.0
             return {k: v / max_s for k, v in scores.items()}
@@ -256,8 +274,15 @@ class PathRAGRetriever(Retriever):
         )
 
     def _golden_order(self, evidences: list[PathEvidence]) -> list[PathEvidence]:
-        """Most reliable paths at the edges of the rendered context."""
-        ranked = sorted(evidences, key=lambda e: e.reliability, reverse=True)
+        """Place highest-score paths at context boundaries (lost-in-middle mitigation).
+
+        Sort by the same blended score as _Path.score — Eq. 2: λ·reliability + (1-λ)·ppr_score
+        — so that PPR-authority paths receive the same priority here that they received
+        during path selection.  Even-indexed entries go to the head of context; odd-indexed
+        entries are reversed into the tail, keeping high-relevance paths at both ends.
+        """
+        blended = lambda e: _PPR_FLOW_W * e.reliability + _PPR_AUTH_W * e.ppr_score  # noqa: E731
+        ranked = sorted(evidences, key=blended, reverse=True)
         head: list[PathEvidence] = []
         tail: list[PathEvidence] = []
         for i, e in enumerate(ranked):
