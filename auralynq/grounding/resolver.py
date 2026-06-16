@@ -25,16 +25,21 @@ class VisualEvidence:
     doc_id: str
     source_title: str
     page: int | None
-    bbox: list[float] | None   # [x0, y0, x1, y1] in PDF space
-    normalized_bbox: list[float] | None  # [0..1] relative to page
-    color_index: int           # for CSS color-coding by citation number
+    bbox: list[float] | None           # [x0, y0, x1, y1] in PDF space
+    normalized_bbox: list[float] | None  # [0..1] relative to page  (Eq. 11)
+    color_index: int                   # for CSS color-coding by citation number
     snippet: str
-    support_type: str          # span | page | unavailable | graph
-    relevance: float           # retrieval score 0-1
-    confidence: float          # chunk visual grounding confidence
+    support_type: str   # span | page | segment | unavailable | graph
+                        # "segment" = audio timestamp grounding (Eq. 1)
+    relevance: float    # retrieval score 0-1
+    confidence: float   # chunk visual grounding confidence
     block_type: str
     grounding_version: int
-    reindex_required: bool     # True if doc was indexed before visual grounding
+    reindex_required: bool  # True if doc was indexed before visual grounding
+    # Audio-specific grounding (paper §4.5, Eq. 1: g_c = (t_start, t_end) in R+^2)
+    t_start: float | None = None
+    t_end: float | None = None
+    speaker: str | None = None
 
 
 @dataclass
@@ -141,22 +146,33 @@ class GroundingResolver:
                 normalized_bbox = vg.get("normalized_bbox") if has_bbox else None
                 bbox = vg.get("bbox") if has_bbox else None
 
+                # Audio timestamp grounding — paper §4.5, Eq. 1:
+                # g_c = (t_start, t_end) in R+^2 for WAV/MP3/M4A chunks.
+                is_audio = vg.get("source_modality") == "audio" or (
+                    c.get("source_type") == "audio" and c.get("start_s") is not None
+                )
+                t_start: float | None = vg.get("t_start") or c.get("start_s")
+                t_end: float | None = vg.get("t_end") or c.get("end_s")
+                speaker: str | None = vg.get("speaker") or c.get("speaker")
+
                 if has_bbox and normalized_bbox:
                     stage = "span"
+                    has_visual_grounding = True
+                elif is_audio and t_start is not None:
+                    # Segment-level audio grounding: timestamp interval is known
+                    stage = "segment"
                     has_visual_grounding = True
                 elif page is not None:
                     stage = "page"
                     has_visual_grounding = True
                     if not reindex_required:
-                        warnings.append(
-                            "Exact span unavailable; showing supporting page."
-                        )
+                        warnings.append("Exact span unavailable; showing supporting page.")
                 else:
                     stage = "unavailable"
                     if reindex_required:
                         warnings.append(
-                            "This document was indexed before visual grounding metadata was available. "
-                            "Reindex to enable source highlights."
+                            "This document was indexed before visual grounding metadata "
+                            "was available. Reindex to enable source highlights."
                         )
                     else:
                         warnings.append("Visual grounding metadata not available for this chunk.")
@@ -180,6 +196,9 @@ class GroundingResolver:
                     block_type=vg.get("block_type", "paragraph"),
                     grounding_version=gv,
                     reindex_required=reindex_required,
+                    t_start=t_start,
+                    t_end=t_end,
+                    speaker=speaker,
                 )
                 highlights.append(ev)
 
@@ -248,6 +267,10 @@ class GroundingResolver:
                     "block_type": ev.block_type,
                     "grounding_version": ev.grounding_version,
                     "reindex_required": ev.reindex_required,
+                    # audio grounding fields (paper §4.5, Eq. 1)
+                    "t_start": ev.t_start,
+                    "t_end": ev.t_end,
+                    "speaker": ev.speaker,
                 })
             for cg in r.claim_grounding:
                 all_claims.append({

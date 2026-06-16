@@ -1,4 +1,8 @@
-"""Vector store factory with ``auto`` resolution + graceful Qdrant→memory fallback."""
+"""Vector store factory with ``auto`` resolution.
+
+Auto-resolution priority (highest → lowest):
+  qdrant (if server reachable) → chroma (if chromadb installed) → memory
+"""
 
 from __future__ import annotations
 
@@ -13,12 +17,21 @@ from auralynq.vectorstore.memory_store import MemoryStore
 _log = get_logger("auralynq.vectorstore")
 
 
+def _have(pkg: str) -> bool:
+    return importlib.util.find_spec(pkg) is not None
+
+
 def build_store(backend: str | None = None) -> VectorStore:
     s = get_settings()
     backend = backend or s.vector.backend
 
     if backend == "auto":
-        backend = "qdrant" if _qdrant_reachable() else "memory"
+        if _qdrant_reachable():
+            backend = "qdrant"
+        elif _have("chromadb"):
+            backend = "chroma"
+        else:
+            backend = "memory"
 
     if backend == "qdrant":
         try:
@@ -26,14 +39,26 @@ def build_store(backend: str | None = None) -> VectorStore:
 
             return QdrantStore(quantization=s.vector.quantization)
         except Exception as exc:  # pragma: no cover - server/lib absent
-            _log.warning("vectorstore.qdrant_failed_fallback_memory", error=str(exc))
+            _log.warning("vectorstore.qdrant_failed_fallback_chroma", error=str(exc))
+            backend = "chroma" if _have("chromadb") else "memory"
+
+    if backend == "chroma":
+        try:
+            from auralynq.vectorstore.chroma_store import ChromaStore
+
+            return ChromaStore(
+                persist_dir=s.vector.chroma_persist_dir,
+                collection=s.vector.chroma_collection,
+            )
+        except Exception as exc:
+            _log.warning("vectorstore.chroma_failed_fallback_memory", error=str(exc))
 
     _log.info("vectorstore.using", backend="memory")
     return MemoryStore()
 
 
 def _qdrant_reachable() -> bool:
-    if importlib.util.find_spec("qdrant_client") is None:
+    if not _have("qdrant_client"):
         return False
     s = get_settings()
     try:  # pragma: no cover - network probe
@@ -54,4 +79,8 @@ def resolved_backend() -> str:
     s = get_settings()
     if s.vector.backend != "auto":
         return s.vector.backend
-    return "qdrant" if _qdrant_reachable() else "memory"
+    if _qdrant_reachable():
+        return "qdrant"
+    if _have("chromadb"):
+        return "chroma"
+    return "memory"

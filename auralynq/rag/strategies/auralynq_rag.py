@@ -53,4 +53,5 @@ class AuralynqRAGStrategy(RAGStrategy):
             cached=d.get("cached", False),
             route_confidence=d.get("route_confidence", 1.0),
             route_rationale=d.get("route_rationale", ""),
+            confidence_signals=d.get("confidence_signals", {}),
         )

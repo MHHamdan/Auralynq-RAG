@@ -507,6 +507,7 @@ def create_app() -> FastAPI:
             "seeds": result.seeds,
             "iterations": result.iterations,
             "confidence": result.confidence,
+            "confidence_signals": getattr(result, "confidence_signals", {}),
             "evidence_coverage": result.evidence_coverage,
             "cached": result.cached,
             "elapsed_ms": result.elapsed_ms,

@@ -45,6 +45,8 @@ class QueryResponse(BaseModel):
     seeds: list[str] = Field(default_factory=list)
     iterations: int = 0
     confidence: float = 0.0
+    # Per-signal breakdown for UI ConfidenceBar (paper §4.3, Eq. 6)
+    confidence_signals: dict[str, float] = Field(default_factory=dict)
     evidence_coverage: float = 0.0
     cached: bool = False
     elapsed_ms: float = 0.0

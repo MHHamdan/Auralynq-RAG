@@ -32,6 +32,7 @@ dependencies = [
   "structlog>=24.1",
   "tenacity>=8.2",
   "orjson>=3.10",
+  "pyyaml>=6.0",
   "fastapi>=0.111",
   "uvicorn[standard]>=0.30",
   "sse-starlette>=2.1",
@@ -41,7 +42,7 @@ dependencies = [
 
 [project.optional-dependencies]
 embeddings = ["sentence-transformers>=3.0", "FlagEmbedding>=1.2", "torch>=2.2"]
-vector = ["qdrant-client>=1.9"]
+vector = ["qdrant-client>=1.9", "chromadb>=0.5"]
 ingest = ["pypdf>=4.2", "python-docx>=1.1", "beautifulsoup4>=4.12", "markdown-it-py>=3.0", "pdfplumber>=0.11", "pdf2image>=1.17"]
 voice = [
   "faster-whisper>=1.0",
@@ -55,7 +56,7 @@ llm = ["openai>=1.30", "anthropic>=0.30", "cohere>=5.5"]
 eval = ["ragas>=0.1.9", "jiwer>=3.0", "datasets>=2.19", "scikit-learn>=1.4"]
 # Phase 2 research layer: config loading + learned calibration. Pure-Python; the
 # rest of the research layer reuses core/eval deps and degrades offline at $0.
-research = ["pyyaml>=6.0", "scikit-learn>=1.4"]
+research = ["scikit-learn>=1.4"]
 telemetry = [
   "opentelemetry-api>=1.25",
   "opentelemetry-sdk>=1.25",

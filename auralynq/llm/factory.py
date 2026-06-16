@@ -68,14 +68,15 @@ def build_llm(provider: str | None = None) -> LLM:
         if s.air_gapped:
             _log.info("llm.air_gapped", skipped=["anthropic", "openai", "cohere"])
             provider = "ollama" if _ollama_reachable(s.llm.base_url) else "extractive"
+        elif _ollama_reachable(s.llm.base_url):
+            # Prefer local Ollama — zero-cost, no data egress, works offline.
+            provider = "ollama"
         elif s.anthropic_api_key and importlib.util.find_spec("anthropic"):
             provider = "anthropic"
         elif s.openai_api_key and importlib.util.find_spec("openai"):
             provider = "openai"
         elif s.cohere_api_key and importlib.util.find_spec("cohere"):
             provider = "cohere"
-        elif _ollama_reachable(s.llm.base_url):
-            provider = "ollama"
         else:
             provider = "extractive"
 
@@ -130,14 +131,14 @@ def resolved_provider() -> str:
         return s.llm.provider
     if s.air_gapped:
         return "ollama" if _ollama_reachable(s.llm.base_url) else "extractive"
+    if _ollama_reachable(s.llm.base_url):
+        return "ollama"
     if s.anthropic_api_key and importlib.util.find_spec("anthropic"):
         return "anthropic"
     if s.openai_api_key and importlib.util.find_spec("openai"):
         return "openai"
     if s.cohere_api_key and importlib.util.find_spec("cohere"):
         return "cohere"
-    if _ollama_reachable(s.llm.base_url):
-        return "ollama"
     return "extractive"
 
 

@@ -41,6 +41,8 @@ class AgentState(BaseModel):
     answer: str = ""
     citations: list[dict[str, Any]] = Field(default_factory=list)
     confidence: float = 0.0
+    # Per-signal breakdown for UI ConfidenceBar (paper §4.3, Eq. 6)
+    confidence_signals: dict[str, float] = Field(default_factory=dict)
     cached: bool = False
     notes: list[str] = Field(default_factory=list)
 

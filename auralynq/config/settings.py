@@ -1,7 +1,11 @@
 """Typed, env-driven configuration for Auralynq.
 
-All settings are loaded from environment variables / `.env` via pydantic-settings.
-Nested groups use the ``AURALYNQ_<GROUP>__<FIELD>`` convention (double underscore).
+Precedence (highest → lowest):
+  1. Environment variables  (``AURALYNQ_<GROUP>__<FIELD>``, double underscore)
+  2. ``.env`` file          (auto-loaded from CWD)
+  3. ``config.yaml``        (auto-discovered; override path via ``AURALYNQ_CONFIG``)
+  4. Hard-coded defaults    (defined here)
+
 Only ``HUGGINGFACE_TOKEN`` is ever required, and only for gated HF assets.
 """
 
@@ -13,25 +17,29 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 Provider = Literal["auto"]
 
 
 class EmbeddingSettings(BaseSettings):
-    provider: Literal["auto", "bge", "hash", "openai"] = "auto"
-    model: str = "BAAI/bge-m3"
-    dim: int = 1024
+    provider: Literal["auto", "ollama", "bge", "hash", "openai"] = "auto"
+    model: str = "BAAI/bge-m3"            # used when provider=bge
+    ollama_model: str = "nomic-embed-text" # used when provider=ollama
+    dim: int = 768
     device: Literal["auto", "cpu", "cuda"] = "auto"
     batch_size: int = 16
 
 
 class VectorSettings(BaseSettings):
-    backend: Literal["auto", "qdrant", "memory"] = "auto"
+    backend: Literal["auto", "qdrant", "chroma", "memory"] = "auto"
     url: str = "http://localhost:6333"
     collection: str = "auralynq"
     quantization: Literal["none", "scalar", "binary"] = "none"
     hnsw_m: int = 16
+    # ChromaDB local-persistence settings
+    chroma_persist_dir: Path = Path("./data/vectorstore")
+    chroma_collection: str = "auralynq"
 
 
 class RerankSettings(BaseSettings):
@@ -131,6 +139,9 @@ class Settings(BaseSettings):
     reports_dir: Path = Path("./reports")
     seed: int = 42
 
+    # Default PDF source directory (used by `auralynq ingest` with no argument)
+    pdf_source_dir: Path = Path("./data/pdfs")
+
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     vector: VectorSettings = Field(default_factory=VectorSettings)
     rerank: RerankSettings = Field(default_factory=RerankSettings)
@@ -155,6 +166,25 @@ class Settings(BaseSettings):
     langfuse_public_key: str = Field(default="", alias="LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        from auralynq.config.yaml_source import YamlConfigSettingsSource
+
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            YamlConfigSettingsSource(settings_cls),
+            file_secret_settings,
+        )
+
     @property
     def index_dir(self) -> Path:
         return self.data_dir / "index"
@@ -170,6 +200,7 @@ class Settings(BaseSettings):
     def ensure_dirs(self) -> None:
         for p in (self.data_dir, self.reports_dir, self.index_dir, self.storage_dir):
             p.mkdir(parents=True, exist_ok=True)
+        self.pdf_source_dir.mkdir(parents=True, exist_ok=True)
         if self.visual.page_rendering_enabled:
             self.page_cache_dir.mkdir(parents=True, exist_ok=True)
 
