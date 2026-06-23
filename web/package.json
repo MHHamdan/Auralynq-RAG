@@ -24,7 +24,7 @@
     "react-markdown": "9.0.1",
     "rehype-highlight": "7.0.0",
     "remark-gfm": "4.0.0",
-    "undici": "6.24.0"
+    "undici": "6.27.0"
   },
   "devDependencies": {
     "@types/node": "20.14.0",
