@@ -380,45 +380,42 @@ flowchart LR
 
 ---
 
-### Fig 7 — Source Workspace: Three-Panel Layout
+### Fig. 7 — Grounded Source Workspace
 
-Click any citation to open the full-screen workspace. Click a highlight box to see the
-evidence snippet in the right panel. Use ← → to navigate pages; Escape to close.
+The **Source Workspace** opens when a user clicks any citation. It provides a three-panel review flow: citations on the left, the source document in the center, and the extracted evidence on the right.
 
-```
-╔════════════════════════════════════════════════════════════════════════════════════╗
-║  Grounded Source Workspace                    [50%][75%][fit][125%][150%]  ⛶  ✕  ║
-╠═══════════════════╦═══════════════════════════════════════╦════════════════════════╣
-║  CITATION PANEL   ║          PDF VIEWER                   ║  EVIDENCE PANEL        ║
-║  ───────────────  ║  ─────────────────────────────────    ║  ────────────────────  ║
-║                   ║                                       ║                        ║
-║  [1] report.pdf   ║  ┌─────────────────────────────────┐  ║  ■ [1] paragraph·span ║
-║      page 2  ← ●  ║  │  1. Introduction                │  ║  "The model achieves  ║
-║                   ║  │                                   │  ║   state-of-the-art   ║
-║  [2] report.pdf   ║  │  ┌───────────────────────────┐   │  ║   performance..."    ║
-║      page 4       ║  │  │ ▓▓▓[1]▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │   │  ║  relevance  84%      ║
-║                   ║  │  └───────────────────────────┘   │  ║  confidence 91%      ║
-║  ── Claims ─────  ║  │                                   │  ║                      ║
-║                   ║  │  2. Methods                       │  ║  ■ [2] table·span    ║
-║  ✓  Supported     ║  │                                   │  ║  "Table 3 shows a    ║
-║  "Model beats…"   ║  │  ┌───────────────────────────┐   │  ║   12% improvement    ║
-║                   ║  │  │ ░░░[2]░░░░░░░░░░░░░░░░░░  │   │  ║   over baseline..."  ║
-║  ⚡  Partial      ║  │  └───────────────────────────┘   │  ║  relevance  71%      ║
-║  "Table shows…"   ║  │                                   │  ║  confidence 88%      ║
-║                   ║  └─────────────────────────────────┘  ║                        ║
-║                   ║            ‹  page 2 of 3  ›           ║  ── Legend ──────────  ║
-║                   ║                                       ║  ■ span-level exact    ║
-║                   ║                                       ║  □ page-level soft     ║
-╚═══════════════════╩═══════════════════════════════════════╩════════════════════════╝
+```mermaid
+flowchart LR
+    A["Citation Panel<br/><br/>[1] report.pdf · page 2<br/>[2] report.pdf · page 4<br/><br/>Claim status:<br/>✅ Supported<br/>⚡ Partial"] 
+    
+    B["PDF Viewer<br/><br/>Zoom: 50% · 75% · Fit · 125% · 150%<br/><br/>Highlighted evidence regions<br/>▰ Citation [1]<br/>▱ Citation [2]<br/><br/>‹ Page 2 of 3 ›"]
+    
+    C["Evidence Panel<br/><br/>■ [1] paragraph span<br/>Relevance: 84%<br/>Confidence: 91%<br/><br/>■ [2] table span<br/>Relevance: 71%<br/>Confidence: 88%<br/><br/>Legend:<br/>■ exact span<br/>□ page-level evidence"]
+
+    A -->|"click citation"| B
+    B -->|"click highlight"| C
 ```
 
-**Interactions:**
-- **Click citation** → PDF navigates to that page, highlight pulses
-- **Click highlight box** → snippet + support status shown in right panel
-- **Arrow keys** → prev/next page across all cited pages
-- **Escape** → close workspace
-- **⛶** → full-screen PDF (hide side panels)
-- **Zoom presets**: 50 % / 75 % / fit-width / 125 % / 150 % + fine ±10 %
+#### Workspace behavior
+
+| Action                | Result                                                                |
+| --------------------- | --------------------------------------------------------------------- |
+| Click a citation      | Opens the source page and pulses the matching highlight               |
+| Click a highlight box | Shows the evidence snippet, support status, relevance, and confidence |
+| Use `←` / `→`         | Navigates across cited pages                                          |
+| Press `Esc`           | Closes the workspace                                                  |
+| Click `⛶`             | Expands the PDF viewer and hides side panels                          |
+| Use zoom presets      | Switches between `50%`, `75%`, `fit-width`, `125%`, and `150%`        |
+
+#### Evidence states
+
+| State                 | Meaning                                                          |
+| --------------------- | ---------------------------------------------------------------- |
+| ✅ Supported           | The citation directly supports the claim                         |
+| ⚡ Partial             | The citation supports only part of the claim                     |
+| ■ Exact span          | The system found a specific paragraph, sentence, or table region |
+| □ Page-level evidence | The source page is relevant, but no exact span was selected      |
+
 
 ### Backend endpoints
 
