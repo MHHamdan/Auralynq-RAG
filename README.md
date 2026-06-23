@@ -432,41 +432,180 @@ flowchart LR
 
 ## 🖥 Frontend
 
-### Fig 8 — Chat Workspace Layout
+### Fig. 8 — Chat Workspace Layout
 
-Two-column layout: conversation on the left, always-visible inspector on the right.
-The `InlineSourceStrip` under each answer surfaces grounding inline.
+The **Chat Workspace** uses a persistent two-column layout. The conversation stays on the left, while the **Agent Activity Rail** remains visible on the right for tracing, evidence inspection, source preview, ingestion status, and evaluation feedback.
 
+Each assistant answer includes an `InlineSourceStrip`, allowing users to inspect citations and grounding directly inside the chat flow.
+
+```mermaid
+flowchart LR
+    subgraph CHAT["Chat Column"]
+        direction TB
+
+        A["AppBar<br/>status · entities · settings · menu"]
+
+        U["User<br/><b>Summarize the documents.</b>"]
+
+        M["Assistant<br/>The documents cover…<br/><br/><b>InlineSourceStrip</b><br/>[1] doc · p.2 &nbsp;&nbsp; [2] doc · p.4"]
+
+        S["Inline Source Preview<br/>● report.pdf · page 2 · span match<br/><br/>Preview · View source ↗"]
+
+        C["Composer<br/>⚡ Auralynq-RAG ▾ &nbsp; text input &nbsp; 🎙 voice"]
+
+        A --> U --> M --> S --> C
+    end
+
+    subgraph RAIL["Agent Activity Rail"]
+        direction TB
+
+        T["Tabs<br/>Overview · Trace · Evidence · Source · Ingest · Eval"]
+
+        O["Overview<br/>corpus stats · recent metrics · suggestions"]
+
+        TR["Trace<br/>planner → router → retriever<br/>VG resolver · page cache · Phoenix link"]
+
+        E["Evidence<br/>coverage bar · PathRAG paths<br/>citation cards · View source ↗"]
+
+        SRC["Source<br/>docked PDF preview<br/>⛶ Expand → Source Workspace"]
+
+        I["Ingest<br/>file upload · VG status<br/>span/page/reindex · corpus management"]
+
+        EV["Eval<br/>last-query metrics · feedback widget<br/>export run · async eval runner"]
+
+        T --> O
+        T --> TR
+        T --> E
+        T --> SRC
+        T --> I
+        T --> EV
+    end
+
+    M -->|"click citation"| SRC
+    S -->|"view source"| SRC
+    C -->|"choose retrieval strategy"| ALG["Algorithm Selector"]
+
+    classDef primary fill:#eef6ff,stroke:#4f8cff,stroke-width:1px,color:#111827;
+    classDef rail fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#111827;
+    classDef action fill:#fff7ed,stroke:#fb923c,stroke-width:1px,color:#111827;
+
+    class CHAT,A,U,M,S,C primary;
+    class RAIL,T,O,TR,E,SRC,I,EV rail;
+    class ALG action;
 ```
-┌────────────────────────────────────────┬─────────────────────────────────────────┐
-│  AppBar: status · entities · ⚙ · ☰    │  Agent Activity Rail  (always visible)   │
-├────────────────────────────────────────┼─────────────────────────────────────────┤
-│                                        │  Tabs:                                  │
-│  [User] Summarize the documents.       │  Overview · Trace · Evidence ·           │
-│                                        │  Source · Ingest · Eval                 │
-│  [Assistant] The documents cover…      │                                         │
-│              [1] doc·p.2  [2] doc·p.4  │  ┌─ Overview ───────────────────────┐   │
-│                                        │  │ corpus stats · suggestions        │   │
-│  ◉ report.pdf · p.2 · span match       │  └───────────────────────────────────┘   │
-│  [Preview]  [View source ↗]            │                                         │
-│                                        │  ┌─ Trace ────────────────────────────┐  │
-│  ──────────────────────────────────    │  │ planner → router → retriever       │  │
-│                                        │  │ VG: resolver · page cache          │  │
-│  ⚡ auralynq-rag ▾  [────────────────] │  └───────────────────────────────────┘   │
-│  Composer: text input + 🎙 voice       │                                         │
-└────────────────────────────────────────┴─────────────────────────────────────────┘
+
+#### Layout behavior
+
+| Area                    | Purpose                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Chat Column**         | Main conversation stream with user messages, assistant answers, inline citations, and the composer     |
+| **InlineSourceStrip**   | Shows compact grounding directly under each answer, including source name, page number, and match type |
+| **Agent Activity Rail** | Always-visible inspector for trace, evidence, source preview, ingest status, and evaluation            |
+| **Composer**            | Text and voice input area with the active RAG strategy selector                                        |
+
+#### Core interactions
+
+| Action                | Result                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| Click a citation      | Opens the related source in the **Source** tab                                             |
+| Click `View source ↗` | Opens the cited PDF page or expands into the full Source Workspace                         |
+| Open **Trace**        | Shows planner, router, retriever, VG resolver, page-cache activity, and Phoenix trace link |
+| Open **Evidence**     | Shows coverage, PathRAG graph paths, and citation cards                                    |
+| Upload a document     | Sends the file through ingestion, VG processing, indexing, and corpus refresh              |
+| Change algorithm      | Updates the retrieval and answering strategy used for the next query                       |
+
+---
+
+### Inspector Tabs
+
+The **Agent Activity Rail** is organized into focused tabs so users can quickly move from high-level status to detailed evidence and debugging.
+
+| Tab          | Content                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------ |
+| **Overview** | Corpus stats, recent metrics, and system suggestions                                                   |
+| **Trace**    | Step-by-step pipeline trace with planner, router, retriever, VG pipeline, page cache, and Phoenix link |
+| **Evidence** | Coverage bar, PathRAG graph paths, citation cards, and `View source ↗` actions                         |
+| **Source**   | Compact docked PDF preview with `⛶ Expand` to open the full Source Workspace                           |
+| **Ingest**   | File upload, per-document VG status, span/page/reindex state, and corpus management                    |
+| **Eval**     | Last-query metrics, feedback widget, export run, and async evaluation runner                           |
+
+---
+
+### Algorithm Selector
+
+The **Algorithm Selector** sits inside the composer bar. It groups retrieval strategies by availability so users can clearly distinguish production-ready methods from experimental and planned options.
+
+Planned strategies are visible but disabled until their setup requirements are satisfied.
+
+```mermaid
+flowchart TB
+    A["⚡ Auralynq-RAG ▾"]
+
+    B["RAG Algorithm<br/>Choose how Auralynq retrieves and answers"]
+
+    C["Available now · 4<br/><br/>✓ Auralynq-RAG · default · fast<br/>Hybrid Vector · fast<br/>Naive Vector · fast<br/>Keyword BM25 · fast"]
+
+    D["Experimental · 3<br/><br/>Self-RAG · medium<br/>CRAG · slow<br/>Adaptive RAG · slow"]
+
+    E["Planned / requires setup · 6<br/><br/>GraphRAG · requires graph index<br/>PathRAG · requires path extraction<br/>Long-context RAG · requires long-context model<br/>Multi-agent RAG · requires orchestration<br/>Verifier-RAG · requires eval policy<br/>Domain-tuned RAG · requires fine-tuning"]
+
+    F["Selectable immediately"]
+    G["Selectable with warning"]
+    H["Disabled · shows setup requirements"]
+
+    A --> B
+    B --> C --> F
+    B --> D --> G
+    B --> E --> H
+
+    classDef header fill:#eef6ff,stroke:#4f8cff,stroke-width:1px,color:#111827;
+    classDef available fill:#ecfdf5,stroke:#10b981,stroke-width:1px,color:#111827;
+    classDef experimental fill:#fff7ed,stroke:#fb923c,stroke-width:1px,color:#111827;
+    classDef planned fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#111827;
+    classDef note fill:#ffffff,stroke:#cbd5e1,stroke-width:1px,color:#111827;
+
+    class A,B header;
+    class C,F available;
+    class D,G experimental;
+    class E,H planned;
 ```
 
-### Inspector tabs
+#### Strategy groups
 
-| Tab | Content |
-|-----|---------|
-| **Overview** | Corpus stats, recent metrics, suggestions |
-| **Trace** | Step-by-step pipeline trace with VG pipeline section; Phoenix link |
-| **Evidence** | Coverage bar, PathRAG graph paths, citation cards with "View source ↗" |
-| **Source** | Compact docked PDF preview + "⛶ Expand" → Source Workspace |
-| **Ingest** | File upload, per-document VG status (span/page/reindex), corpus management |
-| **Eval** | Last-query metrics, feedback widget, export run, async eval runner |
+| Group                        | Status           | Behavior                                             |
+| ---------------------------- | ---------------- | ---------------------------------------------------- |
+| **Available now**            | Production-ready | Selectable immediately                               |
+| **Experimental**             | Research mode    | Selectable, but marked with speed/stability warnings |
+| **Planned / requires setup** | Not ready yet    | Disabled, with setup requirements shown              |
+
+#### Available strategies
+
+| Strategy          | Status    | Speed | Notes                                                                  |
+| ----------------- | --------- | ----: | ---------------------------------------------------------------------- |
+| **Auralynq-RAG**  | Available |  Fast | Default strategy combining retrieval, grounding, and answer generation |
+| **Hybrid Vector** | Available |  Fast | Combines semantic retrieval with optional keyword support              |
+| **Naive Vector**  | Available |  Fast | Simple vector-search baseline                                          |
+| **Keyword BM25**  | Available |  Fast | Lexical retrieval baseline                                             |
+
+#### Experimental strategies
+
+| Strategy         | Status       |  Speed | Notes                                               |
+| ---------------- | ------------ | -----: | --------------------------------------------------- |
+| **Self-RAG**     | Experimental | Medium | Adds self-checking and retrieval reflection         |
+| **CRAG**         | Experimental |   Slow | Corrective retrieval for weak or uncertain evidence |
+| **Adaptive RAG** | Experimental |   Slow | Adjusts retrieval depth based on query complexity   |
+
+#### Planned strategies
+
+| Strategy             | Setup requirement                                |
+| -------------------- | ------------------------------------------------ |
+| **GraphRAG**         | Requires graph index construction                |
+| **PathRAG**          | Requires path extraction and graph traversal     |
+| **Long-context RAG** | Requires long-context model support              |
+| **Multi-agent RAG**  | Requires agent orchestration layer               |
+| **Verifier-RAG**     | Requires verification and evaluation policy      |
+| **Domain-tuned RAG** | Requires fine-tuned retrieval or reranking model |
+
 
 ### Algorithm Selector
 
