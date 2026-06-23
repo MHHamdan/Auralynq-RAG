@@ -64,6 +64,8 @@ class QueryResponse(BaseModel):
     strategy_warnings: list[str] = Field(default_factory=list)
     # Visual grounding
     visual_grounding: dict[str, Any] | None = None
+    # ModelFit — model selection metadata (None when not local-model-aware)
+    model_fit: dict[str, Any] | None = None
 
 
 class CorpusSummaryResponse(BaseModel):

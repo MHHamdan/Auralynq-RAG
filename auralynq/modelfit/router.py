@@ -1,0 +1,270 @@
+"""FastAPI router for Auralynq ModelFit Index endpoints.
+
+All endpoints are read-only or require explicit user confirmation.
+No models are downloaded automatically. No benchmarks run without confirmation.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
+
+from auralynq.modelfit.benchmark_runner import (
+    get_run,
+    list_runs,
+    preview_benchmark,
+    run_benchmark,
+)
+from auralynq.modelfit.hardware import probe_hardware
+from auralynq.modelfit.model_registry import get_registry
+from auralynq.modelfit.resource_estimator import estimate_resources, recommend_quantization
+from auralynq.modelfit.scoring import score_model
+
+router = APIRouter(prefix="/api/modelfit", tags=["modelfit"])
+
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+class EstimateRequest(BaseModel):
+    model_id: str
+    params_b: float = Field(..., gt=0, description="Parameter count in billions")
+    quantization: str = "q4_k"
+    context_tokens: int = Field(4096, ge=256, le=200000)
+
+
+class ScoreRequest(BaseModel):
+    model_id: str
+    quantization: str | None = None
+    requested_tasks: list[str] = Field(default_factory=list)
+    context_tokens: int = 4096
+
+
+class BenchmarkRunRequest(BaseModel):
+    model_id: str
+    quantization: str = "q4_k"
+    task: str = "latency"
+    num_examples: int = Field(10, ge=1, le=200)
+    confirmed: bool = Field(
+        False,
+        description="Must be true to actually run. Use /preview first.",
+    )
+
+
+# ── Hardware ─────────────────────────────────────────────────────────────────
+
+@router.get("/hardware")
+async def get_hardware() -> dict[str, Any]:
+    """Probe local hardware — CPU, RAM, GPU, VRAM, backend, Ollama, HF."""
+    hw = probe_hardware()
+    return hw.to_dict()
+
+
+# ── Models ────────────────────────────────────────────────────────────────────
+
+@router.get("/models")
+async def list_models(
+    source: str | None = Query(None, description="ollama|huggingface|local"),
+    family: str | None = Query(None),
+    task: str | None = Query(None),
+    embedding_only: bool = Query(False),
+    open_license: bool = Query(False),
+    supports_adapters: bool | None = Query(None),
+    q: str | None = Query(None, description="Free-text search"),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List models from static catalog. Optionally refreshed from live Ollama."""
+    registry = get_registry()
+    models = registry.search(
+        query=q or "",
+        source=source,
+        family=family,
+        task=task,
+        embedding_only=embedding_only,
+        open_license=open_license,
+        supports_adapters=supports_adapters,
+        limit=limit,
+    )
+    return {"models": registry.to_dict_list(models), "total": len(models)}
+
+
+@router.get("/models/search")
+async def search_models(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(20, ge=1, le=100),
+    refresh_ollama: bool = Query(False),
+) -> dict[str, Any]:
+    """Search models by name/family/task. Optionally sync live Ollama installs."""
+    registry = get_registry()
+    warnings: list[str] = []
+    if refresh_ollama:
+        warnings = await registry.refresh_from_ollama()
+    models = registry.search(query=q, limit=limit)
+    return {
+        "models": registry.to_dict_list(models),
+        "total": len(models),
+        "warnings": warnings,
+    }
+
+
+@router.get("/models/installed")
+async def list_installed() -> dict[str, Any]:
+    """Sync and return locally installed Ollama models (read-only, no downloads)."""
+    registry = get_registry()
+    warnings = await registry.refresh_from_ollama()
+    installed = registry.search(source="ollama", limit=100)
+    return {
+        "models": registry.to_dict_list(installed),
+        "total": len(installed),
+        "warnings": warnings,
+    }
+
+
+@router.get("/models/{model_id:path}")
+async def get_model(model_id: str) -> dict[str, Any]:
+    """Get metadata for a single model."""
+    registry = get_registry()
+    model = registry.get(model_id)
+    if not model:
+        raise HTTPException(404, f"Model '{model_id}' not found in registry.")
+    return model.to_dict()
+
+
+# ── Resource estimation ───────────────────────────────────────────────────────
+
+@router.post("/estimate")
+async def estimate(req: EstimateRequest) -> dict[str, Any]:
+    """Estimate VRAM/RAM/disk for a model+quantization on current hardware."""
+    hw = probe_hardware()
+    result = estimate_resources(
+        model_id=req.model_id,
+        params_b=req.params_b,
+        quantization=req.quantization,
+        available_vram_gb=hw.total_vram_gb,
+        available_ram_gb=hw.ram_gb,
+        context_tokens=req.context_tokens,
+    )
+    return result.to_dict()
+
+
+@router.post("/recommend-quantization")
+async def recommend_quant(
+    params_b: float = Query(..., gt=0),
+    prefer_quality: bool = Query(False),
+) -> dict[str, Any]:
+    """Return best quantization for given param count on current hardware."""
+    hw = probe_hardware()
+    quant = recommend_quantization(
+        params_b=params_b,
+        available_vram_gb=hw.total_vram_gb,
+        available_ram_gb=hw.ram_gb,
+        prefer_quality=prefer_quality,
+    )
+    return {"recommended_quantization": quant, "is_estimate": True}
+
+
+# ── ModelFit Score ────────────────────────────────────────────────────────────
+
+@router.post("/score")
+async def compute_score(req: ScoreRequest) -> dict[str, Any]:
+    """Compute a ModelFit Score for a model on current hardware."""
+    registry = get_registry()
+    model = registry.get(req.model_id)
+    if not model:
+        raise HTTPException(404, f"Model '{req.model_id}' not found in registry.")
+    hw = probe_hardware()
+    fit = score_model(
+        model=model,
+        hw=hw,
+        quantization=req.quantization,
+        requested_tasks=req.requested_tasks,
+        context_tokens=req.context_tokens,
+    )
+    return fit.to_dict()
+
+
+@router.get("/recommendations")
+async def get_recommendations(
+    task: str | None = Query(None),
+    limit: int = Query(5, ge=1, le=20),
+) -> dict[str, Any]:
+    """Return top model recommendations for current hardware."""
+    hw = probe_hardware()
+    registry = get_registry()
+
+    # Score all non-embedding, non-reranker models
+    candidates = [
+        m for m in registry.list_all()
+        if not m.embedding and not m.reranker
+    ]
+    if task:
+        candidates = [m for m in candidates if task in m.tasks or not m.tasks]
+
+    scored = []
+    for model in candidates:
+        fit = score_model(model=model, hw=hw, requested_tasks=[task] if task else [])
+        scored.append(fit)
+
+    scored.sort(key=lambda s: s.overall_score, reverse=True)
+    top = scored[:limit]
+
+    return {
+        "recommendations": [s.to_dict() for s in top],
+        "hardware_summary": {
+            "ram_gb": hw.ram_gb,
+            "total_vram_gb": hw.total_vram_gb,
+            "best_backend": hw.best_backend,
+        },
+        "task": task,
+    }
+
+
+# ── Benchmark ─────────────────────────────────────────────────────────────────
+
+@router.post("/benchmark/preview")
+async def benchmark_preview(req: BenchmarkRunRequest) -> dict[str, Any]:
+    """Return a dry-run plan — no benchmark is executed."""
+    plan = preview_benchmark(
+        model_id=req.model_id,
+        quantization=req.quantization,
+        task=req.task,
+        num_examples=req.num_examples,
+    )
+    return plan.to_dict()
+
+
+@router.post("/benchmark/run")
+async def benchmark_run(req: BenchmarkRunRequest) -> dict[str, Any]:
+    """Run a benchmark against a locally available model.
+
+    Requires confirmed=true. Never downloads models.
+    """
+    if not req.confirmed:
+        raise HTTPException(
+            400,
+            "Set confirmed=true to run. Use /benchmark/preview to review the plan first.",
+        )
+    result = await run_benchmark(
+        model_id=req.model_id,
+        quantization=req.quantization,
+        task=req.task,
+        num_examples=req.num_examples,
+    )
+    return result.to_dict()
+
+
+@router.get("/benchmark/runs")
+async def get_runs() -> dict[str, Any]:
+    """List all saved benchmark runs."""
+    runs = list_runs()
+    return {"runs": runs, "total": len(runs)}
+
+
+@router.get("/benchmark/{run_id}")
+async def get_benchmark_run(run_id: str) -> dict[str, Any]:
+    """Get a specific benchmark run by ID."""
+    result = get_run(run_id)
+    if not result:
+        raise HTTPException(404, f"Benchmark run '{run_id}' not found.")
+    return result.to_dict()

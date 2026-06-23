@@ -1312,6 +1312,13 @@ def create_app() -> FastAPI:
             "metadata_version": s.visual.metadata_version,
         })
 
+    # ─────────────────────────────────────────── ModelFit Index ──────────────
+    try:
+        from auralynq.modelfit.router import router as modelfit_router
+        app.include_router(modelfit_router)
+    except Exception:
+        pass  # ModelFit is optional — degrade gracefully if deps missing
+
     return app
 
 
