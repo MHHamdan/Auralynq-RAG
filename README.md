@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎙️ Auralynq
+# 🎙️ Auralynq-RAG
 
 ### *Talk to Your Data — Grounded, Cited, Visually Verified*
 
