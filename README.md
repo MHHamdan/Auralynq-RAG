@@ -432,7 +432,8 @@ flowchart LR
 
 ## 🖥 Frontend
 
-### Fig. 8 — Chat Workspace Layout
+### Fig. 8 — Chat Workspace Layout 
+----------
 
 The **Chat Workspace** uses a persistent two-column layout. The conversation stays on the left, while the **Agent Activity Rail** remains visible on the right for tracing, evidence inspection, source preview, ingestion status, and evaluation feedback.
 
