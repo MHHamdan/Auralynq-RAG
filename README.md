@@ -432,9 +432,8 @@ flowchart LR
 
 ## 🖥 Frontend
 
-### Fig. 8 — Chat Workspace Layout 
+### Fig. 8 — Chat Workspace Layout
 ----------
-
 The **Chat Workspace** uses a persistent two-column layout. The conversation stays on the left, while the **Agent Activity Rail** remains visible on the right for tracing, evidence inspection, source preview, ingestion status, and evaluation feedback.
 
 Each assistant answer includes an `InlineSourceStrip`, allowing users to inspect citations and grounding directly inside the chat flow.
@@ -533,7 +532,7 @@ The **Agent Activity Rail** is organized into focused tabs so users can quickly 
 ---
 
 ### Algorithm Selector
-
+-------------
 The **Algorithm Selector** sits inside the composer bar. It groups retrieval strategies by availability so users can clearly distinguish production-ready methods from experimental and planned options.
 
 Planned strategies are visible but disabled until their setup requirements are satisfied.
@@ -607,33 +606,6 @@ flowchart TB
 | **Verifier-RAG**     | Requires verification and evaluation policy      |
 | **Domain-tuned RAG** | Requires fine-tuned retrieval or reranking model |
 
-
-### Algorithm Selector
-
-Strategy picker sits in the composer bar and groups strategies by availability status.
-Planned strategies are shown but non-selectable, with their setup requirements.
-
-```
-⚡ Auralynq-RAG ▾
-┌──────────────────────────────────────────┐
-│ RAG Algorithm                            │
-│ Choose how Auralynq retrieves & answers  │
-├──────────────────────────────────────────┤
-│  ●  Available now                      4 │
-│     ✓ Auralynq-RAG       [default] fast  │
-│       Hybrid Vector                fast  │
-│       Naive Vector                 fast  │
-│       Keyword BM25                 fast  │
-├──────────────────────────────────────────┤
-│  ○  Experimental                       3 │
-│       Self-RAG                   medium  │
-│       CRAG                         slow  │
-│       Adaptive RAG                 slow  │
-├──────────────────────────────────────────┤
-│  ·  Planned / requires setup           6 │
-│       (disabled — shows requirements)    │
-└──────────────────────────────────────────┘
-```
 
 ---
 
