@@ -7,8 +7,8 @@ const POINTS: { title: string; body: string; icon: ReactNode }[] = [
     icon: <path d="M4 10V7a8 8 0 0 1 16 0v3M5 10h14a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" />,
   },
   {
-    title: "Honest abstention, not hallucination",
-    body: "When the evidence doesn't support a reliable answer, Auralynq says so — and shows what it found and why it fell short — instead of inventing a confident lie.",
+    title: "Evidence-gated abstention",
+    body: "When lexical and semantic coverage both fall below threshold, the pipeline returns an abstention signal with retrieval diagnostics — retrieved passages, coverage scores, and gap analysis — rather than generating an unsupported output.",
     icon: <path d="M12 3 2 21h20L12 3ZM12 9v5M12 17h.01" />,
   },
   {
@@ -67,8 +67,8 @@ export function Differentiators() {
         <p className="overline mb-2 text-accent">Why Auralynq</p>
         <h2 className="section-title">What makes Auralynq different?</h2>
         <p className="mt-3 text-lg text-fg2">
-          Most RAG demos hide the seams. Auralynq makes trust, evidence and observability the
-          product.
+          Auralynq surfaces retrieval metrics, evidence coverage scores, and confidence signals
+          at every inference step — not post-hoc.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
