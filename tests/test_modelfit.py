@@ -173,6 +173,7 @@ def _make_hw(vram_gb: float = 12.0, ram_gb: float = 32.0) -> HardwareProfile:
         ram_gb=ram_gb,
         gpus=[gpu] if vram_gb > 0 else [],
         cuda_available=vram_gb > 0,
+        disk_free_gb=200.0,
     )
 
 

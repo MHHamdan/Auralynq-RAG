@@ -106,15 +106,29 @@ def _hardware_fit_score(
     resource: ResourceEstimate,
     hw: HardwareProfile,
 ) -> float:
-    """Score 0-100: how comfortably the model fits the hardware."""
+    """Score 0-100: how comfortably the model fits the hardware.
+
+    Penalises models that are tiny relative to available VRAM (missed quality
+    opportunity) and rewards models that make meaningful use of it (40-90%).
+    """
     base = {"comfortable": 95.0, "tight": 65.0, "not_recommended": 25.0, "impossible": 0.0}
     score = base.get(resource.fit_level, 0.0)
 
-    # Bonus for matching backend
     if hw.cuda_available or hw.metal_available or hw.rocm_available:
         score = min(100.0, score + 5.0)
 
-    # Disk penalty
+    # Capability utilisation signal (only on high-VRAM hardware ≥ 32 GB).
+    # On consumer GPUs (≤ 24 GB) any comfortable model is fine regardless of size.
+    total_vram = hw.total_vram_gb
+    if total_vram >= 32.0 and resource.fit_level == "comfortable":
+        util = resource.estimated_vram_gb / total_vram
+        if 0.30 <= util <= 0.95:
+            # Meaningful use of available VRAM → quality opportunity taken
+            score = min(100.0, score + 8.0 * (util / 0.95))
+        elif util < 0.15:
+            # Model uses < 15 % of available VRAM: quality left on the table
+            score = max(0.0, score - 8.0)
+
     if hw.disk_free_gb < resource.estimated_disk_gb * 1.5:
         score = max(0.0, score - 10.0)
 
@@ -152,18 +166,29 @@ def _speed_fit_score(
         cpu_tps = max(1.0, 40.0 / params_b * (hw.cpu_cores_logical / 8.0))
         return round(min(40.0, cpu_tps * 10), 1), False
 
-    # GPU: rough estimate based on VRAM bandwidth class
-    if vram >= 24:
-        gpu_tps = 60.0 / (params_b / 8.0)
+    # GPU tok/s estimate — bandwidth scales with VRAM tier.
+    # >= 40 GB implies professional/multi-GPU hardware (A6000, dual-3090, etc.)
+    if vram >= 40:
+        gpu_tps = 160.0 / (params_b / 8.0)
+    elif vram >= 24:
+        gpu_tps = 90.0 / (params_b / 8.0)
     elif vram >= 12:
-        gpu_tps = 30.0 / (params_b / 8.0)
+        gpu_tps = 45.0 / (params_b / 8.0)
     elif vram >= 8:
-        gpu_tps = 20.0 / (params_b / 8.0)
+        gpu_tps = 25.0 / (params_b / 8.0)
     else:
-        gpu_tps = 10.0 / (params_b / 8.0)
+        gpu_tps = 12.0 / (params_b / 8.0)
 
-    score = min(100.0, gpu_tps * 2)
-    return round(max(10.0, score), 1), False
+    # Apply the same tiered scale as for measured data for consistency
+    if gpu_tps >= 50:
+        score = 100.0
+    elif gpu_tps >= 20:
+        score = 70.0 + (gpu_tps - 20) / 30 * 30
+    elif gpu_tps >= 5:
+        score = 40.0 + (gpu_tps - 5) / 15 * 30
+    else:
+        score = max(10.0, gpu_tps * 3)
+    return round(score, 1), False
 
 
 def _rag_fit_score(
@@ -183,18 +208,29 @@ def _rag_fit_score(
             return round(sum(parts) / len(parts), 1)
 
     # Heuristic from model metadata
-    score = 60.0  # baseline
+    score = 55.0  # baseline
     if "rag" in model.tasks:
         score += 10.0
     if model.tool_calling:
         score += 5.0
     if model.context_length and model.context_length >= 32768:
-        score += 10.0
+        score += 8.0
     if model.family in ("llama", "qwen", "mistral"):
-        score += 5.0
-    if model.parameter_count_b and model.parameter_count_b >= 7.0:
-        score += 5.0
-    return round(min(90.0, score), 1)
+        score += 4.0
+    # Parameter-count quality gradient: larger models produce meaningfully better
+    # RAG answers (fewer hallucinations, better citation adherence, richer reasoning).
+    if model.parameter_count_b:
+        if model.parameter_count_b >= 65:
+            score += 18.0
+        elif model.parameter_count_b >= 30:
+            score += 13.0
+        elif model.parameter_count_b >= 13:
+            score += 9.0
+        elif model.parameter_count_b >= 7:
+            score += 5.0
+        elif model.parameter_count_b >= 1:
+            score += 2.0
+    return round(min(95.0, score), 1)
 
 
 def _task_fit_score(model: ModelMetadata, requested_tasks: list[str]) -> float:

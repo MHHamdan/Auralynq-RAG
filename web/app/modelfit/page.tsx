@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { HardwareProfile, ModelFitScore, ModelMeta } from "@/lib/modelfit";
 import {
@@ -86,10 +87,17 @@ export default function ModelFitPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       {/* Top bar */}
       <div className="border-b border-zinc-800 px-6 py-4 flex items-center gap-4">
+        <Link
+          href="/"
+          className="flex items-center gap-1.5 rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors shrink-0"
+          title="Back to chat"
+        >
+          ← Chat
+        </Link>
         <h1 className="text-lg font-bold tracking-tight">
           Auralynq <span className="text-sky-400">ModelFit</span> Index
         </h1>
-        <span className="text-xs text-zinc-500">
+        <span className="hidden text-xs text-zinc-500 sm:inline">
           Hardware-aware model selection for local RAG
         </span>
       </div>

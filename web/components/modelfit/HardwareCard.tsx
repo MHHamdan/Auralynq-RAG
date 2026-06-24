@@ -23,7 +23,6 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export function HardwareCard({ hw }: { hw: HardwareProfile }) {
-  const gpu = hw.gpus[0];
   return (
     <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-3">
       <div className="flex items-center justify-between">
@@ -37,14 +36,28 @@ export function HardwareCard({ hw }: { hw: HardwareProfile }) {
         <Row label="CPU" value={hw.cpu.model || "unknown"} />
         <Row label="Cores" value={`${hw.cpu.cores_physical}P / ${hw.cpu.cores_logical}L`} />
         <Row label="RAM" value={`${hw.ram_gb} GB`} />
-        {gpu ? (
-          <>
-            <Row label="GPU" value={gpu.name} />
-            <Row label="VRAM" value={`${gpu.vram_gb} GB`} />
-            <Row label="Backend" value={<Badge label={gpu.backend.toUpperCase()} ok />} />
-          </>
-        ) : (
+        {hw.gpus.length === 0 ? (
           <Row label="GPU" value={<span className="text-zinc-500">none detected</span>} />
+        ) : (
+          hw.gpus.map((gpu, i) => (
+            <Row
+              key={i}
+              label={hw.gpus.length > 1 ? `GPU ${i}` : "GPU"}
+              value={
+                <span className="flex items-center gap-2">
+                  <span>{gpu.name}</span>
+                  <Badge label={`${gpu.vram_gb} GB`} ok={gpu.vram_gb > 0} />
+                  <Badge label={gpu.backend.toUpperCase()} ok />
+                </span>
+              }
+            />
+          ))
+        )}
+        {hw.gpus.length > 1 && (
+          <Row
+            label="Total VRAM"
+            value={<span className="text-sky-400 font-semibold">{hw.total_vram_gb} GB</span>}
+          />
         )}
         <Row label="Disk free" value={`${hw.disk_free_gb} GB`} />
       </div>
