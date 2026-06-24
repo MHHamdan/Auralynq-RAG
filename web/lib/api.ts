@@ -55,6 +55,17 @@ export interface InsufficientReason {
   suggest_ingest: boolean;
 }
 
+export interface ModelFitSnapshot {
+  selected_model: string;
+  fit_score: number | null;
+  fit_level: string | null;
+  quantization: string | null;
+  estimated_vram_gb: number | null;
+  hardware_warning: string | null;
+  measured_tok_per_sec: number | null;
+  estimate_used: boolean;
+}
+
 export interface AnswerResult {
   answer: string;
   status?: string;
@@ -80,6 +91,7 @@ export interface AnswerResult {
   selected_rag_strategy?: string | null;
   fallback_strategy?: string | null;
   strategy_warnings?: string[];
+  model_fit?: ModelFitSnapshot | null;
 }
 
 export interface CorpusSummary {
@@ -128,6 +140,7 @@ export type StreamEvent =
       fallback_reason?: string | null;
       strategy_warnings?: string[];
       visual_grounding?: VisualGrounding | null;
+      model_fit?: ModelFitSnapshot | null;
     };
 
 export interface RAGStrategyInfo {

@@ -379,6 +379,14 @@ def stream_answer_question(
 
     refused = _is_refusal(state.answer, bool(state.contexts))
     trace_list = trace.to_list()
+
+    _model_fit = None
+    try:
+        from auralynq.llm.factory import resolved_provider
+        _model_fit = _build_modelfit_snapshot(resolved_provider(), get_settings().llm.model)
+    except Exception:
+        pass
+
     yield {
         "type": "final",
         "answer": state.answer,
@@ -396,4 +404,5 @@ def stream_answer_question(
         "insufficient_evidence_reason": (
             _insufficiency(state, _detected, _suggestions) if refused else None
         ),
+        "model_fit": _model_fit,
     }

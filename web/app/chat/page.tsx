@@ -39,6 +39,15 @@ const STORE_KEY = "auralynq.chat.v1";
 const TABS = ["overview", "trace", "evidence", "source", "ingest", "eval"] as const;
 type Tab = (typeof TABS)[number];
 
+const TAB_ICON: Record<Tab, string> = {
+  overview: "◎ ",
+  trace:    "⬡ ",
+  evidence: "◈ ",
+  source:   "⬚ ",
+  ingest:   "↑ ",
+  eval:     "▣ ",
+};
+
 function InlineSourceStrip({
   grounding,
   onOpen,
@@ -287,6 +296,7 @@ export default function Chat() {
               insufficient: e.insufficient_evidence_reason || null,
               confidence: e.confidence ?? 0,
               semanticCoverage: (e as any).semantic_coverage ?? undefined,
+              model_fit: (e as any).model_fit ?? null,
             });
             if (e.status === "insufficient_evidence") setTab("evidence");
           }
@@ -653,20 +663,21 @@ export default function Chat() {
             </div>
           )}
 
-          <div className="flex items-center gap-1 overflow-x-auto border-b border-edge px-3 py-2">
+          <div className="flex items-center gap-0.5 overflow-x-auto border-b border-edge bg-panel/40 px-2 py-1.5">
             {TABS.map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 aria-pressed={tab === t}
-                className={`tab capitalize ${tab === t ? "tab-active" : ""}`}
+                className={`tab capitalize text-xs ${tab === t ? "tab-active" : ""}`}
               >
+                {TAB_ICON[t] && <span className="opacity-70">{TAB_ICON[t]}</span>}
                 {t}
               </button>
             ))}
             <button
               onClick={() => setShowPanel(false)}
-              className="btn-ghost ml-auto px-2 py-1 text-sm lg:hidden"
+              className="btn-ghost ml-auto px-2 py-1 text-xs lg:hidden"
               aria-label="Close inspector"
             >
               ✕
@@ -751,6 +762,8 @@ export default function Chat() {
   );
 }
 
+const SUGGESTION_ICONS = ["◈", "◎", "◇", "◆"];
+
 function EmptyConversation({
   suggestions,
   onAsk,
@@ -761,33 +774,63 @@ function EmptyConversation({
   onIngest: () => void;
 }) {
   return (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-6 text-center">
-      <div className="space-y-2">
-        <div className="text-5xl" aria-hidden>
-          🎙️
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-8 px-4 text-center">
+      {/* Hero */}
+      <div className="space-y-4">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand/20 via-brand/10 to-brand2/20 ring-1 ring-brand/20 shadow-lg">
+          <svg viewBox="0 0 32 32" fill="none" className="h-8 w-8" aria-hidden>
+            <rect x="2"  y="13" width="4" height="6"  rx="2" fill="currentColor" className="text-brand"  opacity="0.6" />
+            <rect x="8"  y="9"  width="4" height="14" rx="2" fill="currentColor" className="text-brand"  opacity="0.8" />
+            <rect x="14" y="4"  width="4" height="24" rx="2" fill="currentColor" className="text-brand2" />
+            <rect x="20" y="9"  width="4" height="14" rx="2" fill="currentColor" className="text-brand"  opacity="0.8" />
+            <rect x="26" y="13" width="4" height="6"  rx="2" fill="currentColor" className="text-brand"  opacity="0.6" />
+          </svg>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight text-fg">Talk to your data</h1>
-        <p className="mx-auto max-w-lg text-base text-fg2">
-          Grounded, cited answers from your indexed documents — by text or voice. Observable agentic
-          RAG with full trace and evidence.
-        </p>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            <span className="text-brand">Talk</span>
+            <span className="text-fg"> to your </span>
+            <span className="text-brand2">data</span>
+          </h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-fg2">
+            Grounded, cited answers from your indexed documents — by text or voice.
+          </p>
+        </div>
       </div>
-      <div className="flex w-full max-w-2xl flex-col gap-2">
-        {suggestions.slice(0, 4).map((s) => (
+
+      {/* 2 × 2 suggestion grid */}
+      <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+        {suggestions.slice(0, 4).map((s, i) => (
           <button
             key={s}
             onClick={() => onAsk(s)}
-            className="card card-hover px-4 py-3.5 text-left text-sm text-fg2"
+            className="card card-hover group flex flex-col items-start gap-2 px-4 py-4 text-left"
           >
-            <span className="mr-2 text-brand" aria-hidden>
-              ↳
+            <span
+              className="text-lg text-brand transition-transform duration-200 group-hover:scale-110"
+              aria-hidden
+            >
+              {SUGGESTION_ICONS[i % SUGGESTION_ICONS.length]}
             </span>
-            {s}
+            <span className="text-sm leading-snug text-fg2">{s}</span>
           </button>
         ))}
       </div>
-      <button onClick={onIngest} className="btn-ghost text-sm">
-        <span aria-hidden>＋</span> Add documents to your corpus
+
+      <button onClick={onIngest} className="btn-outline flex items-center gap-2 text-sm">
+        <svg
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4"
+          aria-hidden
+        >
+          <path d="M10 3v11M5 8l5-5 5 5M4 17h12" />
+        </svg>
+        Add documents to your corpus
       </button>
     </div>
   );
