@@ -247,6 +247,38 @@ _WEIGHTS = {
 }
 
 
+def _lookup_community_benchmark(
+    model_id: str,
+    quantization: str,
+    task: str = "latency",
+) -> BenchmarkSnapshot | None:
+    """Check community index for verified tok/s data matching this model+quant.
+
+    Only uses verified_local or official_benchmark results for scoring.
+    Self-reported results are excluded from automatic score influence.
+    """
+    try:
+        from auralynq.modelfit.community import load_community_results
+        results = load_community_results(verified_only=True)
+        # Match on model_id and quantization; pick best tok/s among verified results
+        matches = [
+            r for r in results
+            if r.model_id == model_id
+            and r.quantization == quantization
+            and r.tok_per_sec is not None
+        ]
+        if not matches:
+            return None
+        best = max(matches, key=lambda r: r.tok_per_sec or 0.0)
+        return BenchmarkSnapshot(
+            avg_tok_per_sec=best.tok_per_sec,
+            p50_latency_ms=best.p50_latency_ms,
+            is_measured=True,
+        )
+    except Exception:
+        return None
+
+
 def score_model(
     model: ModelMetadata,
     hw: HardwareProfile,
@@ -254,6 +286,7 @@ def score_model(
     requested_tasks: list[str] | None = None,
     benchmark: BenchmarkSnapshot | None = None,
     context_tokens: int = 4096,
+    use_community_data: bool = True,
 ) -> ModelFitScore:
     """Compute a full ModelFit Score for a model on given hardware."""
     warnings: list[str] = []
@@ -264,6 +297,15 @@ def score_model(
         hw.total_vram_gb,
         hw.ram_gb,
     )
+
+    # Elevate community-verified benchmark data when no local benchmark provided
+    if benchmark is None and use_community_data:
+        community_bench = _lookup_community_benchmark(model.model_id, best_quant)
+        if community_bench is not None:
+            benchmark = community_bench
+            warnings.append(
+                "Speed score uses verified community benchmark data (not locally measured)."
+            )
 
     resource: ResourceEstimate | None = None
     hw_score = 50.0

@@ -309,11 +309,34 @@ async def run_benchmark(
     if errors:
         result.warnings.extend([f"Example error: {e}" for e in errors[:3]])
 
-    result.rag_metrics = {
-        "citation_coverage": None,
-        "groundedness": None,
-        "abstention_accuracy": None,
-    }
+    # For RAG/abstention tasks, run quality metrics using local corpus
+    if task_typed in ("rag", "abstention"):
+        try:
+            from auralynq.modelfit.rag_bench import run_rag_benchmark
+            rag_m = await run_rag_benchmark(
+                model_id=model_id,
+                quantization=quantization,
+                num_rag=min(num_examples, 5),
+                num_abstention=min(num_examples, 4),
+            )
+            result.rag_metrics = rag_m.to_dict()
+            result.warnings.extend(rag_m.warnings)
+        except Exception as exc:
+            result.rag_metrics = {
+                "citation_coverage": None,
+                "groundedness": None,
+                "abstention_accuracy": None,
+                "is_measured": False,
+            }
+            result.warnings.append(f"RAG quality benchmark failed: {exc}")
+    else:
+        result.rag_metrics = {
+            "citation_coverage": None,
+            "groundedness": None,
+            "abstention_accuracy": None,
+            "is_measured": False,
+        }
+
     result.status = "completed"
     result.completed_at = datetime.now(UTC).isoformat()
 

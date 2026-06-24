@@ -400,3 +400,176 @@ def test_score_dict_has_estimate_used_flag():
     d = score.to_dict()
     assert "estimate_used" in d
     assert d["estimate_used"] is True  # no benchmark provided
+
+
+# ── Phase 2: Community data in speed score ────────────────────────────────────
+
+def test_community_benchmark_not_injected_without_verified_data(monkeypatch):
+    """_lookup_community_benchmark returns None when no verified results exist."""
+    from auralynq.modelfit.scoring import _lookup_community_benchmark
+    import auralynq.modelfit.community as comm
+    monkeypatch.setattr(comm, "_COMMUNITY_DIR", comm._COMMUNITY_DIR.__class__(
+        "/tmp/nonexistent_modelfit_dir_xyz"
+    ))
+    result = _lookup_community_benchmark("ollama:llama3.1:8b", "q4_k")
+    assert result is None
+
+
+def test_score_model_community_warning_present(monkeypatch):
+    """When community data is injected, warnings mention 'community'."""
+    from auralynq.modelfit.scoring import BenchmarkSnapshot, _lookup_community_benchmark
+    import auralynq.modelfit.scoring as scoring
+
+    fake_bench = BenchmarkSnapshot(avg_tok_per_sec=30.0, is_measured=True)
+
+    monkeypatch.setattr(scoring, "_lookup_community_benchmark", lambda *a, **kw: fake_bench)
+
+    hw = _make_hw()
+    model = _make_model()
+    score = score_model(model, hw, use_community_data=True)
+    assert any("community" in w.lower() for w in score.warnings)
+
+
+def test_score_model_community_data_disabled(monkeypatch):
+    """use_community_data=False skips community lookup."""
+    import auralynq.modelfit.scoring as scoring
+    called = []
+    monkeypatch.setattr(scoring, "_lookup_community_benchmark",
+                        lambda *a, **kw: called.append(True) or None)
+
+    hw = _make_hw()
+    model = _make_model()
+    score_model(model, hw, use_community_data=False)
+    assert called == []  # never called
+
+
+# ── Phase 2: RAG bench helper functions ──────────────────────────────────────
+
+def test_rag_bench_groundedness_with_overlap():
+    from auralynq.modelfit.rag_bench import _simple_groundedness
+    answer = "The document discusses climate change and temperature trends."
+    contexts = ["This report covers climate change impacts including temperature trends globally."]
+    g = _simple_groundedness(answer, contexts)
+    assert 0.0 < g <= 1.0
+
+
+def test_rag_bench_groundedness_zero_when_no_context():
+    from auralynq.modelfit.rag_bench import _simple_groundedness
+    g = _simple_groundedness("Any answer", [])
+    assert g == 0.0
+
+
+def test_rag_bench_groundedness_zero_empty_answer():
+    from auralynq.modelfit.rag_bench import _simple_groundedness
+    g = _simple_groundedness("", ["some context"])
+    assert g == 0.0
+
+
+def test_rag_bench_citation_coverage_no_citations():
+    from auralynq.modelfit.rag_bench import _citation_coverage_score
+    score = _citation_coverage_score([], ["some context"])
+    assert score == 0.0
+
+
+def test_rag_bench_citation_coverage_match():
+    from auralynq.modelfit.rag_bench import _citation_coverage_score
+    contexts = ["report.pdf\nBody of text"]
+    citations = [{"source": "report.pdf"}]
+    score = _citation_coverage_score(citations, contexts)
+    assert score > 0.0
+
+
+def test_rag_bench_is_abstention():
+    from auralynq.modelfit.rag_bench import _is_abstention
+    assert _is_abstention("I don't have enough evidence to answer this question.")
+    assert _is_abstention("There is no relevant evidence in the indexed documents.")
+    assert not _is_abstention("The answer is Paris, the capital of France.")
+
+
+def test_rag_bench_metrics_dataclass():
+    from auralynq.modelfit.rag_bench import RAGBenchMetrics
+    m = RAGBenchMetrics(groundedness=0.7, citation_coverage=0.5, abstention_accuracy=0.8)
+    d = m.to_dict()
+    assert d["groundedness"] == 0.7
+    assert d["citation_coverage"] == 0.5
+    assert d["abstention_accuracy"] == 0.8
+    assert d["is_measured"] is True
+
+
+# ── Phase 2: _build_modelfit_snapshot ────────────────────────────────────────
+
+def test_build_modelfit_snapshot_cloud_returns_none():
+    from auralynq.agent.runner import _build_modelfit_snapshot
+    result = _build_modelfit_snapshot("openai", "gpt-4")
+    assert result is None  # cloud providers not covered
+
+
+def test_build_modelfit_snapshot_unknown_model():
+    from auralynq.agent.runner import _build_modelfit_snapshot
+    # 'slm:totally-unknown-model-xyz' won't be in registry
+    result = _build_modelfit_snapshot("slm", "totally-unknown-model-xyz")
+    # Either None (import failed) or dict with fit_score=None
+    if result is not None:
+        assert result.get("fit_score") is None or isinstance(result.get("fit_score"), (int, float))
+
+
+def test_answer_result_has_model_fit_field():
+    from auralynq.agent.runner import AnswerResult
+    r = AnswerResult(answer="test")
+    assert hasattr(r, "model_fit")
+    assert r.model_fit is None
+
+
+# ── Phase 2: CLI entry point ──────────────────────────────────────────────────
+
+def test_cli_module_importable():
+    from auralynq.modelfit import cli  # noqa: F401 — just ensure no import errors
+    assert hasattr(cli, "app") or hasattr(cli, "main")
+
+
+def test_cli_has_hardware_command():
+    from auralynq.modelfit.cli import app
+    # Typer sets name=None until registration; callback.__name__ holds the function name
+    command_names = [
+        c.name or (c.callback.__name__ if c.callback else "") for c in app.registered_commands
+    ]
+    assert "hardware" in command_names
+
+
+def test_cli_has_benchmark_command():
+    from auralynq.modelfit.cli import app
+    command_names = [
+        c.name or (c.callback.__name__ if c.callback else "") for c in app.registered_commands
+    ]
+    assert "benchmark" in command_names
+
+
+# ── Phase 2: BenchmarkResult rag_metrics wiring ──────────────────────────────
+
+def test_benchmark_plan_rag_task_preview():
+    plan = preview_benchmark("ollama:llama3.1:8b", task="rag", num_examples=5)
+    d = plan.to_dict()
+    assert d["task"] == "rag"
+    assert d["requires_model_download"] is False
+
+
+def test_benchmark_result_rag_metrics_key_present():
+    """BenchmarkResult.rag_metrics must contain citation_coverage and groundedness."""
+    from auralynq.modelfit.benchmark_runner import BenchmarkResult
+    r = BenchmarkResult(
+        run_id="x",
+        model_id="ollama:llama3.1:8b",
+        quantization="q4_k",
+        task="rag",
+        status="completed",
+        rag_metrics={
+            "citation_coverage": 0.6,
+            "groundedness": 0.7,
+            "abstention_accuracy": 0.8,
+            "is_measured": True,
+        },
+    )
+    d = r.to_dict()
+    assert "citation_coverage" in d["rag_metrics"]
+    assert "groundedness" in d["rag_metrics"]
+    assert d["rag_metrics"]["is_measured"] is True

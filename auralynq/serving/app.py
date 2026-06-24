@@ -520,6 +520,7 @@ def create_app() -> FastAPI:
             "fallback_strategy": result.fallback_strategy,
             "fallback_reason": result.fallback_reason,
             "strategy_warnings": result.strategy_warnings or [],
+            "model_fit": getattr(result, "model_fit", None),
         }
         try:
             _last_eval.clear()
@@ -928,6 +929,7 @@ def create_app() -> FastAPI:
             "fallback_reason": result.fallback_reason,
             "strategy_warnings": result.strategy_warnings or [],
             "visual_grounding": vg_data,
+            "model_fit": getattr(result, "model_fit", None),
         }
         return QueryResponse(request_id=request.state.request_id, **data)
 
