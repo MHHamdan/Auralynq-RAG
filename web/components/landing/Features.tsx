@@ -32,7 +32,7 @@ const FEATURES = [
   },
   {
     title: "Grounded answers with citations",
-    body: "Every claim links back to its source — document, page, speaker, timestamp. No silent hallucinations: when evidence is thin, Auralynq abstains honestly instead of guessing.",
+    body: "Every claim links back to its source — document, page, speaker, timestamp. When retrieval coverage falls below threshold, the pipeline emits an abstention signal with diagnostic snippets rather than generating a low-confidence response.",
     tint: "text-brand2",
     ring: "ring-brand2/15",
     icon: (tint: string) => (
@@ -97,9 +97,9 @@ export function Features() {
     <section id="features" className="relative mx-auto max-w-7xl px-4 py-14 md:px-6">
       <div className="mb-12 max-w-2xl">
         <p className="overline mb-2">Capabilities</p>
-        <h2 className="section-title">Everything a serious RAG stack needs — in one local binary</h2>
+        <h2 className="section-title">Full-stack retrieval-augmented generation — single local binary, measurable at every layer</h2>
         <p className="mt-3 text-lg text-fg2">
-          Voice in, evidence out, and every step observable. Swappable at every layer.
+          Encode, retrieve, rerank, synthesize — every stage instrumented and swappable.
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

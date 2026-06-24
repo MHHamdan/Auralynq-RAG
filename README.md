@@ -2,7 +2,7 @@
 
 # 🎙️ Auralynq-RAG
 
-### *Talk to Your Data — Grounded, Cited, Visually Verified*
+### *Retrieval-Augmented Generation — Grounded, Cited, Span-Level Verified*
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
@@ -23,12 +23,13 @@ PDF. Runs at **$0** on a laptop; upgrades to GPU models via env flags.
 
 ## One-line pitch
 
-**Auralynq** lets you talk — text or voice — to your own documents and get grounded,
-cited answers you can *visually verify*: click any citation and a full-screen workspace
-opens with the original PDF page, exact evidence regions highlighted, extracted text
-blocks on the side, and claim-level support status. An adaptive agentic loop with
-13 pluggable RAG strategies, always-visible trace rail, and calibrated confidence
-scoring. Built for research — every design decision is documented and reversible.
+**Auralynq** accepts text or voice queries against private documents and returns
+retrieval-grounded, span-cited answers with visual verification: click any citation
+and a full-screen workspace opens showing the original PDF page, exact bounding-box
+overlays, extracted text blocks, and claim-level support status. The inference loop
+runs 13 pluggable RAG strategies, exposes a live retrieval trace, and produces
+calibrated four-signal confidence scores. Designed for reproducibility — every
+algorithmic decision is documented, configurable, and benchmarkable.
 
 ---
 
