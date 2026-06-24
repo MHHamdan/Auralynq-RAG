@@ -15,7 +15,7 @@ grounding with exact span-level bounding boxes, and a full-screen document inspe
 workspace. Grounded answers with citations you can visually verify against the original
 PDF. Runs at **$0** on a laptop; upgrades to GPU models via env flags.
 
-[Quickstart](#-quickstart) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
+[Quickstart](#-quickstart) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
 
 </div>
 
@@ -316,6 +316,147 @@ flowchart LR
 ```
 
 **Implementation**: `auralynq/rag/` — `strategy_registry.py`, `strategies/`
+
+---
+
+## 🔬 Auralynq ModelFit Index
+
+**Hardware-aware model selection for local RAG.** The ModelFit Index scores every
+candidate model against your actual hardware — GPU VRAM, RAM, backend (CUDA / Metal /
+ROCm / CPU), Ollama availability — and surfaces the best-fit model rather than the
+fastest or smallest. All scores distinguish **estimated** from **measured** values.
+No model is downloaded automatically; benchmarks require explicit user confirmation.
+
+### Composite ModelFit Score (0 – 100)
+
+```
+score = hw×0.30 + speed×0.20 + rag×0.25 + task×0.15 + deploy×0.10
+```
+
+| Sub-score | What it measures |
+|-----------|-----------------|
+| **Hardware fit** (30 %) | VRAM headroom, backend match, capability utilisation signal |
+| **Speed fit** (20 %) | Estimated or measured tok/s via 5-tier VRAM bandwidth table |
+| **RAG fit** (25 %) | Groundedness, citation coverage, abstention accuracy (when benchmarked); parameter-count quality gradient otherwise |
+| **Task fit** (15 %) | Fraction of requested tasks covered by the model |
+| **Deployment fit** (10 %) | Ollama availability, open license, gated-model penalty |
+
+### Capability-utilisation signal (≥ 32 GB VRAM)
+
+On high-VRAM hardware a tiny model leaves quality on the table. The scorer:
+- penalises models that use **< 15 %** of available VRAM (− 8 pts hardware fit)
+- rewards models that use **30 – 95 %** of available VRAM (up to + 8 pts hardware fit)
+
+Example ranking on 44 GB CUDA:
+
+| Model | Score | HW | Speed | RAG | Label |
+|-------|------:|---:|------:|----:|-------|
+| llama3.1:14b | **95** | 100 | 100 | 91 | Excellent fit |
+| qwen2.5:32b  | **94** | 100 |  90 | 95 | Excellent fit |
+| llama3.1:8b  | **92** |  92 | 100 | 87 | Excellent fit |
+| llama3.3:70b | **81** |  70 |  67 | 95 | Recommended   |
+
+### Fig 9 — ModelFit Architecture
+
+```mermaid
+flowchart LR
+    classDef hw fill:#1d4ed8,color:#fff,stroke:#1e40af
+    classDef reg fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef score fill:#065f46,color:#fff,stroke:#047857
+    classDef bench fill:#92400e,color:#fff,stroke:#78350f
+    classDef ui fill:#0e7490,color:#fff,stroke:#0c5a70
+
+    subgraph HW["Hardware Profiler"]
+        direction TB
+        CPU["CPU · RAM · cores"]:::hw
+        GPU["NVIDIA / Apple / AMD\nVRAM · backend"]:::hw
+        OL["Ollama availability\n+ installed models"]:::hw
+        HF["HF cache"]:::hw
+    end
+
+    subgraph REG["Model Registry"]
+        direction TB
+        OC["Ollama catalog\n14 static + live API"]:::reg
+        HC["HF catalog\n8 curated models"]:::reg
+        GG["Local GGUF discovery"]:::reg
+    end
+
+    subgraph SCORE["Scorer"]
+        direction TB
+        VE["VRAM Estimator\nparams × bytes/param\n+ kv_cache + 1 GB"]:::score
+        SC["ModelFit Score\nhw·0.30 + speed·0.20\n+ rag·0.25 + task·0.15\n+ deploy·0.10"]:::score
+        VE --> SC
+    end
+
+    subgraph BENCH["Benchmark Runner"]
+        direction TB
+        PR["Preview (dry run)\nno execution"]:::bench
+        RN["Run (confirmed=true)\nOllama API only\nnever downloads"]:::bench
+        RM["RAG metrics\ngroundedness\ncitation coverage\nabstention accuracy"]:::bench
+        PR -->|user confirms| RN --> RM
+    end
+
+    subgraph UI["Interfaces"]
+        direction TB
+        CLI["auralynq-modelfit\nhardware · estimate\nscore · recommend\nbenchmark"]:::ui
+        API["REST /api/modelfit/*\n13 endpoints"]:::ui
+        WEB["/modelfit page\n6 tabs"]:::ui
+        CHIP["ModelFitChip\nin every chat answer"]:::ui
+    end
+
+    HW --> SCORE
+    REG --> SCORE
+    SCORE --> UI
+    BENCH --> UI
+    SCORE -->|"model_fit field\non every /query response"| CHIP
+```
+
+### API endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET  /api/modelfit/hardware` | Current hardware profile |
+| `GET  /api/modelfit/recommendations?task=rag&limit=5` | Top-N models for your hardware |
+| `GET  /api/modelfit/models/installed` | Models available in local Ollama |
+| `POST /api/modelfit/score` | Compute ModelFit Score for a model |
+| `POST /api/modelfit/estimate` | VRAM / RAM / disk estimate |
+| `POST /api/modelfit/benchmark/preview` | Dry-run plan (safe, never runs) |
+| `POST /api/modelfit/benchmark/run?confirmed=true` | Execute benchmark (Ollama only) |
+| `GET  /api/modelfit/benchmark/runs` | List past benchmark results |
+
+### CLI
+
+```bash
+# Install entry point (included in pip install -e .)
+auralynq-modelfit hardware                             # probe local hardware
+auralynq-modelfit estimate --model ollama:llama3.1:8b --params 8 --quant q4_k
+auralynq-modelfit score --model ollama:llama3.1:8b --task rag
+auralynq-modelfit recommend --task rag --limit 5
+auralynq-modelfit benchmark --model llama3.1:8b --task rag --examples 5 --dry-run
+auralynq-modelfit benchmark --model llama3.1:8b --task rag --examples 5  # prompts for confirmation
+```
+
+### Frontend
+
+The **ModelFit Index** is available at `/modelfit` directly from the AppBar ("ModelFit"
+link). Every chat answer surfaces a compact **ModelFitChip** below the citations:
+
+```
+model  llama3.1:8b  ·  96/100  ·  q4_k  ·  4.8 GB  est.
+```
+
+Clicking the chip opens the full `/modelfit` page with 6 tabs: Hardware, Models,
+Recommended, Score Cards, Benchmark Lab, and Comparison.
+
+### Security constraints (enforced in code)
+
+- No model is downloaded automatically — ever.
+- Benchmarks require `confirmed=true`; a dry-run preview is always shown first.
+- Benchmark results carry `is_measured: true`; estimated values carry `is_estimate: true`.
+- Community results with implausible tok/s (> 10 000) or sensitive hardware fields (serial, MAC, hostname) are rejected at validation.
+- Hardware telemetry stays local; no private data leaves the machine.
+
+**Implementation**: `auralynq/modelfit/` — `hardware.py`, `scoring.py`, `benchmark_runner.py`, `rag_bench.py`, `cli.py`, `router.py`
 
 ---
 
@@ -634,6 +775,10 @@ make demo              # ingest → index → query (text + voice)
 # 4. Ask something:
 auralynq ask "How does PathRAG prune relational paths?"
 auralynq talk          # push-to-talk voice loop
+
+# 5. ModelFit — find the best model for your hardware:
+auralynq-modelfit recommend --task rag --limit 5
+auralynq-modelfit score --model ollama:llama3.1:8b
 ```
 
 Open the UI at **http://localhost:3000**, API docs at **http://localhost:8000/docs**,
@@ -857,6 +1002,7 @@ Claude Desktop config:
 
 ## Roadmap
 
+- [x] **Auralynq ModelFit Index** — hardware-aware model selection, scoring, CLI, REST API, frontend page, ModelFitChip in chat, RAG quality benchmark metrics
 - [ ] Page thumbnail rail in Source Workspace (requires `/thumbnail` endpoint)
 - [ ] Layout block store written at ingest for cheaper page-level queries
 - [ ] ColPali visual retrieval (image-to-image semantic search)
@@ -865,6 +1011,7 @@ Claude Desktop config:
 - [ ] Multi-tenant collections + per-user auth
 - [ ] LightRAG / RAPTOR strategy implementations
 - [ ] Langfuse + OTLP dashboards out of the box
+- [ ] ModelFit community index web UI (submit + browse verified benchmark results)
 
 ---
 
