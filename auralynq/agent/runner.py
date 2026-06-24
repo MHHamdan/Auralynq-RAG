@@ -137,9 +137,68 @@ class AnswerResult(BaseModel):
     insufficient_evidence_reason: dict[str, Any] | None = None
     warnings: list[str] = Field(default_factory=list)
     provider_status: list[dict[str, str]] = Field(default_factory=list)
+    model_fit: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return self.model_dump()
+
+
+def _build_modelfit_snapshot(provider: str, model_name: str) -> dict[str, Any] | None:
+    """Return a lightweight ModelFit snapshot for the current LLM selection.
+
+    Never raises — ModelFit is purely informational and must not affect answers.
+    Returns None if ModelFit is unavailable or the model is not in the registry.
+    """
+    try:
+        from auralynq.modelfit.hardware import probe_hardware
+        from auralynq.modelfit.model_registry import get_registry
+        from auralynq.modelfit.scoring import score_model
+
+        registry = get_registry()
+
+        # Map the active provider+model to a ModelFit model_id
+        if provider == "ollama":
+            model_id = f"ollama:{model_name}"
+        elif provider == "slm":
+            model_id = f"local:{model_name}"
+        else:
+            return None  # cloud providers — ModelFit only covers local
+
+        m = registry.get(model_id)
+        if m is None:
+            return {
+                "selected_model": model_id,
+                "fit_score": None,
+                "fit_level": None,
+                "quantization": None,
+                "hardware_warning": f"Model '{model_id}' not in ModelFit registry.",
+                "measured_tok_per_sec": None,
+                "estimate_used": True,
+            }
+
+        hw = probe_hardware()
+        s = score_model(m, hw, requested_tasks=["rag"])
+        re = s.resource_estimate
+        hw_warning = None
+        if re and re.fit_level in ("not_recommended", "impossible"):
+            hw_warning = f"Model may not fit hardware ({re.fit_level.replace('_', ' ')})."
+        elif hw.warnings:
+            hw_warning = hw.warnings[0]
+
+        return {
+            "selected_model": model_id,
+            "fit_score": round(s.overall_score, 1),
+            "fit_level": s.label,
+            "quantization": s.best_quantization,
+            "estimated_vram_gb": re.estimated_vram_gb if re else None,
+            "hardware_warning": hw_warning,
+            "measured_tok_per_sec": (
+                s.benchmark.avg_tok_per_sec if s.benchmark else None
+            ),
+            "estimate_used": s.estimate_used,
+        }
+    except Exception:
+        return None  # ModelFit is optional — never break the answer pipeline
 
 
 def _build_deps(trace: Trace, filt: Filter | None) -> AgentDeps:
@@ -227,6 +286,15 @@ def answer_question(
         warnings=list(state.notes),
         provider_status=describe_providers(),
     )
+    # Attach ModelFit metadata — purely informational, never raises
+    try:
+        from auralynq.llm.factory import resolved_provider
+        _prov = resolved_provider()
+        _model = get_settings().llm.model
+        result.model_fit = _build_modelfit_snapshot(_prov, _model)
+    except Exception:
+        pass
+
     if use_cache and state.answer:
         _CACHE.store(question, state.answer, state.citations)
     _export_langfuse(

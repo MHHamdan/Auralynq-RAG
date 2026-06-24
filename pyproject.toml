@@ -65,6 +65,9 @@ telemetry = [
   "openinference-instrumentation>=0.1",
   "langfuse>=2.0",
 ]
+# CPU/GPU local GGUF inference — fallback when Ollama is not running.
+# Install the CUDA build for GPU: pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+slm = ["llama-cpp-python>=0.3", "huggingface_hub>=0.23"]
 mcp = ["mcp>=1.0"]
 dev = [
   "ruff>=0.5",
@@ -83,6 +86,7 @@ all = [
 auralynq = "auralynq.cli:app"
 auralynq-mcp = "auralynq.mcp_server.server:main"
 auralynq-research = "auralynq.research.cli:app"
+auralynq-modelfit = "auralynq.modelfit.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/auralynq/auralynq"
