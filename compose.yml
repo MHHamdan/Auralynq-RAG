@@ -112,6 +112,8 @@ services:
       - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://auralynq-qdrant:6333}
       - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
       - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
+      - AURALYNQ_LLM__MODEL=${AURALYNQ_LLM__MODEL:-llama3.1:8b}
+      - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
       - AURALYNQ_TELEMETRY__OTLP_ENDPOINT=${AURALYNQ_OTLP_ENDPOINT:-http://auralynq-phoenix:4317}
       - AURALYNQ_DATA_DIR=/app/data
       - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
@@ -156,6 +158,8 @@ services:
       - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://auralynq-qdrant:6333}
       - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
       - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
+      - AURALYNQ_LLM__MODEL=${AURALYNQ_LLM__MODEL:-llama3.1:8b}
+      - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
       - AURALYNQ_DATA_DIR=/app/data
     volumes:
       - auralynq-data:/app/data
@@ -184,6 +188,9 @@ services:
       - COHERE_API_KEY=${COHERE_API_KEY:-}
       - AURALYNQ_VECTOR__URL=${AURALYNQ_VECTOR_URL:-http://auralynq-qdrant:6333}
       - AURALYNQ_VECTOR__BACKEND=${AURALYNQ_VECTOR_BACKEND:-auto}
+      - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
+      - AURALYNQ_LLM__MODEL=${AURALYNQ_LLM__MODEL:-llama3.1:8b}
+      - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
       - AURALYNQ_DATA_DIR=/app/data
     volumes:
       - auralynq-data:/app/data
