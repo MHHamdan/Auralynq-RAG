@@ -25,6 +25,9 @@ from auralynq.modelfit.hardware import probe_hardware
 from auralynq.modelfit.model_registry import get_registry
 from auralynq.modelfit.resource_estimator import estimate_resources, recommend_quantization
 from auralynq.modelfit.scoring import score_model
+from auralynq.telemetry import get_logger
+
+_log = get_logger("auralynq.modelfit.router")
 
 router = APIRouter(prefix="/api/modelfit", tags=["modelfit"])
 
@@ -54,6 +57,24 @@ class BenchmarkRunRequest(BaseModel):
         False,
         description="Must be true to actually run. Use /preview first.",
     )
+
+
+class DiscoverRequest(BaseModel):
+    task: str | None = Field(None, description="Filter by task: rag, coding, chat, math, …")
+    include_hf: bool = Field(True, description="Also query HuggingFace GGUF catalog")
+    refresh: bool = Field(False, description="Bypass the 10-minute in-process cache")
+    limit: int = Field(15, ge=1, le=50)
+
+
+class PullRequest(BaseModel):
+    model_id: str = Field(
+        ...,
+        description=(
+            "ollama:<name>:<tag> to pull via Ollama, "
+            "or hf:<repo_id>/<filename> to download from HF Hub"
+        ),
+    )
+    confirmed: bool = Field(False, description="Must be true to execute the pull")
 
 
 # ── Hardware ─────────────────────────────────────────────────────────────────
@@ -316,3 +337,168 @@ async def validate_community(data: dict[str, Any]) -> dict[str, Any]:
             "task", "date", "source", "tok_per_sec", "peak_memory_gb",
         ],
     }
+
+
+# ── Dynamic discovery ─────────────────────────────────────────────────────────
+
+@router.post("/discover")
+async def discover_models(req: DiscoverRequest) -> dict[str, Any]:
+    """Probe hardware, query live Ollama registry + HuggingFace Hub, and rank.
+
+    Returns models that actually fit the current hardware — including models
+    not yet installed, with the exact pull command needed to acquire them.
+    Results are cached for 10 minutes; pass refresh=true to bypass.
+    """
+    import asyncio
+
+    from auralynq.modelfit.catalog_fetcher import (
+        fetch_hf_gguf_catalog,
+        fetch_ollama_catalog,
+        invalidate_cache,
+    )
+
+    if req.refresh:
+        invalidate_cache()
+
+    hw = probe_hardware()
+    vram_gb = hw.total_vram_gb or 0.0
+    ram_gb = hw.ram_gb or 8.0
+
+    coroutines = [fetch_ollama_catalog(vram_gb, ram_gb)]
+    if req.include_hf:
+        coroutines.append(fetch_hf_gguf_catalog(vram_gb))
+
+    fetched = await asyncio.gather(*coroutines, return_exceptions=True)
+    results = []
+    for r in fetched:
+        if isinstance(r, list):
+            results.extend(r)
+        elif isinstance(r, Exception):
+            _log.warning("discover.catalog_error", error=str(r))
+
+    # Filter embedding models unless task is "embedding"
+    if req.task and req.task != "embedding":
+        results = [m for m in results if not m.embedding]
+
+    # Filter by task if specified
+    if req.task:
+        results = [m for m in results if req.task in (m.tasks or []) or not m.tasks]
+
+    # Score each model against current hardware
+    scored = []
+    for model in results:
+        fit = score_model(
+            model=model,
+            hw=hw,
+            quantization=None,
+            requested_tasks=[req.task] if req.task else [],
+        )
+        # Check if already installed in Ollama
+        already_installed = model.ollama_tag is not None and any(
+            n.startswith("Installed") for n in (model.notes or [])
+        )
+        pull_command: str | None = None
+        if model.source == "ollama" and model.ollama_tag:
+            pull_command = f"ollama pull {model.ollama_tag}"
+        elif model.source == "huggingface" and model.hf_repo:
+            pull_command = f"huggingface-cli download {model.hf_repo} --local-dir ./models"
+
+        scored.append({
+            **fit.to_dict(),
+            "model_meta": model.to_dict(),
+            "already_installed": already_installed,
+            "pull_command": pull_command,
+            "source": model.source,
+        })
+
+    scored.sort(key=lambda s: s["overall_score"], reverse=True)
+
+    return {
+        "hardware": {
+            "os": hw.os_name,
+            "cpu": hw.cpu_model,
+            "ram_gb": hw.ram_gb,
+            "total_vram_gb": hw.total_vram_gb,
+            "gpus": [g.to_dict() for g in hw.gpus],
+            "best_backend": hw.best_backend,
+            "ollama_available": hw.ollama_available,
+        },
+        "task": req.task,
+        "total_candidates": len(scored),
+        "recommendations": scored[: req.limit],
+        "note": (
+            "Results from live Ollama registry + HuggingFace Hub. "
+            "Models are ranked by hardware fit — not yet installed models include "
+            "the exact pull_command to acquire them."
+        ),
+    }
+
+
+@router.post("/pull")
+async def pull_model(req: PullRequest) -> dict[str, Any]:
+    """Pull a model from Ollama or download a GGUF from HuggingFace Hub.
+
+    Requires confirmed=true. For Ollama models: runs `ollama pull <tag>`.
+    For HF models: runs hf_hub_download into the local GGUF cache.
+    """
+    if not req.confirmed:
+        raise HTTPException(
+            400,
+            "Set confirmed=true to execute the pull. "
+            "Use POST /discover first to see what will be downloaded.",
+        )
+
+    model_id = req.model_id
+
+    # Ollama pull: model_id starts with "ollama:"
+    if model_id.startswith("ollama:"):
+        tag = model_id.removeprefix("ollama:")
+        from auralynq.modelfit.catalog_fetcher import pull_ollama_model
+
+        _log.info("modelfit.pull.ollama", tag=tag)
+        ok, msg = await pull_ollama_model(tag)
+        if not ok:
+            raise HTTPException(500, f"ollama pull failed: {msg}")
+        return {"status": "pulled", "model_id": model_id, "message": msg}
+
+    # HuggingFace GGUF download: model_id starts with "hf:"
+    if model_id.startswith("hf:"):
+        remainder = model_id.removeprefix("hf:")
+        if "/" not in remainder:
+            raise HTTPException(400, "HF model_id must be 'hf:<repo_id>/<filename>'")
+
+        # Split: last segment is filename, rest is repo
+        parts = remainder.rsplit("/", 1)
+        if len(parts) != 2 or not parts[1].endswith(".gguf"):
+            raise HTTPException(
+                400,
+                "HF model_id must be 'hf:<owner>/<repo>/<filename>.gguf' "
+                "(last segment must be a .gguf filename)",
+            )
+        # Allow org/repo/filename or just owner+repo-as-path/filename
+        # We need actual repo_id (owner/model) and filename separately
+        # Convention: hf:owner/repo/file.gguf → repo_id=owner/repo, filename=file.gguf
+        # But HF repos can have sub-paths; we take last token as filename
+        filename = parts[1]
+        repo_id_path = parts[0]  # may be "owner/repo" or more
+
+        from auralynq.config.settings import get_settings
+        from auralynq.modelfit.catalog_fetcher import pull_hf_gguf
+
+        token = get_settings().huggingface_token or ""
+        _log.info("modelfit.pull.hf", repo=repo_id_path, filename=filename)
+        ok, result = pull_hf_gguf(repo_id_path, filename, token)
+        if not ok:
+            raise HTTPException(500, f"HF download failed: {result}")
+        return {
+            "status": "downloaded",
+            "model_id": model_id,
+            "local_path": result,
+            "message": f"Downloaded to {result}",
+        }
+
+    raise HTTPException(
+        400,
+        f"Unrecognised model_id prefix in '{model_id}'. "
+        "Must start with 'ollama:' or 'hf:'.",
+    )
