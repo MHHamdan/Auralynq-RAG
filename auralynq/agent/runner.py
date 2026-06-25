@@ -160,7 +160,9 @@ def _build_modelfit_snapshot(provider: str, model_name: str) -> dict[str, Any] |
         if provider == "ollama":
             model_id = f"ollama:{model_name}"
         elif provider == "slm":
-            model_id = f"local:{model_name}"
+            # For SLM, the display name is the GGUF filename, not the llm.model tag
+            slm_name = get_settings().llm.slm_filename.replace(".gguf", "")
+            model_id = f"local:{slm_name}"
         else:
             return None  # cloud providers — ModelFit only covers local
 

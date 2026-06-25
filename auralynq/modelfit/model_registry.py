@@ -13,6 +13,54 @@ from auralynq.modelfit.hf_catalog import get_static_hf_catalog
 from auralynq.modelfit.model_metadata import ModelMetadata
 from auralynq.modelfit.ollama_catalog import get_static_catalog, list_installed_models
 
+_GGUF_FAMILY_HINTS: dict[str, str] = {
+    "qwen": "qwen", "llama": "llama", "mistral": "mistral",
+    "gemma": "gemma", "phi": "phi", "deepseek": "deepseek",
+}
+
+_GGUF_PARAM_HINTS: dict[str, float] = {
+    "0.5b": 0.5, "1b": 1.0, "1.5b": 1.5, "3b": 3.0, "7b": 7.0,
+    "8b": 8.0, "14b": 14.0, "32b": 32.0, "70b": 70.0,
+}
+
+
+def _make_slm_entry() -> ModelMetadata | None:
+    """Build a ModelMetadata for the configured SLM GGUF. Returns None on import error."""
+    try:
+        from auralynq.config.settings import get_settings
+        s = get_settings()
+        slug = s.llm.slm_filename.replace(".gguf", "").lower()
+        model_id = f"local:{slug}"
+
+        # Infer family from filename
+        family: str = "unknown"
+        for hint, fam in _GGUF_FAMILY_HINTS.items():
+            if hint in slug:
+                family = fam
+                break
+
+        # Infer parameter count from filename  (e.g. "0.5b", "7b")
+        params_b: float | None = None
+        for hint, size in _GGUF_PARAM_HINTS.items():
+            if hint in slug:
+                params_b = size
+                break
+
+        return ModelMetadata(
+            model_id=model_id,
+            source="local",
+            display_name=slug,
+            family=family,  # type: ignore[arg-type]
+            parameter_count_b=params_b,
+            context_length=s.llm.slm_n_ctx,
+            license="unknown",
+            tasks=["chat", "rag"],
+            hf_repo=s.llm.slm_repo,
+            notes=[f"SLM GGUF via llama-cpp-python — {s.llm.slm_filename}"],
+        )
+    except Exception:
+        return None
+
 
 def _discover_local_gguf(search_dirs: list[str] | None = None) -> list[ModelMetadata]:
     """Scan common directories for local GGUF files (read-only, no downloads)."""
@@ -57,6 +105,11 @@ class ModelRegistry:
             self._models[m.model_id] = m
         for m in _discover_local_gguf():
             self._models[m.model_id] = m
+
+        # Register the configured SLM model so ModelFit can score it
+        slm = _make_slm_entry()
+        if slm is not None:
+            self._models.setdefault(slm.model_id, slm)
 
     async def refresh_from_ollama(self) -> list[str]:
         """Sync live-installed Ollama models into the registry. Returns warnings."""
