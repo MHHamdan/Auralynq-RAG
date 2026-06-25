@@ -33,6 +33,7 @@ class StrategyResult:
     route_rationale: str = ""
     # Per-signal confidence breakdown (paper §4.3): s_qual, s_cite, s_sem, s_tok
     confidence_signals: dict[str, float] = field(default_factory=dict)
+    model_fit: dict[str, Any] | None = None
 
 
 class RAGStrategy(ABC):

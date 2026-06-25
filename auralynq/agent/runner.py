@@ -167,13 +167,19 @@ def _build_modelfit_snapshot(provider: str, model_name: str) -> dict[str, Any] |
         m = registry.get(model_id)
         if m is None:
             return {
+                "enabled": True,
                 "selected_model": model_id,
                 "fit_score": None,
                 "fit_level": None,
+                "fit_label": None,
                 "quantization": None,
+                "estimated_vram_gb": None,
                 "hardware_warning": f"Model '{model_id}' not in ModelFit registry.",
+                "hardware_warnings": [f"Model '{model_id}' not in ModelFit registry."],
                 "measured_tok_per_sec": None,
                 "estimate_used": True,
+                "measured_available": False,
+                "recommendation_reason": "Model not found in ModelFit registry.",
             }
 
         hw = probe_hardware()
@@ -185,17 +191,30 @@ def _build_modelfit_snapshot(provider: str, model_name: str) -> dict[str, Any] |
         elif hw.warnings:
             hw_warning = hw.warnings[0]
 
+        measured_available = s.benchmark is not None and s.benchmark.avg_tok_per_sec is not None
+        reason_parts = [f"score {round(s.overall_score)}/100"]
+        if re:
+            reason_parts.append(f"{re.fit_level.replace('_', ' ')} VRAM fit")
+        if s.best_quantization:
+            reason_parts.append(s.best_quantization)
+        recommendation_reason = "; ".join(reason_parts)
+
         return {
+            "enabled": True,
             "selected_model": model_id,
             "fit_score": round(s.overall_score, 1),
             "fit_level": s.label,
+            "fit_label": s.label,
             "quantization": s.best_quantization,
             "estimated_vram_gb": re.estimated_vram_gb if re else None,
             "hardware_warning": hw_warning,
+            "hardware_warnings": [hw_warning] if hw_warning else [],
             "measured_tok_per_sec": (
                 s.benchmark.avg_tok_per_sec if s.benchmark else None
             ),
             "estimate_used": s.estimate_used,
+            "measured_available": measured_available,
+            "recommendation_reason": recommendation_reason,
         }
     except Exception:
         return None  # ModelFit is optional — never break the answer pipeline
