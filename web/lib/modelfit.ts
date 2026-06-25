@@ -238,3 +238,70 @@ export async function fetchBenchmarkRuns(): Promise<{ runs: BenchmarkResult[]; t
 export async function fetchBenchmarkRun(run_id: string): Promise<BenchmarkResult> {
   return apiFetch(`/api/modelfit/benchmark/${run_id}`);
 }
+
+// ── Discover & Setup ──────────────────────────────────────────────────────────
+
+export interface DiscoverHardware {
+  os: string;
+  cpu: string;
+  ram_gb: number;
+  total_vram_gb: number;
+  gpus: GPUInfo[];
+  best_backend: string;
+  ollama_available: boolean;
+}
+
+export interface DiscoverEntry {
+  model_id: string;
+  overall_score: number;
+  hardware_fit: number;
+  speed_fit: number;
+  rag_fit: number;
+  task_fit: number;
+  deployment_fit: number;
+  label: string;
+  best_quantization: string;
+  reason: string;
+  resource_estimate: ResourceEstimate | null;
+  benchmark: BenchmarkResult | null;
+  estimate_used: boolean;
+  warnings: string[];
+  model_meta: ModelMeta;
+  already_installed: boolean;
+  pull_command: string | null;
+  source: string;
+}
+
+export interface DiscoverResult {
+  hardware: DiscoverHardware;
+  task: string | null;
+  total_candidates: number;
+  recommendations: DiscoverEntry[];
+  note: string;
+}
+
+export interface PullResult {
+  status: string;
+  model_id: string;
+  message: string;
+  local_path?: string;
+}
+
+export async function discoverModels(
+  task: string | null,
+  includeHf: boolean,
+  refresh: boolean,
+  limit = 30,
+): Promise<DiscoverResult> {
+  return apiFetch("/api/modelfit/discover", {
+    method: "POST",
+    body: JSON.stringify({ task, include_hf: includeHf, refresh, limit }),
+  });
+}
+
+export async function pullModel(modelId: string): Promise<PullResult> {
+  return apiFetch("/api/modelfit/pull", {
+    method: "POST",
+    body: JSON.stringify({ model_id: modelId, confirmed: true }),
+  });
+}

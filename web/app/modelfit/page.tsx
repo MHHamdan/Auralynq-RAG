@@ -12,6 +12,7 @@ import { ModelFitScoreCard } from "@/components/modelfit/ModelFitScoreCard";
 import { ModelSearch } from "@/components/modelfit/ModelSearch";
 import { BenchmarkLab } from "@/components/modelfit/BenchmarkLab";
 import { ComparisonTable } from "@/components/modelfit/ComparisonTable";
+import { DiscoverTab } from "@/components/modelfit/DiscoverTab";
 
 const TASK_TABS = [
   { id: "rag", label: "RAG" },
@@ -21,6 +22,7 @@ const TASK_TABS = [
 ];
 
 const NAV_TABS = [
+  "Discover & Setup",
   "Hardware",
   "Models",
   "Recommended",
@@ -31,7 +33,7 @@ const NAV_TABS = [
 type NavTab = (typeof NAV_TABS)[number];
 
 export default function ModelFitPage() {
-  const [tab, setTab] = useState<NavTab>("Hardware");
+  const [tab, setTab] = useState<NavTab>("Discover & Setup");
   const [hw, setHw] = useState<HardwareProfile | null>(null);
   const [hwLoading, setHwLoading] = useState(true);
   const [hwError, setHwError] = useState<string | null>(null);
@@ -120,6 +122,9 @@ export default function ModelFitPage() {
       </div>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Discover & Setup tab */}
+        {tab === "Discover & Setup" && <DiscoverTab />}
+
         {/* Hardware tab */}
         {tab === "Hardware" && (
           <div className="max-w-lg space-y-4">
