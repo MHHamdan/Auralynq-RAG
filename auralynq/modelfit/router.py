@@ -17,6 +17,10 @@ from auralynq.modelfit.benchmark_runner import (
     preview_benchmark,
     run_benchmark,
 )
+from auralynq.modelfit.community import (
+    load_community_results,
+    validate_community_result,
+)
 from auralynq.modelfit.hardware import probe_hardware
 from auralynq.modelfit.model_registry import get_registry
 from auralynq.modelfit.resource_estimator import estimate_resources, recommend_quantization
@@ -268,3 +272,47 @@ async def get_benchmark_run(run_id: str) -> dict[str, Any]:
     if not result:
         raise HTTPException(404, f"Benchmark run '{run_id}' not found.")
     return result.to_dict()
+
+
+# ── Community ─────────────────────────────────────────────────────────────────
+
+@router.get("/community/results")
+async def get_community_results(
+    model_id: str | None = Query(None, description="Filter by model_id prefix"),
+    verified_only: bool = Query(False, description="verified_local or official_benchmark only"),
+    limit: int = Query(100, ge=1, le=500),
+) -> dict[str, Any]:
+    """List community-contributed benchmark results.
+
+    All results are clearly labelled with verified_status. Never auto-trusted.
+    """
+    results = load_community_results(verified_only=verified_only)
+    if model_id:
+        results = [r for r in results if r.model_id.startswith(model_id)]
+    results = results[:limit]
+    return {
+        "results": [r.to_dict() for r in results],
+        "total": len(results),
+        "verified_only": verified_only,
+        "disclaimer": (
+            "Community results are self-reported and unverified unless "
+            "verified_status is 'verified_local' or 'official_benchmark'."
+        ),
+    }
+
+
+@router.post("/community/validate")
+async def validate_community(data: dict[str, Any]) -> dict[str, Any]:
+    """Validate a community result payload without saving it.
+
+    Use this before submitting to catch schema errors.
+    """
+    errors = validate_community_result(data)
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "fields_checked": [
+            "model_id", "quantization", "hardware", "benchmark_version",
+            "task", "date", "source", "tok_per_sec", "peak_memory_gb",
+        ],
+    }
