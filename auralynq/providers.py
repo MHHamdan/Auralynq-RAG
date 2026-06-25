@@ -20,11 +20,21 @@ def describe_providers() -> list[dict[str, str]]:
 
     s = get_settings()
     tracing = "langfuse+phoenix" if langfuse_enabled() else "in-process"
+    ep = emb_provider()
+    vb = vec_backend()
+    lp = llm_provider()
+    # Show the model that is *actually* used for each resolved provider.
+    emb_model = s.embedding.ollama_model if ep == "ollama" else s.embedding.model
+    vec_status = f"dir={s.vector.chroma_persist_dir}" if vb == "chroma" else f"url={s.vector.url}"
+    if lp == "slm":
+        llm_model = f"{s.llm.slm_filename} (gpu_layers={s.llm.slm_n_gpu_layers})"
+    else:
+        llm_model = s.llm.model  # factory's _model_for() maps this to provider-specific name
     rows = [
-        ("embeddings", emb_provider(), "model=" + s.embedding.model),
-        ("vector_store", vec_backend(), "url=" + s.vector.url),
+        ("embeddings", ep, "model=" + emb_model),
+        ("vector_store", vb, vec_status),
         ("rerank", _rerank_provider(), "model=" + s.rerank.model),
-        ("llm", llm_provider(), "model=" + s.llm.model),
+        ("llm", lp, "model=" + llm_model),
         ("asr", resolved_asr(), "model=" + s.voice.asr_model),
         ("tts", resolved_tts(), "voice=" + s.voice.tts_voice),
         ("tracing", tracing, "host=" + s.telemetry.langfuse_host),

@@ -1,4 +1,13 @@
-"""LLM factory with ``auto`` resolution + extractive fallback."""
+"""LLM factory with ``auto`` resolution + extractive fallback.
+
+Auto-resolution priority (local-first, zero-cost):
+  1. ollama   — if daemon is reachable (GPU/CPU handled by Ollama)
+  2. slm      — llama-cpp-python GGUF (GPU when CUDA present, CPU otherwise)
+  3. anthropic — if ANTHROPIC_API_KEY set and SDK installed
+  4. openai   — if OPENAI_API_KEY set and SDK installed
+  5. cohere   — if COHERE_API_KEY set and SDK installed
+  6. extractive — citation-faithful quotation (always available, no generation)
+"""
 
 from __future__ import annotations
 
@@ -35,6 +44,11 @@ def _ollama_reachable(base_url: str) -> bool:
     return ok
 
 
+def _slm_available() -> bool:
+    """True when llama-cpp-python is installed (model is resolved lazily)."""
+    return importlib.util.find_spec("llama_cpp") is not None
+
+
 # Sensible per-provider default models. The global default (llama3.2:3b) targets
 # Ollama; if the resolved provider is a commercial API and the configured model
 # still looks like an Ollama tag, fall back to that provider's default so an
@@ -58,6 +72,25 @@ def _model_for(provider: str, configured: str) -> str:
     return configured
 
 
+def _build_slm() -> LLM | None:
+    """Construct a SLMLlm, downloading the GGUF if not cached. Returns None on failure."""
+    from auralynq.llm.slm import resolve_model_path, resolve_n_gpu_layers
+
+    s = get_settings()
+    path = resolve_model_path(s.llm.slm_repo, s.llm.slm_filename, s.huggingface_token)
+    if path is None:
+        return None
+    n_layers = resolve_n_gpu_layers(s.llm.slm_n_gpu_layers)
+    try:
+        from auralynq.llm.providers import SLMLlm
+        from auralynq.llm.resilient import ResilientLLM
+
+        return ResilientLLM(SLMLlm(path, n_gpu_layers=n_layers, n_ctx=s.llm.slm_n_ctx))
+    except Exception as exc:
+        _log.warning("llm.slm_init_failed", error=str(exc))
+        return None
+
+
 def build_llm(provider: str | None = None) -> LLM:
     s = get_settings()
     provider = provider or s.llm.provider
@@ -67,10 +100,18 @@ def build_llm(provider: str | None = None) -> LLM:
         # which keys are present in the environment.
         if s.air_gapped:
             _log.info("llm.air_gapped", skipped=["anthropic", "openai", "cohere"])
-            provider = "ollama" if _ollama_reachable(s.llm.base_url) else "extractive"
+            if _ollama_reachable(s.llm.base_url):
+                provider = "ollama"
+            elif _slm_available():
+                provider = "slm"
+            else:
+                provider = "extractive"
         elif _ollama_reachable(s.llm.base_url):
-            # Prefer local Ollama — zero-cost, no data egress, works offline.
+            # Local Ollama: zero-cost, no data egress, works offline.
             provider = "ollama"
+        elif _slm_available():
+            # Local GGUF SLM: GPU when CUDA present, CPU otherwise.
+            provider = "slm"
         elif s.anthropic_api_key and importlib.util.find_spec("anthropic"):
             provider = "anthropic"
         elif s.openai_api_key and importlib.util.find_spec("openai"):
@@ -99,11 +140,20 @@ def build_llm(provider: str | None = None) -> LLM:
             from auralynq.llm.resilient import ResilientLLM
 
             return ResilientLLM(OllamaLLM(s.llm.model, s.llm.base_url))
+
+        if provider == "slm":
+            slm = _build_slm()
+            if slm is not None:
+                return slm
+            _log.warning("llm.slm_unavailable", fallback="extractive")
+            return ExtractiveLLM()
+
         if provider == "openai":
             from auralynq.llm.providers import OpenAILLM
             from auralynq.llm.resilient import ResilientLLM
 
             return ResilientLLM(OpenAILLM(s.openai_api_key, _model_for("openai", s.llm.model)))
+
         if provider == "anthropic":
             from auralynq.llm.providers import AnthropicLLM
             from auralynq.llm.resilient import ResilientLLM
@@ -111,11 +161,13 @@ def build_llm(provider: str | None = None) -> LLM:
             return ResilientLLM(
                 AnthropicLLM(s.anthropic_api_key, _model_for("anthropic", s.llm.model))
             )
+
         if provider == "cohere":
             from auralynq.llm.providers import CohereLLM
             from auralynq.llm.resilient import ResilientLLM
 
             return ResilientLLM(CohereLLM(s.cohere_api_key, _model_for("cohere", s.llm.model)))
+
     except Exception as exc:  # construction failure (e.g. missing sdk) → extractive
         _log.warning("llm.fallback_extractive", error=str(exc))
 
@@ -130,9 +182,13 @@ def resolved_provider() -> str:
             return "extractive"
         return s.llm.provider
     if s.air_gapped:
-        return "ollama" if _ollama_reachable(s.llm.base_url) else "extractive"
+        if _ollama_reachable(s.llm.base_url):
+            return "ollama"
+        return "slm" if _slm_available() else "extractive"
     if _ollama_reachable(s.llm.base_url):
         return "ollama"
+    if _slm_available():
+        return "slm"
     if s.anthropic_api_key and importlib.util.find_spec("anthropic"):
         return "anthropic"
     if s.openai_api_key and importlib.util.find_spec("openai"):

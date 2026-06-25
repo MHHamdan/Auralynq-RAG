@@ -1,4 +1,12 @@
-"""Networked LLM providers: Ollama (local default) + OpenAI/Anthropic (optional)."""
+"""LLM provider implementations.
+
+Local providers (no API key, no egress):
+  OllamaLLM  — HTTP to a running Ollama daemon (GPU/CPU handled by the daemon).
+  SLMLlm     — llama-cpp-python + GGUF; GPU layers when CUDA is present, CPU otherwise.
+
+Cloud providers (require keys + network):
+  OpenAILLM, AnthropicLLM, CohereLLM.
+"""
 
 from __future__ import annotations
 
@@ -58,6 +66,62 @@ class OllamaLLM(LLM):
                     yield chunk["response"]
                 if chunk.get("done"):
                     break
+
+
+class SLMLlm(LLM):  # pragma: no cover - requires llama-cpp-python install
+    """Local GGUF Small Language Model via llama-cpp-python.
+
+    n_gpu_layers controls hardware:
+      -1  → offload all layers to GPU (fast; requires a CUDA/Metal build of llama-cpp-python)
+       0  → pure CPU inference (slower but always works)
+       N  → offload N transformer blocks to GPU (partial offload for low-VRAM cards)
+
+    Use auralynq.llm.slm.resolve_n_gpu_layers() to auto-select 0 vs -1 based on
+    nvidia-smi before constructing this class.
+    """
+
+    name = "slm"
+
+    def __init__(self, model_path: str, n_gpu_layers: int = 0, n_ctx: int = 4096) -> None:
+        from llama_cpp import Llama  # type: ignore[import-untyped]
+
+        self._llm = Llama(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            verbose=False,
+            chat_format="chatml",  # compatible with Qwen, Phi-3, LLaMA-3 chat GGUFs
+        )
+        self.model_path = model_path
+        self.n_gpu_layers = n_gpu_layers
+        _log.info("slm.loaded", model=model_path, n_gpu_layers=n_gpu_layers)
+
+    def _messages(self, prompt: str, system: str | None) -> list[dict]:
+        msgs: list[dict] = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.append({"role": "user", "content": prompt})
+        return msgs
+
+    def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
+        resp = self._llm.create_chat_completion(
+            messages=self._messages(prompt, system),
+            temperature=temperature if temperature is not None else 0.1,
+            max_tokens=max_tokens or 1024,
+            stream=False,
+        )
+        return (resp["choices"][0]["message"]["content"] or "").strip()
+
+    def stream(self, prompt, *, system=None, temperature=None, max_tokens=None) -> Iterator[str]:
+        for chunk in self._llm.create_chat_completion(
+            messages=self._messages(prompt, system),
+            temperature=temperature if temperature is not None else 0.1,
+            max_tokens=max_tokens or 1024,
+            stream=True,
+        ):
+            delta = chunk["choices"][0]["delta"].get("content", "")
+            if delta:
+                yield delta
 
 
 class OpenAILLM(LLM):  # pragma: no cover - paid path

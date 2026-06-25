@@ -40,7 +40,12 @@ def test_cli_info(corpus_dir):
     assert "embeddings" in res.stdout
 
 
-def test_describe_providers_resolves_fallbacks():
+def test_describe_providers_resolves_fallbacks(monkeypatch):
+    import auralynq.llm.factory as lf
+
+    # Force SLM unavailable so the chain reaches extractive deterministically.
+    monkeypatch.setattr(lf, "_slm_available", lambda: False)
+    monkeypatch.setattr(lf, "_ollama_reachable", lambda url: False)
     rows = {r["subsystem"]: r["provider"] for r in describe_providers()}
     assert rows["embeddings"] == "hash"
     assert rows["vector_store"] == "memory"
