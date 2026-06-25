@@ -32,27 +32,60 @@ _SUPPORTED |= AUDIO_EXTS
 
 
 def _render_page_images(path: Path, doc_id: str, source_type: SourceType) -> None:
-    """Render PDF pages to PNG images for the Source View panel (best-effort)."""
+    """Render PDF pages to PNG images for the Source View panel (best-effort).
+
+    Uses PyMuPDF (fitz) as the primary renderer — pure Python, no system deps.
+    Falls back to pdf2image (requires poppler) if PyMuPDF is not installed.
+    """
     s = get_settings()
     if not s.visual.page_rendering_enabled or source_type != SourceType.pdf:
         return
     try:
-        from pdf2image import convert_from_path  # type: ignore[import-untyped]
-    except ImportError:
-        return  # pdf2image not installed — silently skip
-    try:
         cache_dir = s.page_cache_dir / doc_id
         cache_dir.mkdir(parents=True, exist_ok=True)
-        # Only render if not already cached
-        existing = list(cache_dir.glob("page_*.png"))
-        if existing:
-            return
-        images = convert_from_path(str(path), dpi=s.visual.render_dpi)
-        for i, img in enumerate(images, start=1):
-            img.save(str(cache_dir / f"page_{i:04d}.png"), "PNG")
-        _log.info("ingest.pages_rendered", doc_id=doc_id, pages=len(images))
+        if list(cache_dir.glob("page_*.png")):
+            return  # already cached
+        _render_with_pymupdf(path, cache_dir, s.visual.render_dpi, doc_id) or \
+            _render_with_pdf2image(path, cache_dir, s.visual.render_dpi, doc_id)
     except Exception as exc:
         _log.warning("ingest.pages_render_error", doc_id=doc_id, error=str(exc))
+
+
+def _render_with_pymupdf(path: Path, cache_dir: Path, dpi: int, doc_id: str) -> bool:
+    """Render via PyMuPDF (fitz). Returns True on success."""
+    try:
+        import fitz  # type: ignore[import-untyped]  # PyMuPDF
+    except ImportError:
+        return False
+    try:
+        doc = fitz.open(str(path))
+        zoom = dpi / 72.0
+        mat = fitz.Matrix(zoom, zoom)
+        for i, page in enumerate(doc, start=1):
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            pix.save(str(cache_dir / f"page_{i:04d}.png"))
+        _log.info("ingest.pages_rendered", doc_id=doc_id, pages=len(doc), renderer="pymupdf")
+        return True
+    except Exception as exc:
+        _log.debug("ingest.pymupdf_failed", error=str(exc))
+        return False
+
+
+def _render_with_pdf2image(path: Path, cache_dir: Path, dpi: int, doc_id: str) -> bool:
+    """Render via pdf2image (requires poppler). Returns True on success."""
+    try:
+        from pdf2image import convert_from_path  # type: ignore[import-untyped]
+    except ImportError:
+        return False
+    try:
+        images = convert_from_path(str(path), dpi=dpi)
+        for i, img in enumerate(images, start=1):
+            img.save(str(cache_dir / f"page_{i:04d}.png"), "PNG")
+        _log.info("ingest.pages_rendered", doc_id=doc_id, pages=len(images), renderer="pdf2image")
+        return True
+    except Exception as exc:
+        _log.warning("ingest.pages_render_error", doc_id=doc_id, error=str(exc))
+        return False
 
 
 class _Manifest:
@@ -131,12 +164,30 @@ def ingest_file(
             "source_blocks": [],
         }
         if has_layout and page is not None:
-            # Find layout blocks whose text overlaps with this chunk
-            chunk_text_lower = tc.text.lower()
+            # Match layout blocks to this chunk using character-span overlap.
+            # Blocks from the pdfplumber parser carry doc_char_start/doc_char_end
+            # that refer to the same text string we are chunking, so a simple
+            # interval overlap check is exact.  For blocks produced by the legacy
+            # pypdf fallback (no doc_char_* fields), fall back to token overlap
+            # as a best-effort heuristic.
+            chunk_start = tc.start_char
+            chunk_end = tc.end_char
             matching: list[dict] = []
             for blk in _blocks_by_page.get(page, []):
-                if blk.get("text", "").lower() in chunk_text_lower or chunk_text_lower in blk.get("text", "").lower():
-                    matching.append(blk)
+                if "doc_char_start" in blk:
+                    # Precise: character-span overlap
+                    if blk["doc_char_start"] < chunk_end and blk["doc_char_end"] > chunk_start:
+                        matching.append(blk)
+                else:
+                    # Heuristic fallback: require >50% of block tokens in chunk,
+                    # AND block token count <= chunk token count / 3 (guards against
+                    # matching the whole page when chunk == page).
+                    blk_tokens = set(blk.get("text", "").lower().split())
+                    chunk_tokens = set(tc.text.lower().split())
+                    if (blk_tokens
+                            and len(blk_tokens & chunk_tokens) / len(blk_tokens) > 0.5
+                            and len(blk_tokens) <= len(chunk_tokens) // 3 + 1):
+                        matching.append(blk)
             if matching:
                 x0 = min(b["bbox"][0] for b in matching)
                 y0 = min(b["bbox"][1] for b in matching)
@@ -178,7 +229,9 @@ def ingest_file(
         metadata=parsed.metadata,
         chunks=text_chunks,
         page_dimensions=page_dims,
-        visual_grounding_version=VISUAL_GROUNDING_VERSION if has_layout or parsed.source_type == SourceType.pdf else 0,
+        visual_grounding_version=(
+            VISUAL_GROUNDING_VERSION if has_layout or parsed.source_type == SourceType.pdf else 0
+        ),
     )
     if manifest:
         manifest.update(str(path), digest)

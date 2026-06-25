@@ -57,11 +57,22 @@ class RetrievalSettings(BaseSettings):
 
 
 class LLMSettings(BaseSettings):
-    provider: Literal["auto", "ollama", "openai", "anthropic", "cohere", "extractive"] = "auto"
+    provider: Literal[
+        "auto", "ollama", "slm", "openai", "anthropic", "cohere", "extractive"
+    ] = "auto"
     model: str = "llama3.2:3b"
     base_url: str = "http://localhost:11434"
     temperature: float = 0.1
     max_tokens: int = 1024
+    # ── SLM (local GGUF via llama-cpp-python) ──────────────────────────────
+    # HuggingFace repo and filename for the default GGUF model.  The file is
+    # downloaded once to the HF Hub cache (~/.cache/huggingface/) and reused.
+    # Qwen2.5-0.5B-Q4_K_M is ~350 MB and runs comfortably on CPU.
+    slm_repo: str = "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+    slm_filename: str = "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    slm_n_ctx: int = 4096
+    # -1 = auto (GPU when CUDA present, CPU otherwise); 0 = force CPU; N = N layers on GPU
+    slm_n_gpu_layers: int = -1
 
 
 class AgentSettings(BaseSettings):
