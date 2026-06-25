@@ -38,6 +38,19 @@ _ALL_STRATEGIES: list[RAGStrategy] = [
 _DEFAULT_STRATEGY_ID = "auralynq_rag"
 
 
+def _attach_modelfit(result: StrategyResult) -> None:
+    """Attach a ModelFit snapshot to a strategy result. Never raises."""
+    try:
+        from auralynq.agent.runner import _build_modelfit_snapshot
+        from auralynq.config.settings import get_settings
+        from auralynq.llm.factory import resolved_provider
+        result.model_fit = _build_modelfit_snapshot(
+            resolved_provider(), get_settings().llm.model
+        )
+    except Exception:
+        pass
+
+
 class RAGStrategyRegistry:
     def __init__(self, strategies: list[RAGStrategy]) -> None:
         self._strategies: dict[str, RAGStrategy] = {s.id: s for s in strategies}
@@ -84,7 +97,10 @@ class RAGStrategyRegistry:
                 result = strategy.run(query, **kwargs)
                 result.fallback_strategy = _DEFAULT_STRATEGY_ID
                 result.fallback_reason = f"unknown_strategy: {strategy_id}"
-                result.strategy_warnings = [f"Unknown strategy '{strategy_id}'. Fell back to {_DEFAULT_STRATEGY_ID}."]
+                result.strategy_warnings = [
+                    f"Unknown strategy '{strategy_id}'. Fell back to {_DEFAULT_STRATEGY_ID}."
+                ]
+                _attach_modelfit(result)
                 return result
             raise ValueError(f"Unknown RAG strategy: {strategy_id}")
 
@@ -96,11 +112,16 @@ class RAGStrategyRegistry:
                 result = fallback.run(query, **kwargs)
                 result.fallback_strategy = _DEFAULT_STRATEGY_ID
                 result.fallback_reason = reason
-                result.strategy_warnings = [f"Requested {strategy_id}: {reason}. Fell back to {_DEFAULT_STRATEGY_ID}."]
+                result.strategy_warnings = [
+                    f"Requested {strategy_id}: {reason}. Fell back to {_DEFAULT_STRATEGY_ID}."
+                ]
+                _attach_modelfit(result)
                 return result
             raise ValueError(f"Strategy {strategy_id} is not available: {reason}")
 
-        return strategy.run(query, **kwargs)
+        result = strategy.run(query, **kwargs)
+        _attach_modelfit(result)
+        return result
 
     @property
     def default_strategy_id(self) -> str:
