@@ -145,6 +145,7 @@ def test_llm_auto_resolves_cohere_when_only_cohere_key(monkeypatch):
     import auralynq.llm.factory as lf
 
     monkeypatch.setattr(lf, "_ollama_reachable", lambda url: False)
+    monkeypatch.setattr(lf, "_slm_available", lambda: False)
 
     from auralynq.llm.factory import resolved_provider
 
