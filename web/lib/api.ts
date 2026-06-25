@@ -56,14 +56,19 @@ export interface InsufficientReason {
 }
 
 export interface ModelFitSnapshot {
+  enabled: boolean;
   selected_model: string;
   fit_score: number | null;
   fit_level: string | null;
+  fit_label: string | null;
   quantization: string | null;
   estimated_vram_gb: number | null;
   hardware_warning: string | null;
+  hardware_warnings: string[];
   measured_tok_per_sec: number | null;
   estimate_used: boolean;
+  measured_available: boolean;
+  recommendation_reason: string;
 }
 
 export interface AnswerResult {
