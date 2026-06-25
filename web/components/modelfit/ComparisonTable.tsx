@@ -69,6 +69,28 @@ export function ComparisonTable({ scores }: { scores: ModelFitScore[] }) {
     URL.revokeObjectURL(url);
   }
 
+  function exportMarkdown() {
+    const header = `| Model | Quant | Score | HW | Speed | RAG | VRAM est. | Tok/s | Fit | Label |`;
+    const sep    = `|-------|-------|------:|---:|------:|----:|----------:|------:|-----|-------|`;
+    const rows = scores.map((s) => {
+      const re   = s.resource_estimate;
+      const model = s.model_id.replace(/^(ollama:|hf:|local:)/, "");
+      const toks  = s.benchmark?.avg_tok_per_sec != null ? String(s.benchmark.avg_tok_per_sec) : "—";
+      const vram  = re ? `${re.estimated_vram_gb} GB` : "—";
+      const fit   = re?.fit_level?.replace("_", " ") ?? "unknown";
+      const speed = `${Math.round(s.speed_fit)}${s.estimate_used ? "*" : ""}`;
+      return `| ${model} | ${s.best_quantization} | ${Math.round(s.overall_score)} | ${Math.round(s.hardware_fit)} | ${speed} | ${Math.round(s.rag_fit)} | ${vram} | ${toks} | ${fit} | ${s.label} |`;
+    });
+    const md = [`## Auralynq ModelFit Comparison`, ``, header, sep, ...rows, ``, `\\* speed score uses estimates — run benchmark for measured tok/s`].join("\n");
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modelfit-comparison.md";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex gap-2 justify-end">
@@ -83,6 +105,12 @@ export function ComparisonTable({ scores }: { scores: ModelFitScore[] }) {
           className="px-3 py-1 text-xs rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200"
         >
           Export JSON
+        </button>
+        <button
+          onClick={exportMarkdown}
+          className="px-3 py-1 text-xs rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200"
+        >
+          Export Markdown
         </button>
       </div>
 
