@@ -98,6 +98,10 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["uvicorn", "auralynq.serving.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Expose host Ollama to containers on Docker Desktop (Windows/Mac) where
+    # host.containers.internal isn't automatic. Podman ignores extra_hosts safely.
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     # Internal: loopback publish for host tooling; reachable in-cluster as api:8000.
     ports:
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_API_PORT:-8000}:8000"
@@ -142,6 +146,8 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["python", "-m", "auralynq.mcp_server.server", "--transport", "streamable-http"]
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     ports:
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_MCP_PORT:-8765}:8765"
     environment:
@@ -181,6 +187,8 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["python", "-m", "auralynq.serving.worker"]
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     environment:
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
