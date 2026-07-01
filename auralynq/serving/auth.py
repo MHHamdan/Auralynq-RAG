@@ -34,9 +34,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={
-                    "error": "unauthorized",
-                    "detail": "missing or invalid bearer token",
-                    "request_id": getattr(request.state, "request_id", ""),
+                    "error": {
+                        "code": "unauthorized",
+                        "message": "missing or invalid bearer token",
+                        "details": {},
+                        "trace_id": getattr(request.state, "request_id", ""),
+                    }
                 },
                 headers={"WWW-Authenticate": "Bearer"},
             )

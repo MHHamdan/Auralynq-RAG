@@ -85,8 +85,8 @@ auralynq-mcp = "auralynq.mcp_server.server:main"
 auralynq-modelfit = "auralynq.modelfit.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/auralynq/auralynq"
-Documentation = "https://github.com/auralynq/auralynq#readme"
+Homepage = "https://github.com/MHHamdan/Auralynq"
+Documentation = "https://github.com/MHHamdan/Auralynq#readme"
 
 [tool.hatch.build.targets.wheel]
 packages = ["auralynq"]

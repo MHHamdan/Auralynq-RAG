@@ -335,8 +335,8 @@ export async function corpusClearConfirm(phrase: string): Promise<CorpusDeleteRe
     body: JSON.stringify({ phrase }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `confirm failed: ${r.status}`);
   }
   return r.json();
 }
@@ -354,8 +354,8 @@ export async function corpusDeleteLastConfirm(phrase: string): Promise<CorpusDel
     body: JSON.stringify({ phrase }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `confirm failed: ${r.status}`);
   }
   return r.json();
 }
@@ -373,8 +373,8 @@ export async function corpusDeleteDocumentConfirm(docId: string, phrase: string)
     body: JSON.stringify({ phrase }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `confirm failed: ${r.status}`);
   }
   return r.json();
 }
