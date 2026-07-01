@@ -15,7 +15,7 @@ grounding with exact span-level bounding boxes, and a full-screen document inspe
 workspace. Grounded answers with citations you can visually verify against the original
 PDF. Runs at **$0** on a laptop; upgrades to GPU models via env flags.
 
-[Quickstart](#-quickstart) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
+[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
 
 </div>
 
@@ -753,37 +753,50 @@ flowchart TB
 
 ## 🚀 Quickstart
 
-> Auralynq is **Podman-first** and does **not** require Docker.
-> Full run modes — including **deploying to a remote machine** — are in
-> **[RUNNING.md](RUNNING.md)**.
+> Auralynq runs **without Podman** as two plain processes ($0, no containers),
+> or **with Podman** as the full production-shaped stack — no Docker either
+> way. Full guides: [no-Podman](docs/getting-started/no-podman.md) ·
+> [Podman](docs/getting-started/podman.md) ·
+> [remote server](docs/getting-started/server.md) ·
+> [Hugging Face Space](docs/getting-started/huggingface-space.md) (planned) ·
+> [troubleshooting](docs/getting-started/troubleshooting.md). Deploying to a
+> remote machine is also covered in **[RUNNING.md](RUNNING.md)**.
+
+### 5-minute no-Podman path
 
 ```bash
-# 0. (optional) only needed for gated models (e.g. diarization)
-cp .env.example .env && echo "HUGGINGFACE_TOKEN=hf_..." >> .env
-
-# 1. Light install ($0; offline-capable)
+# 1. Light install ($0; offline-capable — no GPU, no paid keys required)
 make setup
 
-# 2. Verify container runtime + start the full stack
-make runtime-check
-make stack-up          # or: make up
+# 2. Sample data -> index -> end-to-end demo
+make data
+make index
+make demo
 
-# 3. Or run end-to-end locally without containers:
-make data              # download sample corpus
-make index             # vector index + knowledge graph
-make demo              # ingest → index → query (text + voice)
-
-# 4. Ask something:
+# 3. Ask something
 auralynq ask "How does PathRAG prune relational paths?"
 auralynq talk          # push-to-talk voice loop
 
-# 5. ModelFit — find the best model for your hardware:
-auralynq-modelfit recommend --task rag --limit 5
-auralynq-modelfit score --model ollama:llama3.1:8b
+# 4. Run the API and web UI as two dev processes
+python -m uvicorn auralynq.serving.app:app --host 0.0.0.0 --port 8000   # terminal 1
+cd web && NEXT_PUBLIC_API_BASE=http://localhost:8000/api npm run dev -- --hostname 0.0.0.0 --port 3000  # terminal 2
 ```
 
-Open the UI at **http://localhost:3000**, API docs at **http://localhost:8000/docs**,
-Phoenix traces at **http://localhost:6006**.
+Open **http://localhost:3000**, API docs at **http://localhost:8000/docs**.
+
+- **Upload a document**: Ingest tab in the UI, or `curl -X POST http://localhost:8000/ingest -F "file=@mydoc.pdf"`.
+- **Visually verify a citation**: click any numbered citation under an answer — the Source Workspace opens full-screen with the original page and bounding-box overlays.
+- **Try a different RAG strategy**: `curl http://localhost:8000/rag/strategies` to list all 13, then `POST /query` with `"rag_strategy": "hybrid"` (or use the Algorithm Selector in the composer bar).
+- **ModelFit — find the best model for your hardware**:
+  ```bash
+  auralynq-modelfit recommend --task rag --limit 5
+  auralynq-modelfit score --model ollama:llama3.1:8b
+  ```
+  or open **http://localhost:3000/modelfit**.
+- **Run benchmarks**: `make eval` / `make bench` — numbers only ever come from these commands, written to `reports/`.
+- **Limitations**: see [Limitations](#limitations) below before relying on this for anything beyond evaluation.
+
+Full walkthrough with data-persistence notes and safe corpus-clearing: [docs/getting-started/no-podman.md](docs/getting-started/no-podman.md).
 
 ### Podman stack (local + remote)
 
@@ -826,6 +839,18 @@ COHERE_API_KEY=<...>                    # optional; degrades to offline fallback
 Browse to **https://&lt;SERVER_IP&gt;:8443** — only `8443` needs to be open in the firewall.
 The browser never holds the API key (the web container's same-origin `/api/*` proxy
 injects the bearer token server-side).
+
+Full guide with TLS-certificate options: [docs/getting-started/server.md](docs/getting-started/server.md).
+
+---
+
+## 🤗 Hugging Face Space
+
+**Planned, not yet published.** A single-container Space packaging (lightweight
+offline demo + full-Docker modes) is being built — see
+[docs/getting-started/huggingface-space.md](docs/getting-started/huggingface-space.md)
+for the design, planned env vars, and persistent-vs-ephemeral-storage notes.
+Nothing is auto-published; deploying a Space is always a manual, explicit step.
 
 ---
 
