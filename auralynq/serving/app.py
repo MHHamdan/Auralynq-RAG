@@ -374,6 +374,10 @@ def create_app() -> FastAPI:
                 "langfuse_host": s.telemetry.langfuse_host,
                 "enabled": s.telemetry.enabled,
             },
+            hf_space=s.hf_space,
+            demo_mode=s.demo_mode,
+            public_demo=s.public_demo,
+            allow_uploads=s.allow_uploads,
         )
 
     @app.get("/corpus/summary", response_model=CorpusSummaryResponse)
@@ -724,6 +728,13 @@ def create_app() -> FastAPI:
     @app.post("/ingest", response_model=IngestResponse)
     async def ingest(request: Request, file: UploadFile = File(...)) -> IngestResponse:
         s = get_settings()
+        if not s.allow_uploads:
+            raise AuralynqError(
+                "uploads_disabled",
+                detail="Document uploads are disabled on this deployment "
+                "(AURALYNQ_ALLOW_UPLOADS=false).",
+                status_code=403,
+            )
         safe = _SAFE_NAME.sub("_", Path(file.filename or "upload.bin").name)
         inbox = s.storage_dir / "uploads"
         inbox.mkdir(parents=True, exist_ok=True)
@@ -1315,11 +1326,12 @@ def create_app() -> FastAPI:
         })
 
     # ─────────────────────────────────────────── ModelFit Index ──────────────
-    try:
-        from auralynq.modelfit.router import router as modelfit_router
-        app.include_router(modelfit_router)
-    except Exception:
-        pass  # ModelFit is optional — degrade gracefully if deps missing
+    if s.modelfit.enabled:
+        try:
+            from auralynq.modelfit.router import router as modelfit_router
+            app.include_router(modelfit_router)
+        except Exception:
+            pass  # ModelFit is optional — degrade gracefully if deps missing
 
     return app
 

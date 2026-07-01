@@ -95,6 +95,10 @@ class StatusResponse(BaseModel):
     index: dict[str, Any] = Field(default_factory=dict)
     corpus: dict[str, Any] = Field(default_factory=dict)
     tracing: dict[str, Any] = Field(default_factory=dict)
+    hf_space: bool = False
+    demo_mode: bool = False
+    public_demo: bool = False
+    allow_uploads: bool = True
 
 
 class ObservabilitySummaryResponse(BaseModel):
