@@ -196,10 +196,59 @@ export async function fetchSuggestions(
   return r.json();
 }
 
-export async function statusSummary() {
+export interface StatusResponse {
+  status: string;
+  version: string;
+  env: string;
+  providers: { subsystem: string; provider: string; status?: string }[];
+  index: { vectors?: number };
+  corpus: { vector_count?: number; entity_count?: number };
+  tracing: { provider?: string; phoenix_endpoint?: string };
+  // Deployment posture (see auralynq/config/settings.py + /api/status). Present
+  // on any recent backend; older backends simply omit them (all optional here).
+  hf_space?: boolean;
+  demo_mode?: boolean;
+  public_demo?: boolean;
+  allow_uploads?: boolean;
+}
+
+export async function statusSummary(): Promise<StatusResponse> {
   const r = await fetch(`${API_BASE}/status`, { cache: "no-store" });
   if (!r.ok) throw new Error(`status failed: ${r.status}`);
   return r.json();
+}
+
+/**
+ * Derive a user-facing "deployment mode" from a StatusResponse: whether the
+ * backend is in an explicit demo/HF-Space posture, and whether it's running on
+ * the offline $0 fallback providers (extractive LLM / hash embeddings) rather
+ * than a real model. Pure function so it's unit-testable without a DOM.
+ */
+export interface DeploymentMode {
+  demo: boolean;
+  publicDemo: boolean;
+  hfSpace: boolean;
+  uploadsDisabled: boolean;
+  offlineFallback: boolean;
+  offlineProviders: string[];
+}
+
+export function deploymentMode(s: StatusResponse | null | undefined): DeploymentMode {
+  const providers = s?.providers ?? [];
+  const offline: string[] = [];
+  for (const p of providers) {
+    if (p.subsystem === "llm" && p.provider === "extractive") offline.push("extractive answering");
+    if (p.subsystem === "embeddings" && p.provider === "hash") offline.push("hash embeddings");
+  }
+  return {
+    demo: Boolean(s?.demo_mode),
+    publicDemo: Boolean(s?.public_demo),
+    hfSpace: Boolean(s?.hf_space),
+    // allow_uploads defaults to true when the field is absent (older backend)
+    uploadsDisabled: s?.allow_uploads === false,
+    offlineFallback: offline.length > 0,
+    offlineProviders: offline,
+  };
 }
 
 export async function observabilitySummary() {

@@ -69,7 +69,7 @@ t("how-it-works renders the nine-step pipeline", () => {
 t("differentiators proof section exists", () => {
   const d = read("components/landing/Differentiators.tsx");
   has(d, "What makes Auralynq different?");
-  has(d, "Honest abstention");
+  has(d, "Evidence-gated abstention");
   has(d, "Local-first by default");
 });
 
@@ -84,7 +84,7 @@ t("chat uses app bar, composer and never-empty inspector overview", () => {
 
 t("composer has mode selector, voice, upload and key hints", () => {
   const c = read("components/chat/Composer.tsx");
-  for (const m of ["Ask corpus", "Summarize", "Inventory", "Search web"]) has(c, m);
+  for (const m of ["Ask corpus", "Summarize", "Inventory", "Web"]) has(c, m);
   has(c, "VoiceRecorder");
   has(c, "Upload a document");
   has(c, "Shift");
@@ -98,6 +98,22 @@ t("voice recorder exposes explicit states", () => {
 t("inspector overview is useful before any query", () => {
   const o = read("components/chat/InspectorOverview.tsx");
   for (const s of ["Your corpus", "System status", "Try asking"]) has(o, s);
+});
+
+t("inspector overview shows a first-run checklist for an empty corpus", () => {
+  const o = read("components/chat/InspectorOverview.tsx");
+  has(o, "First run");
+  has(o, "!summary.indexed"); // only shown before any document is indexed
+  for (const step of [
+    "Upload a document",
+    "Ask a question",
+    "Click a citation",
+    "Open the Source Workspace",
+    "Try ModelFit",
+    "Run a benchmark",
+  ]) {
+    has(o, step, `first-run checklist missing step: ${step}`);
+  }
 });
 
 // ---- inspector panels ----------------------------------------------------

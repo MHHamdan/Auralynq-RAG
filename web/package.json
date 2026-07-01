@@ -14,7 +14,9 @@
     "test:theme": "node lib/theme.test.mjs",
     "test:format": "node lib/format.test.mjs",
     "test:ui": "node lib/ui.test.mjs",
-    "test": "node lib/sse.test.mjs && node lib/failover.test.mjs && node lib/theme.test.mjs && node lib/format.test.mjs && node lib/ui.test.mjs"
+    "test:modelfit": "node lib/modelfit.test.mjs",
+    "test:demo": "node lib/demo.test.mjs",
+    "test": "node lib/sse.test.mjs && node lib/failover.test.mjs && node lib/theme.test.mjs && node lib/format.test.mjs && node lib/ui.test.mjs && node lib/modelfit.test.mjs && node lib/demo.test.mjs"
   },
   "dependencies": {
     "highlight.js": "11.9.0",
