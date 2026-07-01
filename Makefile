@@ -123,6 +123,21 @@ mcp: ## Start the auralynq-mcp server (stdio)
 demo: ## Reproducible end-to-end demo (ingest -> index -> ask, text + voice)
 	$(PY) scripts/demo.py
 
+# --------------------------------------------------------- demo corpus -----
+.PHONY: demo-data
+demo-data: ## Copy the safe, license-clear public demo corpus into data/corpus/
+	mkdir -p data/corpus
+	cp -r examples/demo_corpus/docs/. data/corpus/
+	@echo "✓ demo corpus copied to data/corpus/ (see examples/demo_corpus/README.md)"
+
+.PHONY: demo-index
+demo-index: demo-data ## Index the public demo corpus (vector index + knowledge graph)
+	$(PY) -m auralynq.cli index --input data/corpus
+
+.PHONY: demo-query
+demo-query: ## Ask every question in examples/demo_corpus/questions.json
+	$(PY) scripts/demo_query.py
+
 # --------------------------------------------------------------- quality ----
 .PHONY: test
 test: ## Run the test suite
