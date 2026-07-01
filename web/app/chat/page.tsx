@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AnswerResult,
   CorpusSummary,
+  DeploymentMode,
   PathEvidence,
   StreamEvent,
   TraceSpan,
@@ -10,6 +11,7 @@ import {
   VisualGrounding,
   askStreamWithStrategy,
   corpusSummary,
+  deploymentMode,
   fetchSuggestions,
   health,
   statusSummary,
@@ -30,6 +32,7 @@ import { InspectorOverview, type RecentMeta } from "@/components/chat/InspectorO
 import { AgentActivityRail, type AgentActivity } from "@/components/chat/AgentActivityRail";
 import { SettingsPanel, useUISettings } from "@/components/chat/SettingsPanel";
 import { loadStoredStrategy } from "@/components/chat/AlgorithmSelector";
+import { DemoBanner } from "@/components/DemoBanner";
 
 const FALLBACK_SUGGESTIONS = [
   "Summarize the main topics in the indexed documents.",
@@ -129,6 +132,7 @@ export default function Chat() {
   const [ragStrategy, setRagStrategy] = useState<string>("auralynq_rag");
   const [showSettings, setShowSettings] = useState(false);
   const [agentActivity, setAgentActivity] = useState<AgentActivity>({ phase: "idle" });
+  const [deployMode, setDeployMode] = useState<DeploymentMode | null>(null);
   const [visualGrounding, setVisualGrounding] = useState<VisualGrounding | null>(null);
   const [activeCitation, setActiveCitation] = useState<string | null>(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
@@ -160,6 +164,7 @@ export default function Chat() {
     statusSummary()
       .then((s) => {
         setPhoenixUrl(s?.tracing?.phoenix_endpoint || null);
+        setDeployMode(deploymentMode(s));
         const vecs = s?.index?.vectors ?? s?.corpus?.vector_count ?? null;
         const ents = s?.corpus?.entity_count ?? null;
         setVectors(vecs);
@@ -521,6 +526,8 @@ export default function Chat() {
         inspectorOpen={showPanel}
         onToggleSettings={() => setShowSettings((v) => !v)}
       />
+
+      <DemoBanner mode={deployMode} />
 
       {/* Settings overlay */}
       {showSettings && (
