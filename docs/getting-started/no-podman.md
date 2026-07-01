@@ -26,6 +26,19 @@ make index      # build the vector index + knowledge graph from data/corpus
 make demo       # ingest -> index -> ask, text + voice, end to end
 ```
 
+Prefer a smaller, curated corpus with known-good demo questions instead?
+
+```bash
+make demo-data   # copy examples/demo_corpus/docs/ (original, CC0) into data/corpus/
+make demo-index  # index it
+make demo-query  # ask all 11 example questions, print grounded answers
+```
+
+See [`examples/demo_corpus/README.md`](../../examples/demo_corpus/README.md)
+for what's in it and why — includes a PDF with real bounding-box visual
+grounding, a citation-verification question, and one deliberately
+out-of-corpus question.
+
 ## 3. Ask questions from the CLI
 
 ```bash
