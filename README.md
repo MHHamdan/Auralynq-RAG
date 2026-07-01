@@ -15,7 +15,7 @@ grounding with exact span-level bounding boxes, and a full-screen document inspe
 workspace. Grounded answers with citations you can visually verify against the original
 PDF. Runs at **$0** on a laptop; upgrades to GPU models via env flags.
 
-[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
+[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Research contributions](docs/research/research-contributions.md) · [Decisions](DECISIONS.md)
 
 </div>
 
@@ -1043,6 +1043,14 @@ Claude Desktop config:
 - [ ] ModelFit community index web UI (submit + browse verified benchmark results)
 
 ---
+
+## Research contributions
+
+[docs/research/research-contributions.md](docs/research/research-contributions.md)
+covers Auralynq-RAG, Visual Source Grounding, the ModelFit Index, and the
+(unimplemented, roadmap-only) CALoRA-RAG track — motivation, what's
+implemented vs. experimental vs. planned, how to run each, and honest
+limitations, with no unbenchmarked "state of the art" claims.
 
 ## Design decisions
 
