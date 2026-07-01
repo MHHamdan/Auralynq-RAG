@@ -27,8 +27,21 @@ from auralynq.utils import content_hash, stable_id
 
 _log = get_logger("auralynq.ingest")
 
-_SUPPORTED = {".pdf", ".docx", ".html", ".htm", ".md", ".markdown", ".txt", ".text", ".rst"}
-_SUPPORTED |= AUDIO_EXTS
+#: File extensions the ingest pipeline knows how to parse. Shared with the
+#: /ingest API endpoint's upload validation (auralynq/serving/app.py) so the
+#: allowlist has a single source of truth.
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".html",
+    ".htm",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".text",
+    ".rst",
+}
+SUPPORTED_EXTENSIONS |= AUDIO_EXTS
 
 
 def _render_page_images(path: Path, doc_id: str, source_type: SourceType) -> None:
@@ -45,8 +58,9 @@ def _render_page_images(path: Path, doc_id: str, source_type: SourceType) -> Non
         cache_dir.mkdir(parents=True, exist_ok=True)
         if list(cache_dir.glob("page_*.png")):
             return  # already cached
-        _render_with_pymupdf(path, cache_dir, s.visual.render_dpi, doc_id) or \
-            _render_with_pdf2image(path, cache_dir, s.visual.render_dpi, doc_id)
+        _render_with_pymupdf(
+            path, cache_dir, s.visual.render_dpi, doc_id
+        ) or _render_with_pdf2image(path, cache_dir, s.visual.render_dpi, doc_id)
     except Exception as exc:
         _log.warning("ingest.pages_render_error", doc_id=doc_id, error=str(exc))
 
@@ -184,9 +198,11 @@ def ingest_file(
                     # matching the whole page when chunk == page).
                     blk_tokens = set(blk.get("text", "").lower().split())
                     chunk_tokens = set(tc.text.lower().split())
-                    if (blk_tokens
-                            and len(blk_tokens & chunk_tokens) / len(blk_tokens) > 0.5
-                            and len(blk_tokens) <= len(chunk_tokens) // 3 + 1):
+                    if (
+                        blk_tokens
+                        and len(blk_tokens & chunk_tokens) / len(blk_tokens) > 0.5
+                        and len(blk_tokens) <= len(chunk_tokens) // 3 + 1
+                    ):
                         matching.append(blk)
             if matching:
                 x0 = min(b["bbox"][0] for b in matching)
@@ -258,7 +274,7 @@ def ingest_path(target: Path, recursive: bool = True, force: bool = False) -> In
             p
             for p in it
             if p.is_file()
-            and p.suffix.lower() in _SUPPORTED
+            and p.suffix.lower() in SUPPORTED_EXTENSIONS
             and not p.name.endswith(".transcript.json")
         )
     else:

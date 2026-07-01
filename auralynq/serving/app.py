@@ -26,9 +26,11 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from sse_starlette.sse import EventSourceResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from auralynq import __version__
 from auralynq.config import get_settings
@@ -37,7 +39,9 @@ from auralynq.serving.auth import AuthMiddleware
 from auralynq.serving.errors import (
     AuralynqError,
     auralynq_error_handler,
+    http_exception_handler,
     unhandled_error_handler,
+    validation_error_handler,
 )
 from auralynq.serving.ratelimit import RateLimitMiddleware
 from auralynq.serving.schemas import (
@@ -285,6 +289,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RateLimitMiddleware, limit_per_min=s.serve.rate_limit_per_min)
     app.add_middleware(AuthMiddleware, api_key=s.serve.api_key)
     app.add_exception_handler(AuralynqError, auralynq_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, validation_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_error_handler)
 
     @app.middleware("http")
@@ -528,18 +534,20 @@ def create_app() -> FastAPI:
         }
         try:
             _last_eval.clear()
-            _last_eval.update({
-                "strategy": result.fallback_strategy or strategy_id,
-                "requested_strategy": strategy_id,
-                "fallback_strategy": result.fallback_strategy,
-                "route": result.route,
-                "confidence": result.confidence,
-                "evidence_coverage": result.evidence_coverage,
-                "citations": len(result.citations or []),
-                "elapsed_ms": result.elapsed_ms,
-                "status": result.status,
-                "warnings": result.warnings + (result.strategy_warnings or []),
-            })
+            _last_eval.update(
+                {
+                    "strategy": result.fallback_strategy or strategy_id,
+                    "requested_strategy": strategy_id,
+                    "fallback_strategy": result.fallback_strategy,
+                    "route": result.route,
+                    "confidence": result.confidence,
+                    "evidence_coverage": result.evidence_coverage,
+                    "citations": len(result.citations or []),
+                    "elapsed_ms": result.elapsed_ms,
+                    "status": result.status,
+                    "warnings": result.warnings + (result.strategy_warnings or []),
+                }
+            )
         except Exception:
             pass
         return QueryResponse(request_id=request.state.request_id, **d)
@@ -553,20 +561,30 @@ def create_app() -> FastAPI:
         async def event_gen():
             if intent:
                 data = await asyncio.to_thread(_system_answer_for_intent, intent, req.question)
-                yield {"event": "meta", "data": json.dumps({
-                    "type": "meta",
-                    "route": intent,
-                    "confidence": 1.0,
-                    "rationale": f"retrieval skipped: {intent}",
-                    "seeds": [],
-                    "path_evidence": [],
-                    "selected_rag_strategy": "system",
-                })}
-                yield {"event": "final", "data": json.dumps({
-                    "type": "final",
-                    **data,
-                    "selected_rag_strategy": "system",
-                })}
+                yield {
+                    "event": "meta",
+                    "data": json.dumps(
+                        {
+                            "type": "meta",
+                            "route": intent,
+                            "confidence": 1.0,
+                            "rationale": f"retrieval skipped: {intent}",
+                            "seeds": [],
+                            "path_evidence": [],
+                            "selected_rag_strategy": "system",
+                        }
+                    ),
+                }
+                yield {
+                    "event": "final",
+                    "data": json.dumps(
+                        {
+                            "type": "final",
+                            **data,
+                            "selected_rag_strategy": "system",
+                        }
+                    ),
+                }
                 return
 
             from auralynq.agent.runner import stream_answer_question
@@ -620,6 +638,7 @@ def create_app() -> FastAPI:
                         # Resolve visual grounding for the auralynq_rag streaming path.
                         try:
                             from auralynq.grounding.resolver import GroundingResolver
+
                             _gr = GroundingResolver()
                             _gr_results = _gr.resolve(
                                 answer_id=str(id(event)),
@@ -633,18 +652,20 @@ def create_app() -> FastAPI:
                             event["visual_grounding"] = None
                         try:
                             _last_eval.clear()
-                            _last_eval.update({
-                                "strategy": effective_id,
-                                "requested_strategy": requested_strategy_id,
-                                "fallback_strategy": fallback_strategy,
-                                "route": event.get("route"),
-                                "confidence": event.get("confidence"),
-                                "evidence_coverage": event.get("evidence_coverage"),
-                                "citations": len(event.get("citations", [])),
-                                "elapsed_ms": event.get("elapsed_ms"),
-                                "status": event.get("status"),
-                                "warnings": strategy_warnings,
-                            })
+                            _last_eval.update(
+                                {
+                                    "strategy": effective_id,
+                                    "requested_strategy": requested_strategy_id,
+                                    "fallback_strategy": fallback_strategy,
+                                    "route": event.get("route"),
+                                    "confidence": event.get("confidence"),
+                                    "evidence_coverage": event.get("evidence_coverage"),
+                                    "citations": len(event.get("citations", [])),
+                                    "elapsed_ms": event.get("elapsed_ms"),
+                                    "status": event.get("status"),
+                                    "warnings": strategy_warnings,
+                                }
+                            )
                         except Exception:
                             pass
                     yield {"event": event["type"], "data": json.dumps(event)}
@@ -661,37 +682,45 @@ def create_app() -> FastAPI:
                     route_hint=req.route_hint or "",
                 )
                 combined_warnings = strategy_warnings + (result.strategy_warnings or [])
-                yield {"event": "meta", "data": json.dumps({
-                    "type": "meta",
-                    "route": result.route or "auto",
-                    "confidence": result.route_confidence or 0.0,
-                    "rationale": result.route_rationale or "",
-                    "seeds": result.seeds or [],
-                    "path_evidence": result.path_evidence or [],
-                    "selected_rag_strategy": effective_id,
-                    "fallback_strategy": None,
-                    "fallback_reason": None,
-                })}
+                yield {
+                    "event": "meta",
+                    "data": json.dumps(
+                        {
+                            "type": "meta",
+                            "route": result.route or "auto",
+                            "confidence": result.route_confidence or 0.0,
+                            "rationale": result.route_rationale or "",
+                            "seeds": result.seeds or [],
+                            "path_evidence": result.path_evidence or [],
+                            "selected_rag_strategy": effective_id,
+                            "fallback_strategy": None,
+                            "fallback_reason": None,
+                        }
+                    ),
+                }
                 try:
                     _last_eval.clear()
-                    _last_eval.update({
-                        "strategy": effective_id,
-                        "requested_strategy": requested_strategy_id,
-                        "fallback_strategy": None,
-                        "route": result.route,
-                        "confidence": result.confidence,
-                        "evidence_coverage": result.evidence_coverage,
-                        "citations": len(result.citations or []),
-                        "elapsed_ms": result.elapsed_ms,
-                        "status": result.status,
-                        "warnings": combined_warnings,
-                    })
+                    _last_eval.update(
+                        {
+                            "strategy": effective_id,
+                            "requested_strategy": requested_strategy_id,
+                            "fallback_strategy": None,
+                            "route": result.route,
+                            "confidence": result.confidence,
+                            "evidence_coverage": result.evidence_coverage,
+                            "citations": len(result.citations or []),
+                            "elapsed_ms": result.elapsed_ms,
+                            "status": result.status,
+                            "warnings": combined_warnings,
+                        }
+                    )
                 except Exception:
                     pass
                 # Compute visual grounding for non-streaming strategies
                 _vg_data = None
                 try:
                     from auralynq.grounding.resolver import GroundingResolver
+
                     _gr = GroundingResolver()
                     _gr_results = _gr.resolve(
                         answer_id=str(request.state.request_id),
@@ -702,25 +731,30 @@ def create_app() -> FastAPI:
                 except Exception:
                     pass
 
-                yield {"event": "final", "data": json.dumps({
-                    "type": "final",
-                    "answer": result.answer,
-                    "status": result.status,
-                    "citations": result.citations or [],
-                    "confidence": result.confidence,
-                    "evidence_coverage": result.evidence_coverage,
-                    "elapsed_ms": result.elapsed_ms,
-                    "trace": result.trace or [],
-                    "trace_steps": result.trace_steps or [],
-                    "detected_entities": [],
-                    "suggested_questions": [],
-                    "warnings": combined_warnings,
-                    "strategy_warnings": combined_warnings,
-                    "selected_rag_strategy": effective_id,
-                    "fallback_strategy": None,
-                    "fallback_reason": None,
-                    "visual_grounding": _vg_data,
-                })}
+                yield {
+                    "event": "final",
+                    "data": json.dumps(
+                        {
+                            "type": "final",
+                            "answer": result.answer,
+                            "status": result.status,
+                            "citations": result.citations or [],
+                            "confidence": result.confidence,
+                            "evidence_coverage": result.evidence_coverage,
+                            "elapsed_ms": result.elapsed_ms,
+                            "trace": result.trace or [],
+                            "trace_steps": result.trace_steps or [],
+                            "detected_entities": [],
+                            "suggested_questions": [],
+                            "warnings": combined_warnings,
+                            "strategy_warnings": combined_warnings,
+                            "selected_rag_strategy": effective_id,
+                            "fallback_strategy": None,
+                            "fallback_reason": None,
+                            "visual_grounding": _vg_data,
+                        }
+                    ),
+                }
 
         return EventSourceResponse(event_gen())
 
@@ -735,7 +769,18 @@ def create_app() -> FastAPI:
                 "(AURALYNQ_ALLOW_UPLOADS=false).",
                 status_code=403,
             )
+        from auralynq.ingest.pipeline import SUPPORTED_EXTENSIONS
+
         safe = _SAFE_NAME.sub("_", Path(file.filename or "upload.bin").name)
+        if Path(safe).suffix.lower() not in SUPPORTED_EXTENSIONS:
+            raise AuralynqError(
+                "unsupported_file_type",
+                detail=(
+                    f"'{Path(safe).suffix or '(no extension)'}' isn't a supported document "
+                    f"type. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}."
+                ),
+                status_code=415,
+            )
         inbox = s.storage_dir / "uploads"
         inbox.mkdir(parents=True, exist_ok=True)
         dest = inbox / safe
@@ -831,7 +876,10 @@ def create_app() -> FastAPI:
                 if msg.get("bytes") is not None:
                     if len(buffer) + len(msg["bytes"]) > ws_limit:
                         await ws.send_json(
-                            {"type": "error", "detail": f"buffer exceeds {s.serve.max_upload_mb} MB"}
+                            {
+                                "type": "error",
+                                "detail": f"buffer exceeds {s.serve.max_upload_mb} MB",
+                            }
                         )
                         buffer.clear()
                         continue
@@ -906,6 +954,7 @@ def create_app() -> FastAPI:
         vg_data = None
         try:
             from auralynq.grounding.resolver import GroundingResolver
+
             _gresolver = GroundingResolver()
             _gresults = _gresolver.resolve(
                 answer_id=request.state.request_id,
@@ -958,14 +1007,20 @@ def create_app() -> FastAPI:
     @app.get("/eval/summary")
     async def eval_summary() -> JSONResponse:
         if not _eval_feedback:
-            return JSONResponse({"total_feedback": 0, "avg_rating": None, "citation_correct_rate": None})
+            return JSONResponse(
+                {"total_feedback": 0, "avg_rating": None, "citation_correct_rate": None}
+            )
         ratings = [f["answer_rating"] for f in _eval_feedback if f.get("answer_rating")]
-        citations = [f["citation_correct"] for f in _eval_feedback if f.get("citation_correct") is not None]
-        return JSONResponse({
-            "total_feedback": len(_eval_feedback),
-            "avg_rating": sum(ratings) / len(ratings) if ratings else None,
-            "citation_correct_rate": sum(citations) / len(citations) if citations else None,
-        })
+        citations = [
+            f["citation_correct"] for f in _eval_feedback if f.get("citation_correct") is not None
+        ]
+        return JSONResponse(
+            {
+                "total_feedback": len(_eval_feedback),
+                "avg_rating": sum(ratings) / len(ratings) if ratings else None,
+                "citation_correct_rate": sum(citations) / len(citations) if citations else None,
+            }
+        )
 
     @app.post("/eval/feedback")
     async def eval_feedback(req: EvalFeedbackRequest) -> JSONResponse:
@@ -1004,7 +1059,9 @@ def create_app() -> FastAPI:
                 if title:
                     questions.append(f"Summarise the key points from {title}.")
         if not questions:
-            return JSONResponse({"status": "error", "detail": "No corpus content to evaluate."}, status_code=400)
+            return JSONResponse(
+                {"status": "error", "detail": "No corpus content to evaluate."}, status_code=400
+            )
 
         # Write "running" sentinel so the frontend can show a spinner
         try:
@@ -1023,14 +1080,16 @@ def create_app() -> FastAPI:
             for q in questions[:3]:
                 try:
                     r = await asyncio.to_thread(answer_question, q)
-                    results.append({
-                        "question": q,
-                        "status": r.status,
-                        "citations": len(r.citations or []),
-                        "confidence": r.confidence,
-                        "evidence_coverage": r.evidence_coverage,
-                        "elapsed_ms": r.elapsed_ms,
-                    })
+                    results.append(
+                        {
+                            "question": q,
+                            "status": r.status,
+                            "citations": len(r.citations or []),
+                            "confidence": r.confidence,
+                            "evidence_coverage": r.evidence_coverage,
+                            "elapsed_ms": r.elapsed_ms,
+                        }
+                    )
                 except Exception as exc:
                     results.append({"question": q, "status": "error", "error": str(exc)})
             answered = [r for r in results if r.get("status") == "answered"]
@@ -1041,19 +1100,28 @@ def create_app() -> FastAPI:
                 "n_answered": len(answered),
                 "citation_rate": round(sum(1 for r in answered if r["citations"] > 0) / n, 3),
                 "avg_confidence": round(sum(r["confidence"] for r in answered) / n, 3),
-                "avg_evidence_coverage": round(sum(r["evidence_coverage"] for r in answered) / n, 3),
+                "avg_evidence_coverage": round(
+                    sum(r["evidence_coverage"] for r in answered) / n, 3
+                ),
                 "avg_latency_ms": round(sum(r["elapsed_ms"] for r in answered) / n, 1),
                 "abstention_rate": round(
-                    sum(1 for r in results if r.get("status") == "insufficient_evidence") / len(results), 3
+                    sum(1 for r in results if r.get("status") == "insufficient_evidence")
+                    / len(results),
+                    3,
                 ),
                 "per_question": results,
                 "feedback_summary": {
                     "total": len(_eval_feedback),
                     "avg_rating": (
                         round(
-                            sum(f["answer_rating"] for f in _eval_feedback if f.get("answer_rating")) /
-                            max(1, sum(1 for f in _eval_feedback if f.get("answer_rating"))), 2
-                        ) if _eval_feedback else None
+                            sum(
+                                f["answer_rating"] for f in _eval_feedback if f.get("answer_rating")
+                            )
+                            / max(1, sum(1 for f in _eval_feedback if f.get("answer_rating"))),
+                            2,
+                        )
+                        if _eval_feedback
+                        else None
                     ),
                 },
             }
@@ -1110,6 +1178,7 @@ def create_app() -> FastAPI:
         n_pages = meta.get("n_pages", len(page_dims))
         vg_version = meta.get("visual_grounding_version", 0)
         from auralynq.ingest.models import VISUAL_GROUNDING_VERSION as _VGV
+
         reindex_required = vg_version < _VGV
 
         pages_info: list[PageInfo] = []
@@ -1117,13 +1186,15 @@ def create_app() -> FastAPI:
             pg = pd.get("page", 0)
             img_path = s.page_cache_dir / doc_id / f"page_{pg:04d}.png"
             has_img = img_path.exists()
-            pages_info.append(PageInfo(
-                page=pg,
-                width=pd.get("width", 0.0),
-                height=pd.get("height", 0.0),
-                image_url=f"/documents/{doc_id}/pages/{pg}/image" if has_img else "",
-                has_image=has_img,
-            ))
+            pages_info.append(
+                PageInfo(
+                    page=pg,
+                    width=pd.get("width", 0.0),
+                    height=pd.get("height", 0.0),
+                    image_url=f"/documents/{doc_id}/pages/{pg}/image" if has_img else "",
+                    has_image=has_img,
+                )
+            )
 
         return DocumentPagesResponse(
             doc_id=doc_id,
@@ -1147,7 +1218,10 @@ def create_app() -> FastAPI:
         img_path = s.page_cache_dir / doc_id / f"page_{page_number:04d}.png"
         if not img_path.exists():
             return JSONResponse(
-                {"error": "Page image not available", "detail": "Reindex the document to generate page images"},
+                {
+                    "error": "Page image not available",
+                    "detail": "Reindex the document to generate page images",
+                },
                 status_code=404,
             )  # type: ignore[return-value]
         # Security: ensure the resolved path is inside page_cache_dir
@@ -1180,6 +1254,7 @@ def create_app() -> FastAPI:
                     fh.write(chunk)
             from auralynq.ingest.models import SourceType
             from auralynq.ingest.pipeline import _render_page_images
+
             _render_page_images(dest, doc_id, SourceType.pdf)
             cache_dir = s.page_cache_dir / doc_id
             n_cached = len(list(cache_dir.glob("page_*.png"))) if cache_dir.exists() else 0
@@ -1195,6 +1270,7 @@ def create_app() -> FastAPI:
         meta = doc_store.get(doc_id, {})
         vg_version = meta.get("visual_grounding_version", 0)
         from auralynq.ingest.models import VISUAL_GROUNDING_VERSION as _VGV
+
         reindex_required = vg_version < _VGV
         cache_dir = s.page_cache_dir / doc_id
         n_cached = len(list(cache_dir.glob("page_*.png"))) if cache_dir.exists() else 0
@@ -1217,15 +1293,19 @@ def create_app() -> FastAPI:
         from auralynq.ingest.models import VISUAL_GROUNDING_VERSION as _VGV
 
         total = len(doc_store)
-        grounded = sum(1 for m in doc_store.values() if m.get("visual_grounding_version", 0) >= _VGV)
-        return JSONResponse({
-            "enabled": s.visual.enabled,
-            "page_rendering_enabled": s.visual.page_rendering_enabled,
-            "total_docs": total,
-            "grounded_docs": grounded,
-            "needs_reindex": total - grounded,
-            "visual_grounding_version": _VGV,
-        })
+        grounded = sum(
+            1 for m in doc_store.values() if m.get("visual_grounding_version", 0) >= _VGV
+        )
+        return JSONResponse(
+            {
+                "enabled": s.visual.enabled,
+                "page_rendering_enabled": s.visual.page_rendering_enabled,
+                "total_docs": total,
+                "grounded_docs": grounded,
+                "needs_reindex": total - grounded,
+                "visual_grounding_version": _VGV,
+            }
+        )
 
     @app.get("/documents/{doc_id}/pages/{page_number}/layout", response_model=PageLayoutResponse)
     async def document_page_layout(doc_id: str, page_number: int) -> PageLayoutResponse:
@@ -1252,6 +1332,7 @@ def create_app() -> FastAPI:
         try:
             from qdrant_client import models as qm
             from auralynq.vectorstore.qdrant_store import QdrantVectorStore
+
             vs = QdrantVectorStore()
             if vs._exists():
                 offset: Any = None
@@ -1260,7 +1341,9 @@ def create_app() -> FastAPI:
                     pts, offset = vs.client.scroll(
                         vs.collection,
                         scroll_filter=qm.Filter(
-                            must=[qm.FieldCondition(key="doc_id", match=qm.MatchValue(value=doc_id))]
+                            must=[
+                                qm.FieldCondition(key="doc_id", match=qm.MatchValue(value=doc_id))
+                            ]
                         ),
                         limit=256,
                         with_payload=True,
@@ -1281,19 +1364,21 @@ def create_app() -> FastAPI:
                             continue
                         raw_bbox = vg.get("bbox") or []
                         raw_nbbox = vg.get("normalized_bbox") or []
-                        blocks.append(PageLayoutBlock(
-                            block_id=chunk_id,
-                            page=page_number,
-                            bbox=raw_bbox if isinstance(raw_bbox, list) else [],
-                            normalized_bbox=raw_nbbox if isinstance(raw_nbbox, list) else [],
-                            text=str(pl.get("text", ""))[:400],
-                            block_type=str(vg.get("block_type", "paragraph")),
-                            chunk_id=chunk_id,
-                            relevance=0.0,
-                            confidence=float(vg.get("confidence", 1.0)),
-                            is_cited=False,
-                            citation_ids=[],
-                        ))
+                        blocks.append(
+                            PageLayoutBlock(
+                                block_id=chunk_id,
+                                page=page_number,
+                                bbox=raw_bbox if isinstance(raw_bbox, list) else [],
+                                normalized_bbox=raw_nbbox if isinstance(raw_nbbox, list) else [],
+                                text=str(pl.get("text", ""))[:400],
+                                block_type=str(vg.get("block_type", "paragraph")),
+                                chunk_id=chunk_id,
+                                relevance=0.0,
+                                confidence=float(vg.get("confidence", 1.0)),
+                                is_cited=False,
+                                citation_ids=[],
+                            )
+                        )
                     if offset is None:
                         break
         except Exception:
@@ -1315,20 +1400,23 @@ def create_app() -> FastAPI:
     async def visual_grounding_settings_ep() -> JSONResponse:
         """Return visual grounding configuration."""
         s = get_settings()
-        return JSONResponse({
-            "enabled": s.visual.enabled,
-            "page_rendering_enabled": s.visual.page_rendering_enabled,
-            "render_dpi": s.visual.render_dpi,
-            "max_cached_pages": s.visual.max_cached_pages,
-            "visual_retrieval_enabled": s.visual.visual_retrieval_enabled,
-            "visual_retrieval_provider": s.visual.visual_retrieval_provider,
-            "metadata_version": s.visual.metadata_version,
-        })
+        return JSONResponse(
+            {
+                "enabled": s.visual.enabled,
+                "page_rendering_enabled": s.visual.page_rendering_enabled,
+                "render_dpi": s.visual.render_dpi,
+                "max_cached_pages": s.visual.max_cached_pages,
+                "visual_retrieval_enabled": s.visual.visual_retrieval_enabled,
+                "visual_retrieval_provider": s.visual.visual_retrieval_provider,
+                "metadata_version": s.visual.metadata_version,
+            }
+        )
 
     # ─────────────────────────────────────────── ModelFit Index ──────────────
     if s.modelfit.enabled:
         try:
             from auralynq.modelfit.router import router as modelfit_router
+
             app.include_router(modelfit_router)
         except Exception:
             pass  # ModelFit is optional — degrade gracefully if deps missing
