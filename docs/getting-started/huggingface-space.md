@@ -1,12 +1,18 @@
 # Deploying Auralynq to a Hugging Face Space
 
-> **Status: planned, not yet implemented.** The `deploy/huggingface/` artifacts
-> (Dockerfile, entrypoint, env template, Space README template) referenced
-> below are being built as a follow-up to this guide. Nothing here has been
-> published to Hugging Face automatically, and no Space deployment should be
-> assumed to work until `deploy/huggingface/` exists in the repo and has been
-> smoke-tested. This document describes the intended design so contributors
-> can track progress and review the plan before it lands.
+> **Status: implemented and locally smoke-tested; not yet published to a
+> real Hugging Face Space.** The `deploy/huggingface/` artifacts (Dockerfile,
+> entrypoint, env template, Space README template) exist and were verified
+> with `podman build` + `podman run` on this machine: health check, `/api/status`
+> demo-mode fields, the ModelFit hardware probe, upload gating (403 when
+> `AURALYNQ_ALLOW_UPLOADS=false`), the landing page, and a real grounded
+> `/api/query` answer against the pre-seeded demo corpus all worked through
+> the single exposed port. **Not verified:** an actual Hugging Face Space
+> build (HF's build environment, network egress rules, and persistent-storage
+> mount behavior can all differ from a local Podman run) — see the caveats in
+> [`deploy/huggingface/README.md`](../../deploy/huggingface/README.md) before
+> publishing one. Nothing here has been published to Hugging Face
+> automatically; publishing is always a manual step you take yourself.
 
 ## Why a Space needs its own packaging
 
@@ -16,20 +22,21 @@ A Space needs one image that either serves the API and a static/SSR frontend
 together, or runs both processes under a small supervisor inside one
 container.
 
-## Planned modes
+## The two modes
 
-**Mode A — Lightweight demo Space**
+**Mode A — Lightweight demo Space (this is what `deploy/huggingface/Dockerfile` builds today)**
 - No secrets required to run.
-- Ships with the [demo corpus](../../examples/demo_corpus/) pre-indexed or
-  indexed on first boot.
+- Ships with the [demo corpus](../../examples/demo_corpus/) — seeded and
+  indexed on first boot by `entrypoint.sh` (verified: ~1 second, offline).
 - Forces the offline/extractive fallback path (hash embeddings, in-memory
   vector store, extractive answering) — no model downloads, no GPU.
-- Uploads disabled by default (`AURALYNQ_ALLOW_UPLOADS=false`) so a public,
-  unauthenticated Space can't accumulate arbitrary user documents.
-- Demonstrates: chat, citations, trace panel, visual grounding, ModelFit
-  hardware page (CPU-only numbers).
+- Uploads disabled by default (`AURALYNQ_ALLOW_UPLOADS=false`, enforced in
+  `auralynq/serving/app.py`'s `/ingest` handler — verified: returns 403) so a
+  public, unauthenticated Space can't accumulate arbitrary user documents.
+- Demonstrates: chat, citations, visual grounding, ModelFit hardware page
+  (CPU-only numbers, real for whatever container it runs in).
 
-**Mode B — Full Docker Space**
+**Mode B — Full Docker Space (same image; flip the env vars below)**
 - Reads provider keys from HF Space **Secrets** (never Variables, never
   baked into the image).
 - Optionally attaches persistent `/data` if the Space has persistent storage
@@ -40,7 +47,7 @@ container.
   operator understands the privacy implications of a public Space
   persisting user-uploaded documents.
 
-## Planned environment variables
+## Environment variables
 
 ```bash
 AURALYNQ_HF_SPACE=true
@@ -50,17 +57,19 @@ AURALYNQ_ALLOW_UPLOADS=false            # true only if you understand the persis
 AURALYNQ_DATA_DIR=/data/auralynq
 AURALYNQ_SERVE__API_KEY=                # set via Space Secrets if the Space needs auth
 NEXT_PUBLIC_API_BASE=/api
-AURALYNQ_LLM__PROVIDER=auto
+AURALYNQ_LLM__PROVIDER=extractive
 AURALYNQ_VECTOR__BACKEND=memory
 AURALYNQ_EMBEDDING__PROVIDER=hash
 AURALYNQ_VISUAL__ENABLED=true
 AURALYNQ_MODELFIT__ENABLED=true
 ```
 
-None of these exist in the codebase yet (verified — grepped for
-`AURALYNQ_HF_SPACE` / `AURALYNQ_DEMO_MODE` across `auralynq/`, `web/`, and all
-`.env`/`config` examples: no hits as of this writing). They're specified here
-so the implementation and this doc land in the same change.
+All of these are real, typed `Settings` fields (`auralynq/config/settings.py`)
+read by the API at startup — `hf_space`, `demo_mode`, `public_demo`, and
+`allow_uploads` are surfaced back out on `GET /api/status` (verified in a
+running container), and `modelfit.enabled` gates whether the ModelFit router
+is even mounted. `env.example` in `deploy/huggingface/` documents the full
+set, split into Space Variables vs. Secrets.
 
 ## Variables vs. Secrets (Hugging Face concept, applies once the Space exists)
 
