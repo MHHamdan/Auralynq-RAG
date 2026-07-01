@@ -758,7 +758,7 @@ flowchart TB
 > way. Full guides: [no-Podman](docs/getting-started/no-podman.md) ·
 > [Podman](docs/getting-started/podman.md) ·
 > [remote server](docs/getting-started/server.md) ·
-> [Hugging Face Space](docs/getting-started/huggingface-space.md) (planned) ·
+> [Hugging Face Space](docs/getting-started/huggingface-space.md) ·
 > [troubleshooting](docs/getting-started/troubleshooting.md). Deploying to a
 > remote machine is also covered in **[RUNNING.md](RUNNING.md)**.
 
@@ -846,11 +846,14 @@ Full guide with TLS-certificate options: [docs/getting-started/server.md](docs/g
 
 ## 🤗 Hugging Face Space
 
-**Planned, not yet published.** A single-container Space packaging (lightweight
-offline demo + full-Docker modes) is being built — see
+A single-container Space image (`deploy/huggingface/`) packages the API and
+web UI together with a pre-seeded, license-clear demo corpus, offline
+extractive answering, and uploads disabled by default. Built and smoke-tested
+locally with Podman; **not yet published to a real Hugging Face Space** — see
 [docs/getting-started/huggingface-space.md](docs/getting-started/huggingface-space.md)
-for the design, planned env vars, and persistent-vs-ephemeral-storage notes.
-Nothing is auto-published; deploying a Space is always a manual, explicit step.
+for what's verified vs. not, and [deploy/huggingface/README.md](deploy/huggingface/README.md)
+for the publish steps. Nothing is auto-published; deploying a Space is always
+a manual, explicit step you take yourself.
 
 ---
 
