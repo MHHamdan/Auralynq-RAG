@@ -3,9 +3,12 @@ from __future__ import annotations
 import pytest
 from auralynq.eval.asr_eval import evaluate_asr, word_error_rate
 from auralynq.eval.bench import run_bench
+from auralynq.eval.provenance import report_provenance
 from auralynq.eval.ragas_eval import proxy_scores
 from auralynq.eval.report import run_eval
 from auralynq.eval.retrieval_metrics import aggregate, mrr, ndcg_at_k, recall_at_k
+
+_PROVENANCE_KEYS = {"git_commit", "generated_at", "hardware", "dataset_version"}
 
 
 def test_recall_and_mrr():
@@ -63,6 +66,9 @@ def test_run_eval_smoke_writes_report(corpus_dir, monkeypatch):
     assert "agentic" in report and "ragas" in report["agentic"]
     assert report["drift"]["status"] in ("baseline_created", "ok", "regressed")
     assert (s.reports_dir / "eval_report.json").exists()
+    # every report must be traceable: git commit, timestamp, hardware, dataset
+    assert set(report["provenance"]) >= _PROVENANCE_KEYS
+    assert "smoke=True" in report["provenance"]["dataset_version"]
 
 
 def test_run_bench(corpus_dir, monkeypatch):
@@ -79,3 +85,13 @@ def test_run_bench(corpus_dir, monkeypatch):
         >= report["quantization"]["binary"]["recall_at_k"]
     )
     assert (s.reports_dir / "bench_report.json").exists()
+    assert set(report["provenance"]) >= _PROVENANCE_KEYS
+
+
+def test_report_provenance_schema():
+    p = report_provenance(dataset_version="unit-test-dataset")
+    assert set(p) >= _PROVENANCE_KEYS
+    assert p["dataset_version"] == "unit-test-dataset"
+    assert isinstance(p["hardware"], dict)
+    # git_commit degrades to "unknown" outside a repo, but must never raise
+    assert isinstance(p["git_commit"], str) and p["git_commit"]
