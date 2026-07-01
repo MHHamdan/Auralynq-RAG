@@ -17,6 +17,7 @@ from auralynq.agent.runner import answer_question
 from auralynq.config import get_settings
 from auralynq.eval.asr_eval import evaluate_asr
 from auralynq.eval.datasets import load_asr_refs, load_golden
+from auralynq.eval.provenance import report_provenance
 from auralynq.eval.ragas_eval import evaluate as ragas_evaluate
 from auralynq.eval.retrieval_metrics import aggregate
 from auralynq.llm.factory import resolved_provider as llm_provider
@@ -177,6 +178,9 @@ def run_eval(smoke: bool = False, write_report: bool = False) -> dict[str, Any]:
         "asr": _asr(),
     }
     report["drift"] = _drift_check(report)
+    report["provenance"] = report_provenance(
+        dataset_version=f"golden_qa.json n={len(golden)} (smoke={smoke})"
+    )
 
     if write_report:
         out = s.reports_dir / "eval_report.json"

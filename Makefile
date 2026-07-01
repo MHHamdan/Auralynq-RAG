@@ -176,6 +176,22 @@ eval: ## Run evaluation harness, write reports/
 bench: ## Benchmark Qdrant recall/latency/memory trade-offs
 	$(PY) -m auralynq.cli bench --report
 
+.PHONY: bench-rag
+bench-rag: ## RAG-quality benchmark (groundedness/citation/abstention); needs Ollama + MODEL
+	$(PY) scripts/bench_rag.py --model $${MODEL:-ollama:llama3.2:3b}
+
+.PHONY: bench-modelfit
+bench-modelfit: ## Snapshot ModelFit Index rankings for this machine's hardware
+	$(PY) scripts/bench_modelfit.py --task $${TASK:-rag}
+
+.PHONY: bench-visual-grounding
+bench-visual-grounding: ## Visual grounding span/segment/page/unavailable rates over the golden set
+	$(PY) scripts/bench_visual_grounding.py
+
+.PHONY: export-paper-tables
+export-paper-tables: ## Render reports/*.json into reports/paper_tables.md
+	$(PY) scripts/export_paper_tables.py
+
 # --------------------------------------------------------------- misc -------
 .PHONY: clean
 clean: ## Remove caches and build artifacts
