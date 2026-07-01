@@ -116,6 +116,10 @@ class TelemetrySettings(BaseSettings):
     pii_filter: bool = True
 
 
+class ModelFitSettings(BaseSettings):
+    enabled: bool = True
+
+
 class VisualGroundingSettings(BaseSettings):
     enabled: bool = True
     # Render and cache PDF page images for source view overlay
@@ -163,11 +167,20 @@ class Settings(BaseSettings):
     serve: ServeSettings = Field(default_factory=ServeSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     visual: VisualGroundingSettings = Field(default_factory=VisualGroundingSettings)
+    modelfit: ModelFitSettings = Field(default_factory=ModelFitSettings)
 
     # When true, blocks all outbound calls to external LLM/embedding/telemetry
     # providers regardless of which API keys are set. Guarantees zero data
     # egress for strict air-gapped deployments. Env: AURALYNQ_AIR_GAPPED=true
     air_gapped: bool = False
+
+    # Hugging Face Space / public-demo posture (see
+    # docs/getting-started/huggingface-space.md). Purely informational except
+    # for allow_uploads, which the /ingest endpoint enforces.
+    hf_space: bool = False
+    demo_mode: bool = False
+    public_demo: bool = False
+    allow_uploads: bool = True
 
     # Well-known secrets (not prefixed). Empty string == "not configured".
     huggingface_token: str = Field(default="", alias="HUGGINGFACE_TOKEN")
