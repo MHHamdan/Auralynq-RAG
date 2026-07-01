@@ -965,7 +965,11 @@ Claude Desktop config:
 > Numbers produced **only** by `make eval` / `make bench`, written to `reports/`.
 > Measured in the fully-offline `$0` config (hash embeddings, in-memory store,
 > extractive LLM) over a frozen 5-item golden set. Install `embeddings`/`agent`
-> extras for quality numbers.
+> extras for quality numbers. Full command reference, report provenance
+> fields, and the estimated-vs-measured discipline:
+> [docs/evaluation.md](docs/evaluation.md) ·
+> [docs/benchmarks.md](docs/benchmarks.md) (also covers `make bench-rag` /
+> `bench-modelfit` / `bench-visual-grounding` / `export-paper-tables`).
 
 **Retrieval comparison** (k=6, nDCG@10):
 
