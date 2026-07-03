@@ -133,16 +133,20 @@ filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.coverage.run]
 source = ["auralynq"]
-# Omit integration-only paths that require a live server / network / long-running
-# process and therefore cannot run in the offline $0 unit suite. Their logic is
-# covered by integration tests behind the `integration` marker.
+# Omit integration-only paths that require a live server / network / optional
+# heavy dependency and therefore cannot run in the offline $0 unit suite. Their
+# logic is covered by integration tests behind the `integration` marker.
 omit = [
   "*/mcp_server/*",
   "*/__main__.py",
   "*/vectorstore/qdrant_store.py",
+  "*/vectorstore/chroma_store.py",
   "*/llm/providers.py",
+  "*/llm/slm.py",
   "*/serving/worker.py",
   "*/embeddings/bge.py",
+  "*/embeddings/ollama_embed.py",
+  "*/modelfit/catalog_fetcher.py",
 ]
 
 [tool.coverage.report]
