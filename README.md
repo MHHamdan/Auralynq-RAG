@@ -2,7 +2,7 @@
 
 # 🎙️ Auralynq-RAG
 
-### *Retrieval-Augmented Generation — Grounded, Cited, Span-Level Verified*
+### *Talk to Your Data — Retrieval-Augmented Generation, Grounded, Cited, Span-Level Verified*
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)

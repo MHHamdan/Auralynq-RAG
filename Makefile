@@ -167,6 +167,10 @@ typecheck: ## mypy type check
 name-audit: ## Verify consistent Auralynq naming across the repo
 	$(PY) scripts/name_audit.py
 
+.PHONY: check-docs
+check-docs: ## Verify doc links, referenced make targets, and env.example vars
+	$(PY) scripts/check_docs.py
+
 # ----------------------------------------------------------- eval/bench -----
 .PHONY: eval
 eval: ## Run evaluation harness, write reports/
