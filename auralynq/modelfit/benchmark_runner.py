@@ -66,6 +66,7 @@ _SAMPLE_PROMPTS: dict[str, list[str]] = {
 @dataclass
 class BenchmarkPlan:
     """Dry-run plan — shown to user before actual execution."""
+
     model_id: str
     quantization: str
     task: BenchmarkTask
@@ -161,8 +162,7 @@ def preview_benchmark(
 
     requires_ollama = model_id.startswith("ollama:") or ":" not in model_id
     warnings.append(
-        "No benchmark has run yet. This is a preview only. "
-        "Confirm to start the actual benchmark."
+        "No benchmark has run yet. This is a preview only. Confirm to start the actual benchmark."
     )
     if requires_ollama:
         warnings.append("Benchmark will use local Ollama — ensure the model is already pulled.")
@@ -215,6 +215,7 @@ async def run_benchmark(
     # Attach hardware snapshot
     try:
         from auralynq.modelfit.hardware import probe_hardware
+
         hw = probe_hardware()
         result.hardware = hw.to_dict()
     except Exception:
@@ -237,6 +238,7 @@ async def run_benchmark(
 
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=120.0) as client:
             for i, prompt in enumerate(prompts):
                 t0 = time.perf_counter()
@@ -313,6 +315,7 @@ async def run_benchmark(
     if task_typed in ("rag", "abstention"):
         try:
             from auralynq.modelfit.rag_bench import run_rag_benchmark
+
             rag_m = await run_rag_benchmark(
                 model_id=model_id,
                 quantization=quantization,
@@ -384,6 +387,7 @@ def list_runs() -> list[dict[str, Any]]:
             run_id = p.stem
             if run_id not in _active_runs:
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     runs.append(json.loads(p.read_text()))
 

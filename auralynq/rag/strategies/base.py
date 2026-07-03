@@ -1,4 +1,5 @@
 """Base class for all RAG strategies."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

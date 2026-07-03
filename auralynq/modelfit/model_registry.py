@@ -14,13 +14,24 @@ from auralynq.modelfit.model_metadata import ModelMetadata
 from auralynq.modelfit.ollama_catalog import get_static_catalog, list_installed_models
 
 _GGUF_FAMILY_HINTS: dict[str, str] = {
-    "qwen": "qwen", "llama": "llama", "mistral": "mistral",
-    "gemma": "gemma", "phi": "phi", "deepseek": "deepseek",
+    "qwen": "qwen",
+    "llama": "llama",
+    "mistral": "mistral",
+    "gemma": "gemma",
+    "phi": "phi",
+    "deepseek": "deepseek",
 }
 
 _GGUF_PARAM_HINTS: dict[str, float] = {
-    "0.5b": 0.5, "1b": 1.0, "1.5b": 1.5, "3b": 3.0, "7b": 7.0,
-    "8b": 8.0, "14b": 14.0, "32b": 32.0, "70b": 70.0,
+    "0.5b": 0.5,
+    "1b": 1.0,
+    "1.5b": 1.5,
+    "3b": 3.0,
+    "7b": 7.0,
+    "8b": 8.0,
+    "14b": 14.0,
+    "32b": 32.0,
+    "70b": 70.0,
 }
 
 
@@ -28,6 +39,7 @@ def _make_slm_entry() -> ModelMetadata | None:
     """Build a ModelMetadata for the configured SLM GGUF. Returns None on import error."""
     try:
         from auralynq.config.settings import get_settings
+
         s = get_settings()
         slug = s.llm.slm_filename.replace(".gguf", "").lower()
         model_id = f"local:{slug}"
@@ -150,10 +162,9 @@ class ModelRegistry:
         if query:
             q = query.lower()
             results = [
-                m for m in results
-                if q in m.model_id.lower()
-                or q in m.display_name.lower()
-                or q in m.family.lower()
+                m
+                for m in results
+                if q in m.model_id.lower() or q in m.display_name.lower() or q in m.family.lower()
             ]
         if source:
             results = [m for m in results if m.source == source]
@@ -161,12 +172,14 @@ class ModelRegistry:
             results = [m for m in results if m.family == family]
         if min_params_b is not None:
             results = [
-                m for m in results
+                m
+                for m in results
                 if m.parameter_count_b is not None and m.parameter_count_b >= min_params_b
             ]
         if max_params_b is not None:
             results = [
-                m for m in results
+                m
+                for m in results
                 if m.parameter_count_b is not None and m.parameter_count_b <= max_params_b
             ]
         if task:
@@ -182,7 +195,8 @@ class ModelRegistry:
         if open_license:
             open_licenses = {"apache-2.0", "mit", "apache 2.0"}
             results = [
-                m for m in results
+                m
+                for m in results
                 if m.license.lower().replace(" ", "-") in open_licenses
                 or m.license.lower() in open_licenses
             ]

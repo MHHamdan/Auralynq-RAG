@@ -34,15 +34,24 @@ _RERANKER_TAGS = {"bge-reranker", "jina-reranker"}
 
 # Parameter count hints based on common Ollama tag suffixes
 _PARAM_HINTS: dict[str, float] = {
-    "1b": 1.0, "1.1b": 1.1, "1.5b": 1.5,
-    "2b": 2.0, "2.7b": 2.7,
-    "3b": 3.0, "3.8b": 3.8,
-    "7b": 7.0, "8b": 8.0,
+    "1b": 1.0,
+    "1.1b": 1.1,
+    "1.5b": 1.5,
+    "2b": 2.0,
+    "2.7b": 2.7,
+    "3b": 3.0,
+    "3.8b": 3.8,
+    "7b": 7.0,
+    "8b": 8.0,
     "9b": 9.0,
-    "13b": 13.0, "14b": 14.0,
-    "27b": 27.0, "30b": 30.0, "32b": 32.0,
+    "13b": 13.0,
+    "14b": 14.0,
+    "27b": 27.0,
+    "30b": 30.0,
+    "32b": 32.0,
     "34b": 34.0,
-    "70b": 70.0, "72b": 72.0,
+    "70b": 70.0,
+    "72b": 72.0,
     "110b": 110.0,
     "671b": 671.0,
 }
@@ -148,9 +157,7 @@ def _tag_to_metadata(tag: str, size_bytes: int | None = None) -> ModelMetadata:
         tool_calling=tool_calling,
         multilingual="qwen" in tag.lower() or "mistral" in tag.lower(),
         ollama_tag=tag,
-        notes=[
-            f"Disk size: {size_bytes // (1024**3):.1f} GB" if size_bytes else "Size unknown"
-        ],
+        notes=[f"Disk size: {size_bytes // (1024**3):.1f} GB" if size_bytes else "Size unknown"],
     )
 
 
@@ -161,6 +168,7 @@ async def list_installed_models() -> tuple[list[ModelMetadata], list[str]]:
 
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(f"{_OLLAMA_BASE}/api/tags")
             if response.status_code != 200:
@@ -185,6 +193,7 @@ async def get_model_details(tag: str) -> tuple[ModelMetadata | None, list[str]]:
     warnings: list[str] = []
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
                 f"{_OLLAMA_BASE}/api/show",

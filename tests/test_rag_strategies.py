@@ -1,4 +1,5 @@
 """Tests for the RAG strategy registry and new endpoints."""
+
 from __future__ import annotations
 
 import pytest

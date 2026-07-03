@@ -29,6 +29,7 @@ PHRASE_DELETE_DOC = "DELETE DOCUMENT"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _manifest_path() -> Path:
     return get_settings().storage_dir / "ingest_manifest.json"
 
@@ -112,6 +113,7 @@ def _all_indexed_documents() -> list[dict[str, Any]]:
     """Return indexed document metadata: {doc_id, source, title, chunks, vectors}."""
     try:
         from auralynq.vectorstore.factory import get_store
+
         store = get_store()
         chunks = store.all_chunks() or []
     except Exception:
@@ -141,6 +143,7 @@ def _all_indexed_documents() -> list[dict[str, Any]]:
     # For Qdrant store (all_chunks returns []): scroll payload to get real doc_id+source
     if not seen:
         import contextlib
+
         with contextlib.suppress(Exception):
             seen = _qdrant_documents_from_scroll(store)
 
@@ -185,10 +188,12 @@ def _last_indexed_document() -> dict[str, Any] | None:
 # Clear ALL corpus
 # ---------------------------------------------------------------------------
 
+
 def corpus_clear_preview() -> dict[str, Any]:
     """Return a deletion plan for clearing the entire corpus (no side effects)."""
     try:
         from auralynq.vectorstore.factory import get_store
+
         store = get_store()
         vector_count = store.count()
         docs = _all_indexed_documents()
@@ -241,6 +246,7 @@ def corpus_clear_confirm(phrase: str) -> dict[str, Any]:
     # 1. Clear vector store
     try:
         from auralynq.vectorstore.factory import get_store
+
         store = get_store()
         report["deleted_vectors"] = store.count()
         report["deleted_documents"] = len(_all_indexed_documents())
@@ -248,6 +254,7 @@ def corpus_clear_confirm(phrase: str) -> dict[str, Any]:
         store.clear()
         # For MemoryStore, persist the cleared state immediately
         from auralynq.vectorstore.memory_store import MemoryStore
+
         if isinstance(store, MemoryStore):
             store.save()
     except Exception as e:
@@ -308,6 +315,7 @@ def corpus_clear_confirm(phrase: str) -> dict[str, Any]:
 
     # 7. Invalidate corpus cache
     from auralynq.serving.corpus import invalidate_corpus_cache
+
     invalidate_corpus_cache()
 
     report["final_inventory"] = {
@@ -322,6 +330,7 @@ def corpus_clear_confirm(phrase: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Delete LAST document
 # ---------------------------------------------------------------------------
+
 
 def corpus_delete_last_preview() -> dict[str, Any]:
     """Return deletion plan for the last indexed document (no side effects)."""
@@ -366,6 +375,7 @@ def corpus_delete_last_confirm(phrase: str) -> dict[str, Any]:
 # Delete single document by ID
 # ---------------------------------------------------------------------------
 
+
 def corpus_delete_document_preview(doc_id: str) -> dict[str, Any]:
     """Return deletion plan for a specific document (no side effects)."""
     docs = _all_indexed_documents()
@@ -406,6 +416,7 @@ def corpus_delete_document_confirm(doc_id: str, phrase: str) -> dict[str, Any]:
 # Core deletion logic (shared)
 # ---------------------------------------------------------------------------
 
+
 def _delete_document_by_id(doc_id: str, doc_meta: dict[str, Any]) -> dict[str, Any]:
     """Remove one document from every persistence layer."""
     report: dict[str, Any] = {
@@ -426,6 +437,7 @@ def _delete_document_by_id(doc_id: str, doc_meta: dict[str, Any]) -> dict[str, A
     try:
         from auralynq.vectorstore.factory import get_store
         from auralynq.vectorstore.memory_store import MemoryStore
+
         store = get_store()
         removed = store.delete_by_doc_id(doc_id)
         report["deleted_vectors"] = removed
@@ -439,10 +451,12 @@ def _delete_document_by_id(doc_id: str, doc_meta: dict[str, Any]) -> dict[str, A
     try:
         from auralynq.retrieval.pathrag.builder import build_from_chunks
         from auralynq.vectorstore.factory import get_store
+
         store = get_store()
         remaining = store.all_chunks() or []
         if remaining:
             from auralynq.pipeline import graph_path
+
             kg = build_from_chunks(remaining)
             kg.save(graph_path())
         else:
@@ -475,11 +489,13 @@ def _delete_document_by_id(doc_id: str, doc_meta: dict[str, Any]) -> dict[str, A
             lp = _last_ingested_path()
             if new_last and new_last.get("doc_id") != doc_id:
                 lp.write_text(
-                    json.dumps({
-                        "name": new_last.get("title", ""),
-                        "source": new_last.get("source", ""),
-                        "ingested_at": new_last.get("ingested_at", ""),
-                    }),
+                    json.dumps(
+                        {
+                            "name": new_last.get("title", ""),
+                            "source": new_last.get("source", ""),
+                            "ingested_at": new_last.get("ingested_at", ""),
+                        }
+                    ),
                     encoding="utf-8",
                 )
             elif lp.exists():
@@ -490,6 +506,7 @@ def _delete_document_by_id(doc_id: str, doc_meta: dict[str, Any]) -> dict[str, A
 
     # 5. Invalidate corpus cache
     from auralynq.serving.corpus import invalidate_corpus_cache
+
     invalidate_corpus_cache()
 
     report["deleted"] = True
@@ -506,9 +523,11 @@ def _delete_document_by_id(doc_id: str, doc_meta: dict[str, Any]) -> dict[str, A
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _entity_count() -> int:
     try:
         from auralynq.pipeline import load_graph
+
         kg = load_graph()
         return kg.n_entities
     except Exception:
@@ -518,6 +537,7 @@ def _entity_count() -> int:
 def _chunk_count_for_doc(doc_id: str) -> int:
     try:
         from auralynq.vectorstore.factory import get_store
+
         store = get_store()
         chunks = store.all_chunks() or []
         return sum(1 for c in chunks if c.doc_id == doc_id)

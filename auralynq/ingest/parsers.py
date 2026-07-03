@@ -159,7 +159,7 @@ def _parse_pdf_pdfplumber(path: Path) -> ParsedDoc | None:
         #   between pages                   → 2 "\n\n" (cursor += 2)
         # This means layout_block.doc_char_start / doc_char_end are positions
         # in the *final* character array, not in any intermediate string.
-        char_buf: list[str] = []   # built incrementally
+        char_buf: list[str] = []  # built incrementally
         cursor = 0
 
         with pdfplumber.open(str(path)) as pdf:
@@ -204,19 +204,21 @@ def _parse_pdf_pdfplumber(path: Path) -> ParsedDoc | None:
                     char_buf.append(text)
                     cursor = char_end
 
-                    layout_blocks.append({
-                        "page": page_num,
-                        "bbox": [x0, y0, x1, y1],
-                        "normalized_bbox": [x0 / w, y0 / h, x1 / w, y1 / h],
-                        "text": text,
-                        "block_type": "paragraph",
-                        "reading_order": order,
-                        "page_width": w,
-                        "page_height": h,
-                        "confidence": 1.0,
-                        "doc_char_start": char_start,
-                        "doc_char_end": char_end,
-                    })
+                    layout_blocks.append(
+                        {
+                            "page": page_num,
+                            "bbox": [x0, y0, x1, y1],
+                            "normalized_bbox": [x0 / w, y0 / h, x1 / w, y1 / h],
+                            "text": text,
+                            "block_type": "paragraph",
+                            "reading_order": order,
+                            "page_width": w,
+                            "page_height": h,
+                            "confidence": 1.0,
+                            "doc_char_start": char_start,
+                            "doc_char_end": char_end,
+                        }
+                    )
 
                 if not first_on_page:
                     # Page had content — record its range and add page separator

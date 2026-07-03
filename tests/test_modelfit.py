@@ -14,23 +14,22 @@ Coverage:
 from __future__ import annotations
 
 import pytest
-
+from auralynq.modelfit.benchmark_runner import preview_benchmark
+from auralynq.modelfit.community import validate_community_result
 from auralynq.modelfit.hardware import HardwareProfile, probe_hardware
+from auralynq.modelfit.hf_catalog import get_static_hf_catalog
 from auralynq.modelfit.model_metadata import ModelMetadata
+from auralynq.modelfit.model_registry import ModelRegistry
+from auralynq.modelfit.ollama_catalog import get_static_catalog
 from auralynq.modelfit.resource_estimator import (
     estimate_resources,
     estimate_vram_gb,
     recommend_quantization,
 )
 from auralynq.modelfit.scoring import BenchmarkSnapshot, score_model
-from auralynq.modelfit.benchmark_runner import preview_benchmark
-from auralynq.modelfit.community import validate_community_result, save_community_result
-from auralynq.modelfit.model_registry import ModelRegistry
-from auralynq.modelfit.ollama_catalog import get_static_catalog
-from auralynq.modelfit.hf_catalog import get_static_hf_catalog
-
 
 # ── Hardware profiler ─────────────────────────────────────────────────────────
+
 
 def test_probe_hardware_returns_profile():
     hw = probe_hardware()
@@ -53,6 +52,7 @@ def test_hardware_profile_no_gpu():
 
 def test_hardware_profile_with_gpu():
     from auralynq.modelfit.hardware import GPUInfo
+
     gpu = GPUInfo(vendor="nvidia", name="RTX 4090", vram_gb=24.0, backend="cuda")
     hw = HardwareProfile(
         os_name="Linux",
@@ -79,16 +79,20 @@ def test_hardware_warnings_list():
 
 # ── Resource estimator ────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("params_b,quant,ctx", [
-    (3.0, "q4_k", 4096),
-    (7.0, "q4_k", 4096),
-    (7.0, "q8", 4096),
-    (14.0, "q4_k", 4096),
-    (14.0, "fp16", 4096),
-    (70.0, "q4_k", 4096),
-    (1.0, "q4_k", 2048),
-    (9.0, "q5_k", 8192),
-])
+
+@pytest.mark.parametrize(
+    "params_b,quant,ctx",
+    [
+        (3.0, "q4_k", 4096),
+        (7.0, "q4_k", 4096),
+        (7.0, "q8", 4096),
+        (14.0, "q4_k", 4096),
+        (14.0, "fp16", 4096),
+        (70.0, "q4_k", 4096),
+        (1.0, "q4_k", 2048),
+        (9.0, "q5_k", 8192),
+    ],
+)
 def test_vram_estimate_positive(params_b, quant, ctx):
     vram = estimate_vram_gb(params_b, quant, ctx)
     assert vram > 0.0
@@ -155,9 +159,18 @@ def test_estimate_resources_dict_schema():
     result = estimate_resources("test", 7.0, "q4_k", 16.0, 32.0)
     d = result.to_dict()
     required = {
-        "model_id", "quantization", "context_tokens", "estimated_vram_gb",
-        "estimated_ram_gb", "estimated_disk_gb", "fit_level", "fits",
-        "recommended_context", "peak_vram_at_max_ctx_gb", "warnings", "is_estimate",
+        "model_id",
+        "quantization",
+        "context_tokens",
+        "estimated_vram_gb",
+        "estimated_ram_gb",
+        "estimated_disk_gb",
+        "fit_level",
+        "fits",
+        "recommended_context",
+        "peak_vram_at_max_ctx_gb",
+        "warnings",
+        "is_estimate",
     }
     assert required <= set(d.keys())
     assert d["is_estimate"] is True
@@ -165,8 +178,10 @@ def test_estimate_resources_dict_schema():
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
 
+
 def _make_hw(vram_gb: float = 12.0, ram_gb: float = 32.0) -> HardwareProfile:
     from auralynq.modelfit.hardware import GPUInfo
+
     gpu = GPUInfo("nvidia", "RTX 3060", vram_gb, "cuda")
     return HardwareProfile(
         os_name="Linux",
@@ -194,7 +209,11 @@ def test_score_model_returns_score():
     score = score_model(model, hw)
     assert 0 <= score.overall_score <= 100
     assert score.label in (
-        "Excellent fit", "Recommended", "Usable with limits", "Not recommended", "Does not fit"
+        "Excellent fit",
+        "Recommended",
+        "Usable with limits",
+        "Not recommended",
+        "Does not fit",
     )
 
 
@@ -246,6 +265,7 @@ def test_score_model_warnings_have_estimate_label():
 
 # ── Benchmark preview (dry run only) ─────────────────────────────────────────
 
+
 def test_benchmark_preview_does_not_run():
     plan = preview_benchmark("ollama:llama3.1:8b", "q4_k", "rag", 10)
     assert plan.requires_model_download is False
@@ -269,6 +289,7 @@ def test_benchmark_preview_estimated_duration_positive():
 
 
 # ── Community validation ──────────────────────────────────────────────────────
+
 
 def _valid_community_entry() -> dict:
     return {
@@ -329,6 +350,7 @@ def test_community_sensitive_hardware_rejected():
 
 def test_community_save_strips_secrets(tmp_path, monkeypatch):
     import auralynq.modelfit.community as comm
+
     monkeypatch.setattr(comm, "_COMMUNITY_DIR", tmp_path)
     entry = _valid_community_entry()
     entry["hardware"]["hostname"] = "my-secret-machine"  # will be stripped
@@ -338,6 +360,7 @@ def test_community_save_strips_secrets(tmp_path, monkeypatch):
 
 
 # ── Model registry ────────────────────────────────────────────────────────────
+
 
 def test_registry_loads_static_catalog():
     reg = ModelRegistry()
@@ -387,8 +410,10 @@ def test_static_hf_catalog_has_required_fields():
 
 # ── Score in query response ───────────────────────────────────────────────────
 
+
 def test_query_response_schema_has_model_fit_field():
     from auralynq.serving.schemas import QueryResponse
+
     r = QueryResponse(answer="test")
     assert hasattr(r, "model_fit")
     assert r.model_fit is None  # None when not set
@@ -405,21 +430,23 @@ def test_score_dict_has_estimate_used_flag():
 
 # ── Phase 2: Community data in speed score ────────────────────────────────────
 
+
 def test_community_benchmark_not_injected_without_verified_data(monkeypatch):
     """_lookup_community_benchmark returns None when no verified results exist."""
-    from auralynq.modelfit.scoring import _lookup_community_benchmark
     import auralynq.modelfit.community as comm
-    monkeypatch.setattr(comm, "_COMMUNITY_DIR", comm._COMMUNITY_DIR.__class__(
-        "/tmp/nonexistent_modelfit_dir_xyz"
-    ))
+    from auralynq.modelfit.scoring import _lookup_community_benchmark
+
+    monkeypatch.setattr(
+        comm, "_COMMUNITY_DIR", comm._COMMUNITY_DIR.__class__("/tmp/nonexistent_modelfit_dir_xyz")
+    )
     result = _lookup_community_benchmark("ollama:llama3.1:8b", "q4_k")
     assert result is None
 
 
 def test_score_model_community_warning_present(monkeypatch):
     """When community data is injected, warnings mention 'community'."""
-    from auralynq.modelfit.scoring import BenchmarkSnapshot, _lookup_community_benchmark
     import auralynq.modelfit.scoring as scoring
+    from auralynq.modelfit.scoring import BenchmarkSnapshot
 
     fake_bench = BenchmarkSnapshot(avg_tok_per_sec=30.0, is_measured=True)
 
@@ -434,9 +461,11 @@ def test_score_model_community_warning_present(monkeypatch):
 def test_score_model_community_data_disabled(monkeypatch):
     """use_community_data=False skips community lookup."""
     import auralynq.modelfit.scoring as scoring
+
     called = []
-    monkeypatch.setattr(scoring, "_lookup_community_benchmark",
-                        lambda *a, **kw: called.append(True) or None)
+    monkeypatch.setattr(
+        scoring, "_lookup_community_benchmark", lambda *a, **kw: called.append(True) or None
+    )
 
     hw = _make_hw()
     model = _make_model()
@@ -446,8 +475,10 @@ def test_score_model_community_data_disabled(monkeypatch):
 
 # ── Phase 2: RAG bench helper functions ──────────────────────────────────────
 
+
 def test_rag_bench_groundedness_with_overlap():
     from auralynq.modelfit.rag_bench import _simple_groundedness
+
     answer = "The document discusses climate change and temperature trends."
     contexts = ["This report covers climate change impacts including temperature trends globally."]
     g = _simple_groundedness(answer, contexts)
@@ -456,24 +487,28 @@ def test_rag_bench_groundedness_with_overlap():
 
 def test_rag_bench_groundedness_zero_when_no_context():
     from auralynq.modelfit.rag_bench import _simple_groundedness
+
     g = _simple_groundedness("Any answer", [])
     assert g == 0.0
 
 
 def test_rag_bench_groundedness_zero_empty_answer():
     from auralynq.modelfit.rag_bench import _simple_groundedness
+
     g = _simple_groundedness("", ["some context"])
     assert g == 0.0
 
 
 def test_rag_bench_citation_coverage_no_citations():
     from auralynq.modelfit.rag_bench import _citation_coverage_score
+
     score = _citation_coverage_score([], ["some context"])
     assert score == 0.0
 
 
 def test_rag_bench_citation_coverage_match():
     from auralynq.modelfit.rag_bench import _citation_coverage_score
+
     contexts = ["report.pdf\nBody of text"]
     citations = [{"source": "report.pdf"}]
     score = _citation_coverage_score(citations, contexts)
@@ -482,6 +517,7 @@ def test_rag_bench_citation_coverage_match():
 
 def test_rag_bench_is_abstention():
     from auralynq.modelfit.rag_bench import _is_abstention
+
     assert _is_abstention("I don't have enough evidence to answer this question.")
     assert _is_abstention("There is no relevant evidence in the indexed documents.")
     assert not _is_abstention("The answer is Paris, the capital of France.")
@@ -489,6 +525,7 @@ def test_rag_bench_is_abstention():
 
 def test_rag_bench_metrics_dataclass():
     from auralynq.modelfit.rag_bench import RAGBenchMetrics
+
     m = RAGBenchMetrics(groundedness=0.7, citation_coverage=0.5, abstention_accuracy=0.8)
     d = m.to_dict()
     assert d["groundedness"] == 0.7
@@ -499,14 +536,17 @@ def test_rag_bench_metrics_dataclass():
 
 # ── Phase 2: _build_modelfit_snapshot ────────────────────────────────────────
 
+
 def test_build_modelfit_snapshot_cloud_returns_none():
     from auralynq.agent.runner import _build_modelfit_snapshot
+
     result = _build_modelfit_snapshot("openai", "gpt-4")
     assert result is None  # cloud providers not covered
 
 
 def test_build_modelfit_snapshot_unknown_model():
     from auralynq.agent.runner import _build_modelfit_snapshot
+
     # 'slm:totally-unknown-model-xyz' won't be in registry
     result = _build_modelfit_snapshot("slm", "totally-unknown-model-xyz")
     # Either None (import failed) or dict with fit_score=None
@@ -516,6 +556,7 @@ def test_build_modelfit_snapshot_unknown_model():
 
 def test_answer_result_has_model_fit_field():
     from auralynq.agent.runner import AnswerResult
+
     r = AnswerResult(answer="test")
     assert hasattr(r, "model_fit")
     assert r.model_fit is None
@@ -523,13 +564,16 @@ def test_answer_result_has_model_fit_field():
 
 # ── Phase 2: CLI entry point ──────────────────────────────────────────────────
 
+
 def test_cli_module_importable():
-    from auralynq.modelfit import cli  # noqa: F401 — just ensure no import errors
+    from auralynq.modelfit import cli
+
     assert hasattr(cli, "app") or hasattr(cli, "main")
 
 
 def test_cli_has_hardware_command():
     from auralynq.modelfit.cli import app
+
     # Typer sets name=None until registration; callback.__name__ holds the function name
     command_names = [
         c.name or (c.callback.__name__ if c.callback else "") for c in app.registered_commands
@@ -539,6 +583,7 @@ def test_cli_has_hardware_command():
 
 def test_cli_has_benchmark_command():
     from auralynq.modelfit.cli import app
+
     command_names = [
         c.name or (c.callback.__name__ if c.callback else "") for c in app.registered_commands
     ]
@@ -546,6 +591,7 @@ def test_cli_has_benchmark_command():
 
 
 # ── Phase 2: BenchmarkResult rag_metrics wiring ──────────────────────────────
+
 
 def test_benchmark_plan_rag_task_preview():
     plan = preview_benchmark("ollama:llama3.1:8b", task="rag", num_examples=5)
@@ -557,6 +603,7 @@ def test_benchmark_plan_rag_task_preview():
 def test_benchmark_result_rag_metrics_key_present():
     """BenchmarkResult.rag_metrics must contain citation_coverage and groundedness."""
     from auralynq.modelfit.benchmark_runner import BenchmarkResult
+
     r = BenchmarkResult(
         run_id="x",
         model_id="ollama:llama3.1:8b",

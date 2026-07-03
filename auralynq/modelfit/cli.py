@@ -169,9 +169,7 @@ def recommend(
     )[:limit]
 
     vram_or_ram = hw.total_vram_gb or hw.ram_gb
-    table = Table(
-        title=f"Top {limit} models for {hw.best_backend.upper()} / {vram_or_ram:.0f}GB"
-    )
+    table = Table(title=f"Top {limit} models for {hw.best_backend.upper()} / {vram_or_ram:.0f}GB")
     table.add_column("Model", style="cyan")
     table.add_column("Score", justify="right")
     table.add_column("Label")

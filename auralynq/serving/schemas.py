@@ -30,8 +30,8 @@ class Citation(BaseModel):
     start_s: float | None = None
     end_s: float | None = None
     page: int | None = None
-    score: float | None = None   # retrieval score (0-1) — evidence quality signal
-    method: str | None = None    # retrieval method: "hybrid" | "pathrag" | …
+    score: float | None = None  # retrieval score (0-1) — evidence quality signal
+    method: str | None = None  # retrieval method: "hybrid" | "pathrag" | …
 
 
 class QueryResponse(BaseModel):
@@ -233,9 +233,15 @@ class QueryRequestV2(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
     final_k: int | None = Field(default=None, ge=1, le=50)
     use_cache: bool | None = None
-    route_hint: str | None = Field(default=None, description="Override route: 'fast' | 'hybrid' | 'graph' | 'auto'")
-    rag_strategy: str | None = Field(default=None, description="RAG strategy id from /api/rag/strategies")
-    force_strategy: bool = Field(default=False, description="Fail if strategy is unavailable (no fallback)")
+    route_hint: str | None = Field(
+        default=None, description="Override route: 'fast' | 'hybrid' | 'graph' | 'auto'"
+    )
+    rag_strategy: str | None = Field(
+        default=None, description="RAG strategy id from /api/rag/strategies"
+    )
+    force_strategy: bool = Field(
+        default=False, description="Fail if strategy is unavailable (no fallback)"
+    )
     fallback_allowed: bool = Field(default=True, description="Allow fallback to default strategy")
 
 

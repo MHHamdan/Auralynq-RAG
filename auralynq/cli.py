@@ -234,6 +234,7 @@ def info() -> None:
 
 # ── config subcommands ────────────────────────────────────────────────────────
 
+
 @config_app.command("show")
 def config_show() -> None:
     """Show active configuration (resolved values, config file path, provider chain)."""
@@ -277,9 +278,7 @@ def config_init(
         console.print("[red]config.yaml.example not found — reinstall the package.[/]")
         raise typer.Exit(1)
     if output.exists() and not force:
-        console.print(
-            f"[yellow]{output} already exists.[/] Use --force to overwrite."
-        )
+        console.print(f"[yellow]{output} already exists.[/] Use --force to overwrite.")
         raise typer.Exit(1)
     shutil.copy(template, output)
     console.print(f"[green]✓[/] config template written to [bold]{output}[/]")

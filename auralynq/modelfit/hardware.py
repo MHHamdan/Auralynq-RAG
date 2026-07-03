@@ -105,6 +105,7 @@ def _detect_cpu() -> tuple[str, int, int]:
 
     try:
         import psutil  # optional
+
         physical = psutil.cpu_count(logical=False) or logical
     except ImportError:
         # Fallback: parse /proc/cpuinfo on Linux
@@ -133,6 +134,7 @@ def _detect_cpu() -> tuple[str, int, int]:
 def _detect_ram_gb() -> float:
     try:
         import psutil
+
         return psutil.virtual_memory().total / (1024**3)
     except ImportError:
         pass
@@ -254,9 +256,7 @@ def _detect_gpus() -> tuple[list[GPUInfo], bool, str | None, bool, bool]:
     if nvidia:
         cuda_available = True
         try:
-            r = subprocess.run(
-                ["nvcc", "--version"], capture_output=True, text=True, timeout=5
-            )
+            r = subprocess.run(["nvcc", "--version"], capture_output=True, text=True, timeout=5)
             for line in r.stdout.splitlines():
                 if "release" in line.lower():
                     cuda_version = line.strip()
@@ -281,6 +281,7 @@ def _detect_gpus() -> tuple[list[GPUInfo], bool, str | None, bool, bool]:
     # Try torch as last resort
     try:
         import torch
+
         if torch.cuda.is_available():
             cuda_available = True
             cuda_version = torch.version.cuda
@@ -318,9 +319,7 @@ def _detect_ollama() -> tuple[bool, str | None]:
     if not shutil.which("ollama"):
         return False, None
     try:
-        r = subprocess.run(
-            ["ollama", "--version"], capture_output=True, text=True, timeout=5
-        )
+        r = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5)
         version = r.stdout.strip() or r.stderr.strip() or "unknown"
         return True, version
     except (FileNotFoundError, subprocess.TimeoutExpired):

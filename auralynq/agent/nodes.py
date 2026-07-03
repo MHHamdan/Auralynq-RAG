@@ -293,8 +293,8 @@ def node_self_check(state: AgentState, deps: AgentDeps) -> AgentState:
         state.confidence_signals = {
             "s_qual": round(s_qual, 3),
             "s_cite": round(s_cite, 3),
-            "s_sem":  round(s_sem, 3),
-            "s_tok":  round(s_tok, 3),
+            "s_sem": round(s_sem, 3),
+            "s_tok": round(s_tok, 3),
         }
 
         sp.attributes.update(

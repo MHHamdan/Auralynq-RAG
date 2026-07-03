@@ -1,4 +1,5 @@
 """Tests for Source Workspace backend endpoints and schema."""
+
 from __future__ import annotations
 
 import pytest
@@ -8,6 +9,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     from auralynq.serving.app import create_app
+
     return TestClient(create_app())
 
 
@@ -15,8 +17,10 @@ def client():
 # Schema tests
 # ---------------------------------------------------------------------------
 
+
 def test_page_layout_block_schema():
     from auralynq.serving.schemas import PageLayoutBlock
+
     blk = PageLayoutBlock(
         block_id="chunk_001",
         page=1,
@@ -38,6 +42,7 @@ def test_page_layout_block_schema():
 
 def test_page_layout_response_schema():
     from auralynq.serving.schemas import PageLayoutBlock, PageLayoutResponse
+
     resp = PageLayoutResponse(
         doc_id="abc123",
         page=2,
@@ -65,6 +70,7 @@ def test_page_layout_response_schema():
 # ---------------------------------------------------------------------------
 # Endpoint: document page layout
 # ---------------------------------------------------------------------------
+
 
 def test_page_layout_invalid_doc_id(client):
     """Invalid doc_id format returns 400."""
@@ -97,12 +103,20 @@ def test_page_layout_response_structure(client):
     r = client.get("/documents/abcdef1234567890abcdef1234567890/pages/1/layout")
     assert r.status_code == 200
     data = r.json()
-    assert set(data.keys()) >= {"doc_id", "page", "blocks", "source_title", "page_width", "page_height"}
+    assert set(data.keys()) >= {
+        "doc_id",
+        "page",
+        "blocks",
+        "source_title",
+        "page_width",
+        "page_height",
+    }
 
 
 # ---------------------------------------------------------------------------
 # Endpoint: document pages (existing, smoke test)
 # ---------------------------------------------------------------------------
+
 
 def test_document_pages_unknown_doc(client):
     """Pages endpoint returns a valid response for unknown doc."""
@@ -117,6 +131,7 @@ def test_document_pages_unknown_doc(client):
 # Endpoint: grounding-status
 # ---------------------------------------------------------------------------
 
+
 def test_grounding_status_unknown_doc(client):
     """Grounding status returns a valid response structure for unknown doc."""
     r = client.get("/documents/abcdef1234567890abcdef1234567890/grounding-status")
@@ -130,6 +145,7 @@ def test_grounding_status_unknown_doc(client):
 # ---------------------------------------------------------------------------
 # Endpoint: corpus grounding summary
 # ---------------------------------------------------------------------------
+
 
 def test_corpus_grounding_summary(client):
     """Grounding summary returns enabled flag and document counts."""
@@ -146,6 +162,7 @@ def test_corpus_grounding_summary(client):
 # Endpoint: visual grounding settings
 # ---------------------------------------------------------------------------
 
+
 def test_visual_grounding_settings(client):
     """Settings endpoint returns render configuration."""
     r = client.get("/visual-grounding/settings")
@@ -160,6 +177,7 @@ def test_visual_grounding_settings(client):
 # Security: no internal paths in layout response
 # ---------------------------------------------------------------------------
 
+
 def test_layout_no_internal_paths(client):
     """Layout response body must not expose filesystem paths."""
     r = client.get("/documents/abcdef1234567890abcdef1234567890/pages/1/layout")
@@ -173,26 +191,30 @@ def test_layout_no_internal_paths(client):
 # Resolver: claim grounding analysis
 # ---------------------------------------------------------------------------
 
+
 def test_resolver_span_level_grounding():
     """Citation with bbox → span-level grounding stage."""
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
-    citations = [{
-        "marker": 1,
-        "source": "test.pdf",
-        "doc_id": "doc_abc",
-        "page": 2,
-        "visual_grounding": {
-            "grounding_version": 1,
+    citations = [
+        {
+            "marker": 1,
+            "source": "test.pdf",
+            "doc_id": "doc_abc",
             "page": 2,
-            "has_bbox": True,
-            "bbox": [50.0, 100.0, 400.0, 150.0],
-            "normalized_bbox": [0.08, 0.13, 0.65, 0.19],
-            "block_type": "paragraph",
-        },
-        "score": 0.88,
-        "_snippet": "This is the cited text.",
-    }]
+            "visual_grounding": {
+                "grounding_version": 1,
+                "page": 2,
+                "has_bbox": True,
+                "bbox": [50.0, 100.0, 400.0, 150.0],
+                "normalized_bbox": [0.08, 0.13, 0.65, 0.19],
+                "block_type": "paragraph",
+            },
+            "score": 0.88,
+            "_snippet": "This is the cited text.",
+        }
+    ]
     results = resolver.resolve("ans_1", "The document states [1] this fact.", citations)
     assert len(results) == 1
     assert results[0].grounding_stage == "span"
@@ -204,19 +226,22 @@ def test_resolver_span_level_grounding():
 def test_resolver_page_level_fallback():
     """Citation with page but no bbox → page-level grounding."""
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
-    citations = [{
-        "marker": 1,
-        "source": "test.pdf",
-        "doc_id": "doc_xyz",
-        "page": 3,
-        "visual_grounding": {
-            "grounding_version": 1,
+    citations = [
+        {
+            "marker": 1,
+            "source": "test.pdf",
+            "doc_id": "doc_xyz",
             "page": 3,
-            "has_bbox": False,
-        },
-        "score": 0.75,
-    }]
+            "visual_grounding": {
+                "grounding_version": 1,
+                "page": 3,
+                "has_bbox": False,
+            },
+            "score": 0.75,
+        }
+    ]
     results = resolver.resolve("ans_2", "The answer is [1] here.", citations)
     assert len(results) == 1
     assert results[0].grounding_stage == "page"
@@ -227,22 +252,25 @@ def test_resolver_page_level_fallback():
 def test_resolver_to_api_response():
     """to_api_response produces the expected dict structure."""
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
-    citations = [{
-        "marker": 1,
-        "source": "doc.pdf",
-        "doc_id": "doc_001",
-        "page": 1,
-        "visual_grounding": {
-            "grounding_version": 1,
+    citations = [
+        {
+            "marker": 1,
+            "source": "doc.pdf",
+            "doc_id": "doc_001",
             "page": 1,
-            "has_bbox": True,
-            "bbox": [0, 0, 100, 50],
-            "normalized_bbox": [0.0, 0.0, 0.5, 0.1],
-            "block_type": "title",
-        },
-        "score": 0.9,
-    }]
+            "visual_grounding": {
+                "grounding_version": 1,
+                "page": 1,
+                "has_bbox": True,
+                "bbox": [0, 0, 100, 50],
+                "normalized_bbox": [0.0, 0.0, 0.5, 0.1],
+                "block_type": "title",
+            },
+            "score": 0.9,
+        }
+    ]
     results = resolver.resolve("ans_3", "The title [1] says hello.", citations)
     api_resp = resolver.to_api_response(results)
     assert "highlights" in api_resp

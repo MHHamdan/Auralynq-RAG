@@ -11,6 +11,7 @@ Cloud providers (require keys + network):
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import httpx
 
@@ -104,8 +105,11 @@ class SLMLlm(LLM):  # pragma: no cover - requires llama-cpp-python install
         return msgs
 
     def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
-        resp = self._llm.create_chat_completion(
-            messages=self._messages(prompt, system),
+        # llama-cpp-python's create_chat_completion has strict TypedDict message
+        # types and a union return; our plain-dict messages and indexing are
+        # correct at runtime, so we treat the response as Any.
+        resp: Any = self._llm.create_chat_completion(
+            messages=self._messages(prompt, system),  # type: ignore[arg-type]
             temperature=temperature if temperature is not None else 0.1,
             max_tokens=max_tokens or 1024,
             stream=False,
@@ -113,12 +117,13 @@ class SLMLlm(LLM):  # pragma: no cover - requires llama-cpp-python install
         return (resp["choices"][0]["message"]["content"] or "").strip()
 
     def stream(self, prompt, *, system=None, temperature=None, max_tokens=None) -> Iterator[str]:
-        for chunk in self._llm.create_chat_completion(
-            messages=self._messages(prompt, system),
+        stream_resp: Any = self._llm.create_chat_completion(
+            messages=self._messages(prompt, system),  # type: ignore[arg-type]
             temperature=temperature if temperature is not None else 0.1,
             max_tokens=max_tokens or 1024,
             stream=True,
-        ):
+        )
+        for chunk in stream_resp:
             delta = chunk["choices"][0]["delta"].get("content", "")
             if delta:
                 yield delta

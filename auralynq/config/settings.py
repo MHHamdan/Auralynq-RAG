@@ -24,8 +24,8 @@ Provider = Literal["auto"]
 
 class EmbeddingSettings(BaseSettings):
     provider: Literal["auto", "ollama", "bge", "hash", "openai"] = "auto"
-    model: str = "BAAI/bge-m3"            # used when provider=bge
-    ollama_model: str = "nomic-embed-text" # used when provider=ollama
+    model: str = "BAAI/bge-m3"  # used when provider=bge
+    ollama_model: str = "nomic-embed-text"  # used when provider=ollama
     dim: int = 768
     device: Literal["auto", "cpu", "cuda"] = "auto"
     batch_size: int = 16
@@ -57,9 +57,9 @@ class RetrievalSettings(BaseSettings):
 
 
 class LLMSettings(BaseSettings):
-    provider: Literal[
-        "auto", "ollama", "slm", "openai", "anthropic", "cohere", "extractive"
-    ] = "auto"
+    provider: Literal["auto", "ollama", "slm", "openai", "anthropic", "cohere", "extractive"] = (
+        "auto"
+    )
     model: str = "llama3.2:3b"
     base_url: str = "http://localhost:11434"
     temperature: float = 0.1
