@@ -1,4 +1,5 @@
 """Naive vector-only RAG strategy."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -21,7 +22,14 @@ class NaiveVectorStrategy(RAGStrategy):
     best_for = "Simple factual questions with clear keyword overlap"
     limitations = "No keyword search; misses exact-match queries; no evidence sufficiency check"
 
-    def run(self, query: str, final_k: int = 6, use_cache: bool = True, route_hint: str = "", **kwargs: Any) -> StrategyResult:
+    def run(
+        self,
+        query: str,
+        final_k: int = 6,
+        use_cache: bool = True,
+        route_hint: str = "",
+        **kwargs: Any,
+    ) -> StrategyResult:
         from auralynq.agent.runner import answer_question
 
         res = answer_question(query, final_k=final_k, use_cache=use_cache, route_hint="fast")

@@ -1,4 +1,5 @@
 """Tests for visual grounding infrastructure: resolver, ingest metadata, endpoints."""
+
 from __future__ import annotations
 
 import pytest
@@ -8,6 +9,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     from auralynq.serving.app import create_app
+
     return TestClient(create_app())
 
 
@@ -15,8 +17,10 @@ def client():
 # Grounding resolver unit tests
 # ---------------------------------------------------------------------------
 
+
 def test_resolver_returns_empty_for_no_citations():
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
     results = resolver.resolve(answer_id="test", answer="Hello", citations=[])
     assert results == []
@@ -25,22 +29,25 @@ def test_resolver_returns_empty_for_no_citations():
 def test_resolver_page_level_grounding():
     """Citation with page number but no bbox → page-level grounding."""
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
-    citations = [{
-        "marker": 1,
-        "chunk_id": "chunk_001",
-        "doc_id": "doc_001",
-        "source": "test.pdf",
-        "page": 3,
-        "score": 0.8,
-        "visual_grounding": {
-            "grounding_version": 1,
+    citations = [
+        {
+            "marker": 1,
+            "chunk_id": "chunk_001",
+            "doc_id": "doc_001",
+            "source": "test.pdf",
             "page": 3,
-            "has_bbox": False,
-            "bbox": None,
-            "normalized_bbox": None,
-        },
-    }]
+            "score": 0.8,
+            "visual_grounding": {
+                "grounding_version": 1,
+                "page": 3,
+                "has_bbox": False,
+                "bbox": None,
+                "normalized_bbox": None,
+            },
+        }
+    ]
     results = resolver.resolve("test_id", "Some answer [1].", citations)
     assert len(results) == 1
     r = results[0]
@@ -58,23 +65,26 @@ def test_resolver_page_level_grounding():
 def test_resolver_span_level_grounding():
     """Citation with bbox → span-level grounding."""
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
-    citations = [{
-        "marker": 1,
-        "chunk_id": "chunk_002",
-        "doc_id": "doc_002",
-        "source": "paper.pdf",
-        "page": 1,
-        "score": 0.9,
-        "visual_grounding": {
-            "grounding_version": 1,
+    citations = [
+        {
+            "marker": 1,
+            "chunk_id": "chunk_002",
+            "doc_id": "doc_002",
+            "source": "paper.pdf",
             "page": 1,
-            "has_bbox": True,
-            "bbox": [72.0, 100.0, 400.0, 120.0],
-            "normalized_bbox": [0.1, 0.13, 0.55, 0.16],
-            "block_type": "paragraph",
-        },
-    }]
+            "score": 0.9,
+            "visual_grounding": {
+                "grounding_version": 1,
+                "page": 1,
+                "has_bbox": True,
+                "bbox": [72.0, 100.0, 400.0, 120.0],
+                "normalized_bbox": [0.1, 0.13, 0.55, 0.16],
+                "block_type": "paragraph",
+            },
+        }
+    ]
     results = resolver.resolve("span_test", "Answer with span [1].", citations)
     assert len(results) == 1
     r = results[0]
@@ -88,20 +98,23 @@ def test_resolver_span_level_grounding():
 def test_resolver_reindex_required_for_old_doc():
     """Citation with grounding_version=0 → reindex_required=True."""
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
-    citations = [{
-        "marker": 1,
-        "chunk_id": "old_chunk",
-        "doc_id": "old_doc",
-        "source": "legacy.pdf",
-        "page": None,
-        "score": 0.5,
-        "visual_grounding": {
-            "grounding_version": 0,
+    citations = [
+        {
+            "marker": 1,
+            "chunk_id": "old_chunk",
+            "doc_id": "old_doc",
+            "source": "legacy.pdf",
             "page": None,
-            "has_bbox": False,
-        },
-    }]
+            "score": 0.5,
+            "visual_grounding": {
+                "grounding_version": 0,
+                "page": None,
+                "has_bbox": False,
+            },
+        }
+    ]
     results = resolver.resolve("old_test", "Answer.", citations)
     assert len(results) == 1
     ev = results[0].highlights[0]
@@ -112,22 +125,25 @@ def test_resolver_reindex_required_for_old_doc():
 def test_resolver_to_api_response():
     """to_api_response produces correct structure."""
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
-    citations = [{
-        "marker": 1,
-        "chunk_id": "c1",
-        "doc_id": "d1",
-        "source": "doc.pdf",
-        "page": 2,
-        "score": 0.7,
-        "visual_grounding": {
-            "grounding_version": 1,
+    citations = [
+        {
+            "marker": 1,
+            "chunk_id": "c1",
+            "doc_id": "d1",
+            "source": "doc.pdf",
             "page": 2,
-            "has_bbox": True,
-            "bbox": [0, 0, 100, 20],
-            "normalized_bbox": [0.0, 0.0, 0.14, 0.025],
-        },
-    }]
+            "score": 0.7,
+            "visual_grounding": {
+                "grounding_version": 1,
+                "page": 2,
+                "has_bbox": True,
+                "bbox": [0, 0, 100, 20],
+                "normalized_bbox": [0.0, 0.0, 0.14, 0.025],
+            },
+        }
+    ]
     results = resolver.resolve("api_test", "The answer is X [1].", citations)
     api_resp = resolver.to_api_response(results)
     assert "highlights" in api_resp
@@ -143,34 +159,42 @@ def test_resolver_to_api_response():
 
 def test_resolver_page_image_url_format():
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
-    citations = [{
-        "marker": 2,
-        "chunk_id": "c2",
-        "doc_id": "abc123",
-        "source": "file.pdf",
-        "page": 5,
-        "score": 0.6,
-        "visual_grounding": {"grounding_version": 1, "page": 5, "has_bbox": False},
-    }]
+    citations = [
+        {
+            "marker": 2,
+            "chunk_id": "c2",
+            "doc_id": "abc123",
+            "source": "file.pdf",
+            "page": 5,
+            "score": 0.6,
+            "visual_grounding": {"grounding_version": 1, "page": 5, "has_bbox": False},
+        }
+    ]
     results = resolver.resolve("url_test", "Answer.", citations)
     assert results[0].page_image_url == "/api/documents/abc123/pages/5/image"
 
 
 def test_resolver_claim_grounding_unsupported_without_citations():
     from auralynq.grounding.resolver import GroundingResolver
+
     resolver = GroundingResolver()
     # Long answer sentences with no citations matching
-    citations = [{
-        "marker": 1,
-        "chunk_id": "c3",
-        "doc_id": "d3",
-        "source": "x.pdf",
-        "page": 1,
-        "score": 0.5,
-        "visual_grounding": {"grounding_version": 1, "page": 1, "has_bbox": False},
-    }]
-    results = resolver.resolve("claim_test", "This is a long answer sentence. [1] Another unrelated claim here.", citations)
+    citations = [
+        {
+            "marker": 1,
+            "chunk_id": "c3",
+            "doc_id": "d3",
+            "source": "x.pdf",
+            "page": 1,
+            "score": 0.5,
+            "visual_grounding": {"grounding_version": 1, "page": 1, "has_bbox": False},
+        }
+    ]
+    results = resolver.resolve(
+        "claim_test", "This is a long answer sentence. [1] Another unrelated claim here.", citations
+    )
     # Claim grounding should exist
     all_claims = [cg for r in results for cg in r.claim_grounding]
     assert len(all_claims) >= 1
@@ -180,13 +204,16 @@ def test_resolver_claim_grounding_unsupported_without_citations():
 # Ingest model tests
 # ---------------------------------------------------------------------------
 
+
 def test_visual_grounding_version_constant():
     from auralynq.ingest.models import VISUAL_GROUNDING_VERSION
+
     assert VISUAL_GROUNDING_VERSION == 1
 
 
 def test_document_has_visual_grounding_property():
     from auralynq.ingest.models import Document, SourceType
+
     doc = Document(
         id="d1",
         source="test.pdf",
@@ -206,6 +233,7 @@ def test_document_has_visual_grounding_property():
 
 def test_layout_block_model():
     from auralynq.ingest.models import LayoutBlock
+
     blk = LayoutBlock(
         page=1,
         bbox=[72.0, 100.0, 400.0, 120.0],
@@ -225,8 +253,10 @@ def test_layout_block_model():
 # Settings tests
 # ---------------------------------------------------------------------------
 
+
 def test_visual_grounding_settings_defaults():
     from auralynq.config.settings import VisualGroundingSettings
+
     vgs = VisualGroundingSettings()
     assert vgs.enabled is True
     assert vgs.page_rendering_enabled is True
@@ -238,8 +268,10 @@ def test_visual_grounding_settings_defaults():
 
 def test_settings_has_visual():
     import os
+
     os.environ["AURALYNQ_DOTENV_DISABLED"] = "1"
     from auralynq.config.settings import Settings
+
     s = Settings(_env_file=None)  # type: ignore
     assert hasattr(s, "visual")
     assert s.visual.enabled is True
@@ -248,6 +280,7 @@ def test_settings_has_visual():
 # ---------------------------------------------------------------------------
 # API endpoint tests
 # ---------------------------------------------------------------------------
+
 
 def test_visual_grounding_settings_endpoint(client):
     resp = client.get("/visual-grounding/settings")
@@ -295,8 +328,10 @@ def test_document_grounding_status_endpoint(client):
 # Strategy registry: new experimental strategies
 # ---------------------------------------------------------------------------
 
+
 def test_self_rag_strategy_available():
     from auralynq.rag import get_registry
+
     registry = get_registry()
     strategies = registry.list_all()
     sr = next(s for s in strategies if s["id"] == "self_rag")
@@ -306,6 +341,7 @@ def test_self_rag_strategy_available():
 
 def test_crag_strategy_available():
     from auralynq.rag import get_registry
+
     registry = get_registry()
     strategies = registry.list_all()
     crag = next(s for s in strategies if s["id"] == "crag")
@@ -315,6 +351,7 @@ def test_crag_strategy_available():
 
 def test_adaptive_strategy_available():
     from auralynq.rag import get_registry
+
     registry = get_registry()
     strategies = registry.list_all()
     adaptive = next(s for s in strategies if s["id"] == "adaptive")
@@ -324,6 +361,7 @@ def test_adaptive_strategy_available():
 
 def test_lightrag_local_unavailable():
     from auralynq.rag import get_registry
+
     registry = get_registry()
     strategies = registry.list_all()
     lr = next(s for s in strategies if s["id"] == "lightrag_local")
@@ -333,6 +371,7 @@ def test_lightrag_local_unavailable():
 
 def test_raptor_unavailable():
     from auralynq.rag import get_registry
+
     registry = get_registry()
     strategies = registry.list_all()
     raptor = next(s for s in strategies if s["id"] == "raptor")
@@ -342,6 +381,7 @@ def test_raptor_unavailable():
 
 def test_all_strategies_have_status_field():
     from auralynq.rag import get_registry
+
     registry = get_registry()
     for s in registry.list_all():
         assert s["status"] in ("available", "experimental", "planned"), f"{s['id']} has bad status"

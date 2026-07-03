@@ -115,9 +115,7 @@ class ChromaStore(VectorStore):
 
         scored: list[ScoredChunk] = []
         for i, cid in enumerate(results["ids"][0]):
-            chunk = self._meta_to_chunk(
-                cid, results["documents"][0][i], results["metadatas"][0][i]
-            )
+            chunk = self._meta_to_chunk(cid, results["documents"][0][i], results["metadatas"][0][i])
             score = max(0.0, 1.0 - float(results["distances"][0][i]))
             scored.append(ScoredChunk(chunk=chunk, score=score, method="dense", rank=i))
         return scored

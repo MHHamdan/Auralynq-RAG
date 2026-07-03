@@ -105,6 +105,10 @@ ignore = ["B008", "C901", "RUF012", "UP042", "RUF001"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011", "SIM117"]
+# planned.py embeds multi-line LLM prompt templates whose prose lines exceed
+# the 100-col limit; reflowing them would alter the prompt text, so E501 is
+# waived for this one file only.
+"auralynq/rag/strategies/planned.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"

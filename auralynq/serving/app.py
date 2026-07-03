@@ -8,6 +8,7 @@ safe file handling. All heavy work degrades to offline fallbacks (ADR-0003).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
 import time
@@ -1048,10 +1049,8 @@ def create_app() -> FastAPI:
         suggest_path = s.storage_dir / "suggestions_cache.json"
         questions: list[str] = []
         if suggest_path.exists():
-            try:
+            with contextlib.suppress(Exception):
                 questions = json.loads(suggest_path.read_text(encoding="utf-8"))[:3]
-            except Exception:
-                pass
         if not questions:
             doc_meta = _doc_store()
             for meta in list(doc_meta.values())[:3]:
@@ -1076,7 +1075,7 @@ def create_app() -> FastAPI:
         async def _run():
             nonlocal _eval_running
             _eval_running = True
-            results = []
+            results: list[dict[str, Any]] = []
             for q in questions[:3]:
                 try:
                     r = await asyncio.to_thread(answer_question, q)
@@ -1125,12 +1124,10 @@ def create_app() -> FastAPI:
                     ),
                 },
             }
-            try:
+            with contextlib.suppress(Exception):
                 (s.reports_dir / "eval_report.json").write_text(
                     json.dumps(report, indent=2), encoding="utf-8"
                 )
-            except Exception:
-                pass
             _eval_running = False
 
         background_tasks.add_task(_run)
@@ -1323,7 +1320,7 @@ def create_app() -> FastAPI:
         meta = doc_store.get(doc_id, {})
         source_title = meta.get("title", "")
         page_dims = meta.get("page_dimensions", [])
-        page_dim = next((d for d in page_dims if d.get("page") == page_number), {})
+        page_dim: dict[str, Any] = next((d for d in page_dims if d.get("page") == page_number), {})
         page_w = float(page_dim.get("width", 0.0))
         page_h = float(page_dim.get("height", 0.0))
 
@@ -1331,9 +1328,10 @@ def create_app() -> FastAPI:
         blocks: list[PageLayoutBlock] = []
         try:
             from qdrant_client import models as qm
-            from auralynq.vectorstore.qdrant_store import QdrantVectorStore
 
-            vs = QdrantVectorStore()
+            from auralynq.vectorstore.qdrant_store import QdrantStore
+
+            vs = QdrantStore()
             if vs._exists():
                 offset: Any = None
                 seen_chunk_ids: set[str] = set()

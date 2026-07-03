@@ -57,7 +57,9 @@ def build_embedder(provider: str | None = None) -> Embedder:
 
     # Air-gap hard-blocks on external providers.
     if s.air_gapped and provider in ("openai", "ollama"):
-        _log.warning("embeddings.air_gapped_block", provider=provider, action="falling back to hash")
+        _log.warning(
+            "embeddings.air_gapped_block", provider=provider, action="falling back to hash"
+        )
         provider = "bge" if _have("FlagEmbedding") else "hash"
 
     fallback_dim = min(s.embedding.dim, 256)

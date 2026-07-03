@@ -1,4 +1,5 @@
 """Auralynq-RAG: the primary orchestrated strategy (wraps the existing agent runner)."""
+
 from __future__ import annotations
 
 import time
@@ -25,7 +26,14 @@ class AuralynqRAGStrategy(RAGStrategy):
     best_for = "General corpus questions with citations and traceability"
     limitations = "Web search disabled by default; graph requires indexed entities"
 
-    def run(self, query: str, final_k: int = 6, use_cache: bool = True, route_hint: str = "", **kwargs: Any) -> StrategyResult:
+    def run(
+        self,
+        query: str,
+        final_k: int = 6,
+        use_cache: bool = True,
+        route_hint: str = "",
+        **kwargs: Any,
+    ) -> StrategyResult:
         from auralynq.agent.runner import answer_question
 
         t0 = time.perf_counter()

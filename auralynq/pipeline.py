@@ -129,9 +129,7 @@ def _write_doc_meta(storage_dir: Path, docs: list[Document]) -> None:
             "n_pages": len(doc.page_dimensions),
             "n_chunks": doc.n_chunks,
             "n_chunks_with_bbox": sum(
-                1
-                for c in doc.chunks
-                if (c.metadata.get("visual_grounding") or {}).get("has_bbox")
+                1 for c in doc.chunks if (c.metadata.get("visual_grounding") or {}).get("has_bbox")
             ),
         }
     with contextlib.suppress(Exception):

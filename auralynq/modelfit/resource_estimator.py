@@ -169,9 +169,7 @@ def estimate_resources(
             f"Context {context_tokens} may cause OOM. Recommended max: {rec_ctx} tokens."
         )
     if peak_vram > effective_vram * 1.5:
-        warnings.append(
-            "Maximum context (128K+) would greatly exceed VRAM. Use shorter context."
-        )
+        warnings.append("Maximum context (128K+) would greatly exceed VRAM. Use shorter context.")
 
     return ResourceEstimate(
         model_id=model_id,

@@ -44,6 +44,7 @@ def _not_implemented(strategy_id: str, strategy_name: str, query: str) -> Strate
 def _run_base(query: str, route_hint: str = "", final_k: int = 6, use_cache: bool = True) -> dict:
     """Call answer_question and return the dict."""
     from auralynq.agent.runner import answer_question
+
     res = answer_question(query, final_k=final_k, use_cache=use_cache, route_hint=route_hint)
     return res.to_dict()
 
@@ -52,6 +53,7 @@ def _llm_call(prompt: str, max_tokens: int = 256) -> str:
     """Best-effort LLM call for classifier/critic steps. Returns '' on failure."""
     try:
         from auralynq.llm.factory import get_llm
+
         llm = get_llm()
         return llm.generate(prompt, max_tokens=max_tokens).strip()
     except Exception:
@@ -61,6 +63,7 @@ def _llm_call(prompt: str, max_tokens: int = 256) -> str:
 # ---------------------------------------------------------------------------
 # KeywordBM25Strategy
 # ---------------------------------------------------------------------------
+
 
 class KeywordBM25Strategy(RAGStrategy):
     id = "keyword_bm25"
@@ -74,7 +77,14 @@ class KeywordBM25Strategy(RAGStrategy):
     best_for = "Exact phrase matching, technical terms, named entities"
     limitations = "No semantic understanding; misses paraphrase variants"
 
-    def run(self, query: str, final_k: int = 6, use_cache: bool = True, route_hint: str = "", **kwargs: Any) -> StrategyResult:
+    def run(
+        self,
+        query: str,
+        final_k: int = 6,
+        use_cache: bool = True,
+        route_hint: str = "",
+        **kwargs: Any,
+    ) -> StrategyResult:
         d = _run_base(query, route_hint="keyword", final_k=final_k, use_cache=use_cache)
         return StrategyResult(
             answer=d.get("answer", ""),
@@ -153,8 +163,11 @@ class SelfRAGStrategy(RAGStrategy):
     def is_available(self) -> tuple[bool, str]:
         return True, ""
 
-    def run(self, query: str, final_k: int = 6, use_cache: bool = True, **kwargs: Any) -> StrategyResult:
+    def run(
+        self, query: str, final_k: int = 6, use_cache: bool = True, **kwargs: Any
+    ) -> StrategyResult:
         import time
+
         t0 = time.perf_counter()
 
         # Step 1: initial retrieval + answer
@@ -170,7 +183,7 @@ class SelfRAGStrategy(RAGStrategy):
 
         # Step 2: build snippet list for critique
         snippets_str = "\n".join(
-            f"[{c.get('marker', i+1)}] {c.get('source', '')} — {c.get('locator', '')}"
+            f"[{c.get('marker', i + 1)}] {c.get('source', '')} — {c.get('locator', '')}"
             for i, c in enumerate(citations[:4])
         )
 
@@ -197,12 +210,14 @@ class SelfRAGStrategy(RAGStrategy):
             elif line.startswith("CRITIQUE:"):
                 critique_text = line.split(":", 1)[-1].strip()
 
-        trace_steps.append({
-            "step": "self_rag_critique",
-            "status": "success",
-            "label": "Self-RAG Critique",
-            "detail": f"Support={support} Relevance={relevance} Useful={useful}",
-        })
+        trace_steps.append(
+            {
+                "step": "self_rag_critique",
+                "status": "success",
+                "label": "Self-RAG Critique",
+                "detail": f"Support={support} Relevance={relevance} Useful={useful}",
+            }
+        )
 
         # Step 4: revise if support is weak
         if support in ("no", "partial") and draft:
@@ -215,13 +230,17 @@ class SelfRAGStrategy(RAGStrategy):
             if revised_answer and len(revised_answer) > 20:
                 draft = revised_answer
                 revised = True
-                warnings.append(f"Self-RAG: answer revised due to weak support. Critique: {critique_text}")
-                trace_steps.append({
-                    "step": "self_rag_revise",
-                    "status": "success",
-                    "label": "Self-RAG Revision",
-                    "detail": "Answer revised for faithfulness",
-                })
+                warnings.append(
+                    f"Self-RAG: answer revised due to weak support. Critique: {critique_text}"
+                )
+                trace_steps.append(
+                    {
+                        "step": "self_rag_revise",
+                        "status": "success",
+                        "label": "Self-RAG Revision",
+                        "detail": "Answer revised for faithfulness",
+                    }
+                )
 
         # Confidence penalty for weak support
         conf = d.get("confidence", 0.0)
@@ -295,8 +314,11 @@ class CRAGStrategy(RAGStrategy):
     def is_available(self) -> tuple[bool, str]:
         return True, ""
 
-    def run(self, query: str, final_k: int = 6, use_cache: bool = True, **kwargs: Any) -> StrategyResult:
+    def run(
+        self, query: str, final_k: int = 6, use_cache: bool = True, **kwargs: Any
+    ) -> StrategyResult:
         import time
+
         t0 = time.perf_counter()
         warnings: list[str] = []
         trace_steps: list[dict] = []
@@ -308,33 +330,40 @@ class CRAGStrategy(RAGStrategy):
         trace = d.get("trace", [])
         trace_steps = list(d.get("trace_steps", []))
 
-        trace_steps.append({
-            "step": "crag_quality_check",
-            "status": "success",
-            "label": "CRAG: Retrieval Quality Check",
-            "detail": f"Initial coverage={coverage:.2f} citations={len(citations)}",
-        })
+        trace_steps.append(
+            {
+                "step": "crag_quality_check",
+                "status": "success",
+                "label": "CRAG: Retrieval Quality Check",
+                "detail": f"Initial coverage={coverage:.2f} citations={len(citations)}",
+            }
+        )
 
         # Step 2: check relevance using LLM
         passages_str = "\n".join(
-            f"[{c.get('marker', i+1)}] {c.get('source', '')}"
-            for i, c in enumerate(citations[:4])
+            f"[{c.get('marker', i + 1)}] {c.get('source', '')}" for i, c in enumerate(citations[:4])
         )
-        relevance_raw = _llm_call(
-            _RELEVANCE_CHECK_PROMPT.format(question=query, passages=passages_str or "(none)"),
-            max_tokens=10,
-        ).strip().lower()
+        relevance_raw = (
+            _llm_call(
+                _RELEVANCE_CHECK_PROMPT.format(question=query, passages=passages_str or "(none)"),
+                max_tokens=10,
+            )
+            .strip()
+            .lower()
+        )
 
         relevance_score = {"high": 1.0, "medium": 0.6, "low": 0.3, "none": 0.0}.get(
             relevance_raw, 0.5
         )
 
-        trace_steps.append({
-            "step": "crag_relevance_score",
-            "status": "success" if relevance_score >= 0.5 else "warning",
-            "label": "CRAG: Relevance Assessment",
-            "detail": f"Relevance={relevance_raw} score={relevance_score:.2f}",
-        })
+        trace_steps.append(
+            {
+                "step": "crag_relevance_score",
+                "status": "success" if relevance_score >= 0.5 else "warning",
+                "label": "CRAG: Relevance Assessment",
+                "detail": f"Relevance={relevance_raw} score={relevance_score:.2f}",
+            }
+        )
 
         # Step 3: if retrieval weak, rewrite query and retry
         corrected = False
@@ -349,12 +378,14 @@ class CRAGStrategy(RAGStrategy):
                 "",
             )
             if rewritten and rewritten.lower() != query.lower():
-                trace_steps.append({
-                    "step": "crag_query_rewrite",
-                    "status": "success",
-                    "label": "CRAG: Query Rewritten",
-                    "detail": f"Rewritten: {rewritten[:80]}",
-                })
+                trace_steps.append(
+                    {
+                        "step": "crag_query_rewrite",
+                        "status": "success",
+                        "label": "CRAG: Query Rewritten",
+                        "detail": f"Rewritten: {rewritten[:80]}",
+                    }
+                )
                 d2 = _run_base(rewritten, route_hint="hybrid", final_k=final_k, use_cache=False)
                 if d2.get("evidence_coverage", 0.0) > coverage:
                     d = d2
@@ -362,7 +393,9 @@ class CRAGStrategy(RAGStrategy):
                     coverage = d.get("evidence_coverage", 0.0)
                     trace.extend(d.get("trace", []))
                     trace_steps.extend(d.get("trace_steps", []))
-                    warnings.append(f"CRAG: original retrieval weak; corrected with rewritten query: '{rewritten}'")
+                    warnings.append(
+                        f"CRAG: original retrieval weak; corrected with rewritten query: '{rewritten}'"
+                    )
                     corrected = True
                 else:
                     warnings.append("CRAG: query rewrite did not improve retrieval coverage.")
@@ -370,14 +403,18 @@ class CRAGStrategy(RAGStrategy):
                 warnings.append("CRAG: could not generate a useful query rewrite.")
 
         if relevance_score == 0.0 and not corrected:
-            warnings.append("CRAG: retrieval returned no relevant passages. Consider reindexing or using a different query.")
+            warnings.append(
+                "CRAG: retrieval returned no relevant passages. Consider reindexing or using a different query."
+            )
 
-        trace_steps.append({
-            "step": "crag_corrective_complete",
-            "status": "success",
-            "label": "CRAG: Corrective Complete",
-            "detail": f"corrected={corrected} final_coverage={coverage:.2f}",
-        })
+        trace_steps.append(
+            {
+                "step": "crag_corrective_complete",
+                "status": "success",
+                "label": "CRAG: Corrective Complete",
+                "detail": f"corrected={corrected} final_coverage={coverage:.2f}",
+            }
+        )
 
         elapsed_ms = (time.perf_counter() - t0) * 1000
         warnings.insert(0, "CRAG: experimental approximation (no web fallback)")
@@ -452,21 +489,26 @@ class AdaptiveRAGStrategy(RAGStrategy):
     supports_abstention = True
     expected_latency = "fast"
     best_for = "Mixed workloads — auto-selects simple/complex path"
-    limitations = "Classifier accuracy depends on LLM quality; adds one round-trip for classification"
+    limitations = (
+        "Classifier accuracy depends on LLM quality; adds one round-trip for classification"
+    )
 
     def is_available(self) -> tuple[bool, str]:
         return True, ""
 
-    def run(self, query: str, final_k: int = 6, use_cache: bool = True, **kwargs: Any) -> StrategyResult:
+    def run(
+        self, query: str, final_k: int = 6, use_cache: bool = True, **kwargs: Any
+    ) -> StrategyResult:
         import time
+
         t0 = time.perf_counter()
         trace_steps: list[dict] = []
         warnings: list[str] = ["Adaptive-RAG: experimental approximation"]
 
         # Step 1: classify complexity
-        complexity_raw = _llm_call(
-            _COMPLEXITY_PROMPT.format(question=query), max_tokens=20
-        ).strip().lower()
+        complexity_raw = (
+            _llm_call(_COMPLEXITY_PROMPT.format(question=query), max_tokens=20).strip().lower()
+        )
 
         # Clean up — take first word that matches a known category
         complexity = next(
@@ -475,23 +517,27 @@ class AdaptiveRAGStrategy(RAGStrategy):
         )
         route_hint = _COMPLEXITY_TO_ROUTE.get(complexity, "fast")
 
-        trace_steps.append({
-            "step": "adaptive_classify",
-            "status": "success",
-            "label": "Adaptive-RAG: Complexity Classification",
-            "detail": f"complexity={complexity} → route={route_hint}",
-        })
+        trace_steps.append(
+            {
+                "step": "adaptive_classify",
+                "status": "success",
+                "label": "Adaptive-RAG: Complexity Classification",
+                "detail": f"complexity={complexity} → route={route_hint}",
+            }
+        )
 
         # Step 2: route to appropriate retrieval
         d = _run_base(query, route_hint=route_hint, final_k=final_k, use_cache=use_cache)
         trace_steps.extend(d.get("trace_steps", []))
 
-        trace_steps.append({
-            "step": "adaptive_complete",
-            "status": "success",
-            "label": "Adaptive-RAG: Complete",
-            "detail": f"complexity={complexity} route={route_hint} coverage={d.get('evidence_coverage', 0):.2f}",
-        })
+        trace_steps.append(
+            {
+                "step": "adaptive_complete",
+                "status": "success",
+                "label": "Adaptive-RAG: Complete",
+                "detail": f"complexity={complexity} route={route_hint} coverage={d.get('evidence_coverage', 0):.2f}",
+            }
+        )
 
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
@@ -522,10 +568,13 @@ class AdaptiveRAGStrategy(RAGStrategy):
 # Planned stubs (require separate index builds)
 # ---------------------------------------------------------------------------
 
+
 class LightRAGLocalStrategy(RAGStrategy):
     id = "lightrag_local"
     name = "LightRAG-style Local"
-    description = "Entity-centric retrieval using local entity neighborhoods. (LightRAG, Guo et al. 2024)"
+    description = (
+        "Entity-centric retrieval using local entity neighborhoods. (LightRAG, Guo et al. 2024)"
+    )
     status = "planned"
     required_features = ["graph_index"]
     supports_graph = True
@@ -543,7 +592,9 @@ class LightRAGLocalStrategy(RAGStrategy):
 class LightRAGGlobalStrategy(RAGStrategy):
     id = "lightrag_global"
     name = "LightRAG-style Global"
-    description = "Community-level summary retrieval for broad synthesis. (LightRAG, Guo et al. 2024)"
+    description = (
+        "Community-level summary retrieval for broad synthesis. (LightRAG, Guo et al. 2024)"
+    )
     status = "planned"
     required_features = ["graph_index", "community_summaries"]
     supports_graph = True
@@ -588,7 +639,10 @@ class RAPTORStrategy(RAGStrategy):
     limitations = "Requires hierarchical index build — not yet implemented"
 
     def is_available(self) -> tuple[bool, str]:
-        return False, "RAPTOR-style hierarchical retrieval is planned. Requires hierarchical index build."
+        return (
+            False,
+            "RAPTOR-style hierarchical retrieval is planned. Requires hierarchical index build.",
+        )
 
     def run(self, query: str, **kwargs: Any) -> StrategyResult:
         return _not_implemented(self.id, self.name, query)

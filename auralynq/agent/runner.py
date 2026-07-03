@@ -211,9 +211,7 @@ def _build_modelfit_snapshot(provider: str, model_name: str) -> dict[str, Any] |
             "estimated_vram_gb": re.estimated_vram_gb if re else None,
             "hardware_warning": hw_warning,
             "hardware_warnings": [hw_warning] if hw_warning else [],
-            "measured_tok_per_sec": (
-                s.benchmark.avg_tok_per_sec if s.benchmark else None
-            ),
+            "measured_tok_per_sec": (s.benchmark.avg_tok_per_sec if s.benchmark else None),
             "estimate_used": s.estimate_used,
             "measured_available": measured_available,
             "recommendation_reason": recommendation_reason,
@@ -310,6 +308,7 @@ def answer_question(
     # Attach ModelFit metadata — purely informational, never raises
     try:
         from auralynq.llm.factory import resolved_provider
+
         _prov = resolved_provider()
         _model = get_settings().llm.model
         result.model_fit = _build_modelfit_snapshot(_prov, _model)
@@ -404,6 +403,7 @@ def stream_answer_question(
     _model_fit = None
     try:
         from auralynq.llm.factory import resolved_provider
+
         _model_fit = _build_modelfit_snapshot(resolved_provider(), get_settings().llm.model)
     except Exception:
         pass

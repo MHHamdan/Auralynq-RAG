@@ -31,12 +31,42 @@ _SIMPLE_LEAD = re.compile(r"^(what is|who is|define|when|where|list|give me)\b",
 # Question/function words that open sentences and match _ENTITY_RE due to capitalization.
 # Filtering these prevents "What", "Did", "Is" from inflating the entity count and
 # pushing pledge/policy queries onto the graph route.
-_ENTITY_STOPWORDS = frozenset({
-    "what", "who", "how", "when", "where", "which", "why",
-    "did", "does", "do", "is", "are", "was", "were", "has", "have",
-    "in", "on", "at", "for", "of", "to", "by", "with", "from",
-    "a", "an", "the", "its", "their", "this", "that",
-})
+_ENTITY_STOPWORDS = frozenset(
+    {
+        "what",
+        "who",
+        "how",
+        "when",
+        "where",
+        "which",
+        "why",
+        "did",
+        "does",
+        "do",
+        "is",
+        "are",
+        "was",
+        "were",
+        "has",
+        "have",
+        "in",
+        "on",
+        "at",
+        "for",
+        "of",
+        "to",
+        "by",
+        "with",
+        "from",
+        "a",
+        "an",
+        "the",
+        "its",
+        "their",
+        "this",
+        "that",
+    }
+)
 # Factoid patterns: single-entity declarations, pledges, policy statements.
 # Their multi-entity surface form fools the entity counter into thinking they are
 # relational, but they are simple retrieval questions, not multi-hop traversals.

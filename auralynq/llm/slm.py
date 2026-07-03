@@ -38,6 +38,7 @@ def gpu_available() -> bool:
 
     try:
         import sys
+
         torch = sys.modules.get("torch")
         if torch is not None:
             return bool(torch.cuda.is_available())

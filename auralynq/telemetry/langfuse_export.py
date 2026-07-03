@@ -39,9 +39,7 @@ _PII_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"), "[EMAIL]"),
     # US/intl phone numbers in common formats
     (
-        re.compile(
-            r"\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b"
-        ),
+        re.compile(r"\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b"),
         "[PHONE]",
     ),
     # Social Security Numbers
