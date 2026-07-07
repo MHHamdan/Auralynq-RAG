@@ -83,7 +83,10 @@ services:
     volumes:
       - auralynq-phoenix:/data
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:6006')\" || exit 1"]
+      # The Phoenix image is distroless (no /bin/sh), so a CMD-SHELL test can
+      # never execute and the service shows perpetually "unhealthy" even while
+      # serving fine. Use the exec form with the image's own python interpreter.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:6006').status == 200 else 1)"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -98,10 +101,13 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["uvicorn", "auralynq.serving.app:app", "--host", "0.0.0.0", "--port", "8000"]
-    # Expose host Ollama to containers on Docker Desktop (Windows/Mac) where
-    # host.containers.internal isn't automatic. Podman ignores extra_hosts safely.
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
+    # Host services (e.g. Ollama on :11434) are reachable at
+    # host.containers.internal: rootless Podman injects this into every
+    # container's /etc/hosts automatically (slirp4netns/pasta/netavark → the
+    # host gateway, 10.0.2.2). We deliberately do NOT declare it via
+    # `extra_hosts: "host.containers.internal:host-gateway"` — that magic value
+    # requires podman >= 4.1 and HARD-ERRORS on 3.x ("invalid IP address in
+    # add-host: host-gateway"), which is what broke `make start`.
     # Internal: loopback publish for host tooling; reachable in-cluster as api:8000.
     ports:
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_API_PORT:-8000}:8000"
@@ -146,8 +152,6 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["python", "-m", "auralynq.mcp_server.server", "--transport", "streamable-http"]
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
     ports:
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_MCP_PORT:-8765}:8765"
     environment:
@@ -187,8 +191,6 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["python", "-m", "auralynq.serving.worker"]
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
     environment:
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
