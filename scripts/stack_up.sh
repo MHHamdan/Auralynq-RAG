@@ -50,8 +50,36 @@ shopt -u nullglob
 bind_internal="${AURALYNQ_BIND_INTERNAL:-$(grep -E '^AURALYNQ_BIND_INTERNAL=' .env 2>/dev/null | cut -d= -f2)}"; bind_internal="${bind_internal:-127.0.0.1}"
 https_port="${AURALYNQ_HTTPS_PORT:-$(grep -E '^AURALYNQ_HTTPS_PORT=' .env 2>/dev/null | cut -d= -f2)}"; https_port="${https_port:-8443}"
 
+# ── Host Ollama reachability (rootless) ───────────────────────────────────────
+# Containers on the rootless compose bridge cannot reach host loopback services,
+# and Podman auto-injects host.containers.internal pointing at the bridge gateway
+# (10.88.0.1) — which is NOT the host in rootless mode. If the user runs Ollama
+# on the host, route the containers to the host's real LAN IP instead (Ollama
+# binds 0.0.0.0, so the bridge can reach it there). Without this the API silently
+# degrades to the extractive LLM fallback even when a local GPU model is present.
+existing_base="${AURALYNQ_LLM__BASE_URL:-$(grep -E '^AURALYNQ_LLM__BASE_URL=' .env 2>/dev/null | cut -d= -f2- || true)}"
+if [ -z "${existing_base}" ]; then
+  host_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' | head -1 || true)"
+  if [ -n "${host_ip}" ] && curl -fsS -m 2 "http://${host_ip}:11434/api/tags" >/dev/null 2>&1; then
+    export AURALYNQ_LLM__BASE_URL="http://${host_ip}:11434"
+    echo "→ host Ollama reachable at ${host_ip}:11434 — routing containers there (local model, not extractive)."
+  else
+    echo "→ host Ollama not detected — API will use its configured/auto LLM (extractive fallback if none)."
+  fi
+fi
+
 echo "→ starting stack…"
 $COMPOSE -f "$CF" up -d
+
+# The compose `up` above creates the project network at cniVersion 1.0.0, which
+# the older `firewall` CNI plugin rejects (noisy validation warnings on every
+# later podman command). Patch it down to 0.4.0 + dnsname now that it exists so
+# subsequent `podman ps/logs/exec` and the next `up` run clean.
+shopt -s nullglob
+for f in "${CNI_DIR}"/*_default.conflist "${CNI_DIR}"/auralynq*.conflist; do
+  patch_conflist "$f"
+done
+shopt -u nullglob
 
 echo "✓ stack up (services resolve peers by container_name via dnsname):"
 echo "    HTTPS   : https://<SERVER_IP>:${https_port}   (public — Caddy TLS proxy)"
