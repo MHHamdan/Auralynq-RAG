@@ -8,6 +8,8 @@ const BADGES = [
   "Local-first",
   "$0 default",
   "Open source",
+  "Span-level visual grounding",
+  "Hardware-aware ModelFit",
   "Citations on every answer",
   "Voice in / out",
   "Provider-agnostic",
