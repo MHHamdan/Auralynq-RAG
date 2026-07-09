@@ -4,6 +4,7 @@ import type { DiscoverEntry, DiscoverHardware, DiscoverResult } from "@/lib/mode
 import { discoverModels } from "@/lib/modelfit";
 import { SystemReport } from "@/components/modelfit/SystemReport";
 import { PullConfirmModal } from "@/components/modelfit/PullConfirmModal";
+import { VerdictPill } from "@/components/modelfit/VerdictPill";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,16 @@ const SOURCE_BADGE: Record<string, string> = {
   huggingface: "bg-indigo-900/60 text-indigo-300",
   local:       "bg-zinc-700/80 text-zinc-300",
 };
+
+// Group raw quant labels (q4_k_m, q8_0, f16 …) into friendly bands (Jan's
+// Small/Balanced/Large) so users pick a fidelity, not a cryptic code.
+const QUANT_BANDS = ["Small", "Balanced", "Large"] as const;
+type QuantBand = (typeof QUANT_BANDS)[number];
+function quantBand(q: string): QuantBand {
+  const n = Number(q.toLowerCase().match(/(?:iq|q)(\d+)/)?.[1]);
+  if (!Number.isNaN(n)) return n <= 3 ? "Small" : n <= 5 ? "Balanced" : "Large";
+  return "Large"; // f16 / bf16 / fp16 / f32 — full precision
+}
 
 const TASK_OPTIONS = [
   { id: "rag",           label: "RAG" },
@@ -164,6 +175,43 @@ function ExpandedPanel({
         </div>
       </div>
 
+      {/* Quantization options — grouped by fidelity, best one flagged */}
+      {entry.model_meta.available_quantizations.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            Quantization options
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {QUANT_BANDS.map((band) => {
+              const qs = entry.model_meta.available_quantizations.filter((q) => quantBand(q) === band);
+              if (!qs.length) return null;
+              return (
+                <div key={band} className="min-w-[104px] flex-1 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2">
+                  <p className="mb-1 text-[10px] font-medium text-zinc-400">{band}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {qs.map((q) => {
+                      const rec = q === entry.best_quantization;
+                      return (
+                        <span
+                          key={q}
+                          className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
+                            rec ? "bg-sky-900/50 text-sky-200 ring-1 ring-sky-600/50" : "bg-zinc-800 text-zinc-400"
+                          }`}
+                        >
+                          {q}
+                          {rec && " ★"}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-zinc-600">★ Recommended for your hardware</p>
+        </div>
+      )}
+
       {/* Pull section */}
       {entry.pull_command && (
         <div className="space-y-2">
@@ -265,12 +313,17 @@ function ModelRow({
           </div>
         </div>
 
-        {/* VRAM pill */}
+        {/* Will-it-run verdict — led prominently (our differentiator) */}
         {re && (
-          <div className="hidden sm:block shrink-0">
-            <span className={`text-xs px-2 py-0.5 rounded font-mono ${FIT_PILL[re.fit_level] ?? "bg-zinc-800 text-zinc-400"}`}>
-              {re.estimated_vram_gb} GB
-            </span>
+          <div className="hidden shrink-0 flex-col items-end gap-0.5 sm:flex">
+            {re.verdict ? (
+              <VerdictPill verdict={re.verdict} />
+            ) : (
+              <span className={`rounded px-2 py-0.5 font-mono text-xs ${FIT_PILL[re.fit_level] ?? "bg-zinc-800 text-zinc-400"}`}>
+                {re.fit_level.replace("_", " ")}
+              </span>
+            )}
+            <span className="font-mono text-[10px] text-zinc-500">~{re.estimated_vram_gb} GB</span>
           </div>
         )}
 
