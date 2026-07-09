@@ -1,10 +1,13 @@
+import { CheckCircle2, Cpu, AlertTriangle, XCircle, type LucideIcon } from "lucide-react";
 import type { Verdict } from "@/lib/modelfit";
 
 // Shared presentation for the estimator's will-it-run verdict, so the report
 // card, the pull modal, and the ranked rows all speak the same language.
+// Colors are design tokens (ok/info/warn/bad) so verdicts stay correct across
+// the dark / light / comfort themes — never raw palette classes.
 export interface VerdictMeta {
   label: string;
-  icon: string;
+  icon: LucideIcon;
   /** For a solid banner/pill background. */
   badgeClass: string;
   /** For a coloured accent / bar fill. */
@@ -16,45 +19,45 @@ export interface VerdictMeta {
 export const VERDICT_META: Record<Verdict, VerdictMeta> = {
   runs_great: {
     label: "Runs great",
-    icon: "✓",
-    badgeClass: "bg-emerald-900/50 text-emerald-300 ring-1 ring-emerald-600/40",
-    barClass: "bg-emerald-500",
-    textClass: "text-emerald-400",
+    icon: CheckCircle2,
+    badgeClass: "bg-ok/15 text-ok ring-1 ring-ok/40",
+    barClass: "bg-ok",
+    textClass: "text-ok",
   },
   runs_ok: {
     label: "Runs (tight fit)",
-    icon: "✓",
-    badgeClass: "bg-sky-900/50 text-sky-300 ring-1 ring-sky-600/40",
-    barClass: "bg-sky-500",
-    textClass: "text-sky-400",
+    icon: CheckCircle2,
+    badgeClass: "bg-info/15 text-info ring-1 ring-info/40",
+    barClass: "bg-info",
+    textClass: "text-info",
   },
   runs_offload: {
     label: "Runs with CPU offload — slower",
-    icon: "◐",
-    badgeClass: "bg-amber-900/50 text-amber-300 ring-1 ring-amber-600/40",
-    barClass: "bg-amber-500",
-    textClass: "text-amber-400",
+    icon: AlertTriangle,
+    badgeClass: "bg-warn/15 text-warn ring-1 ring-warn/40",
+    barClass: "bg-warn",
+    textClass: "text-warn",
   },
   runs_cpu: {
     label: "Runs on CPU",
-    icon: "✓",
-    badgeClass: "bg-sky-900/50 text-sky-300 ring-1 ring-sky-600/40",
-    barClass: "bg-sky-500",
-    textClass: "text-sky-400",
+    icon: Cpu,
+    badgeClass: "bg-info/15 text-info ring-1 ring-info/40",
+    barClass: "bg-info",
+    textClass: "text-info",
   },
   runs_cpu_tight: {
     label: "Runs on CPU — low RAM headroom",
-    icon: "◐",
-    badgeClass: "bg-amber-900/50 text-amber-300 ring-1 ring-amber-600/40",
-    barClass: "bg-amber-500",
-    textClass: "text-amber-400",
+    icon: AlertTriangle,
+    badgeClass: "bg-warn/15 text-warn ring-1 ring-warn/40",
+    barClass: "bg-warn",
+    textClass: "text-warn",
   },
   too_big: {
     label: "Too big for this machine",
-    icon: "✕",
-    badgeClass: "bg-red-900/50 text-red-300 ring-1 ring-red-600/40",
-    barClass: "bg-red-500",
-    textClass: "text-red-400",
+    icon: XCircle,
+    badgeClass: "bg-bad/15 text-bad ring-1 ring-bad/40",
+    barClass: "bg-bad",
+    textClass: "text-bad",
   },
 };
 

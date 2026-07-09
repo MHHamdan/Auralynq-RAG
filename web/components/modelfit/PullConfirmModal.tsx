@@ -81,7 +81,7 @@ export function PullConfirmModal({
           {/* Verdict banner */}
           {verdict && (
             <div className={`flex items-center gap-2 rounded-lg px-3 py-2 ${verdict.badgeClass}`}>
-              <span className="text-base">{verdict.icon}</span>
+              <verdict.icon className="h-4 w-4 shrink-0" aria-hidden />
               <span className="text-sm font-medium">{verdict.label}</span>
               {re && (
                 <span className="ml-auto text-xs opacity-80 font-mono">
