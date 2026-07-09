@@ -246,7 +246,7 @@ export function SystemReport({
               {/* Verdict badge */}
               {meta && (
                 <div className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 ${meta.badgeClass}`}>
-                  <span>{meta.icon}</span>
+                  <meta.icon className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="text-sm font-semibold">{meta.label}</span>
                 </div>
               )}

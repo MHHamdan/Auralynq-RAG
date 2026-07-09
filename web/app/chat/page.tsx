@@ -618,6 +618,10 @@ export default function Chat() {
                         onRegenerate={t.role === "assistant" ? regenerate : undefined}
                         onAsk={send}
                         onIngest={openIngest}
+                        onOpenSource={(marker) => {
+                          setActiveCitation(String(marker));
+                          setShowWorkspace(true);
+                        }}
                       />
                       {showVG && (
                         <InlineSourceStrip

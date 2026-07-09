@@ -25,46 +25,45 @@ export interface Turn {
   model_fit?: ModelFitSnapshot | null;
 }
 
+// Fit-level → semantic token (theme-aware across dark / light / comfort).
 const FIT_COLOR: Record<string, string> = {
-  "Excellent fit": "text-emerald-400",
-  "Recommended": "text-sky-400",
-  "Usable with limits": "text-amber-400",
-  "Not recommended": "text-orange-400",
-  "Does not fit": "text-red-400",
+  "Excellent fit": "text-ok",
+  "Recommended": "text-brand",
+  "Usable with limits": "text-warn",
+  "Not recommended": "text-warn",
+  "Does not fit": "text-bad",
 };
 
 function ModelFitChip({ mf }: { mf: ModelFitSnapshot }) {
   const modelShort = mf.selected_model.replace(/^(ollama:|local:|hf:)/, "");
-  const labelColor = FIT_COLOR[mf.fit_level ?? ""] ?? "text-zinc-400";
+  const labelColor = FIT_COLOR[mf.fit_level ?? ""] ?? "text-fg3";
   return (
     <Link
       href="/modelfit"
-      className="mt-2 inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] hover:border-sky-700 transition-colors"
-      title="Open ModelFit Index"
+      className="chip mt-2 !text-[11px] hover:border-edge2 transition-colors"
+      title={`ModelFit: ${mf.fit_level ?? "scored"} — open ModelFit Index`}
     >
-      <span className="text-zinc-500">model</span>
-      <span className="font-mono text-zinc-300 max-w-[120px] truncate">{modelShort}</span>
+      <span className="text-fg3">model</span>
+      <span className="max-w-[120px] truncate font-mono text-fg2">{modelShort}</span>
       {mf.fit_score != null && (
         <>
-          <span className="text-zinc-600">·</span>
+          <span className="text-fg3">·</span>
           <span className={`font-semibold ${labelColor}`}>{Math.round(mf.fit_score)}/100</span>
         </>
       )}
       {mf.quantization && (
         <>
-          <span className="text-zinc-600">·</span>
-          <span className="font-mono text-zinc-400">{mf.quantization}</span>
+          <span className="text-fg3">·</span>
+          <span className="font-mono text-fg3">{mf.quantization}</span>
         </>
       )}
       {mf.estimated_vram_gb != null && (
         <>
-          <span className="text-zinc-600">·</span>
-          <span className="text-zinc-400">{mf.estimated_vram_gb.toFixed(1)} GB</span>
+          <span className="text-fg3">·</span>
+          <span className="text-fg3">{mf.estimated_vram_gb.toFixed(1)} GB</span>
         </>
       )}
-      {mf.estimate_used && (
-        <span className="text-zinc-600 italic">est.</span>
-      )}
+      {mf.estimate_used && <span className="italic text-fg3">est.</span>}
     </Link>
   );
 }
@@ -120,6 +119,7 @@ export function Message({
   onRegenerate,
   onAsk,
   onIngest,
+  onOpenSource,
 }: {
   turn: Turn;
   streaming: boolean;
@@ -127,6 +127,7 @@ export function Message({
   onRegenerate?: () => void;
   onAsk?: (q: string) => void;
   onIngest?: () => void;
+  onOpenSource?: (marker: number) => void;
 }) {
   if (turn.role === "user") {
     return (
@@ -171,7 +172,12 @@ export function Message({
           <p className="whitespace-pre-wrap leading-relaxed text-bad">{turn.text}</p>
         ) : (
           <div className="prose-answer">
-            <Markdown text={turn.text} streaming={live} />
+            <Markdown
+              text={turn.text}
+              streaming={live}
+              citations={turn.citations}
+              onOpenCitation={onOpenSource}
+            />
             {live && (
               <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-brand/70 align-middle" />
             )}
@@ -182,7 +188,7 @@ export function Message({
           <InsufficientEvidence reason={turn.insufficient} onAsk={onAsk} onIngest={onIngest} />
         )}
 
-        {hasCitations && <Citations citations={turn.citations!} />}
+        {hasCitations && <Citations citations={turn.citations!} onOpenSource={onOpenSource} />}
 
         {!streaming && turn.model_fit && turn.model_fit.fit_score != null && (
           <ModelFitChip mf={turn.model_fit} />
