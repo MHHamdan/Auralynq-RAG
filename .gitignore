@@ -138,3 +138,6 @@ prompt.md
 
 # Runtime markers written by the local stack
 .qdrant-initialized
+
+# Auto-generated GPU visibility override (host-specific)
+compose.gpu.yml
