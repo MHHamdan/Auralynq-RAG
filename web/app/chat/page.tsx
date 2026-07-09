@@ -21,6 +21,7 @@ import {
 import { isInventoryQuestion } from "@/lib/format";
 import { Message, type Turn } from "@/components/Message";
 import { Toast } from "@/components/ui/Toast";
+import { AnswerSteps } from "@/components/AnswerSteps";
 import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
@@ -629,6 +630,9 @@ export default function Chat() {
                           onOpen={() => { setTab("source"); setShowPanel(true); }}
                           onOpenWorkspace={() => setShowWorkspace(true)}
                         />
+                      )}
+                      {isLastAssistant && !streaming && traceSteps.length > 0 && (
+                        <AnswerSteps steps={traceSteps} />
                       )}
                     </div>
                   );
