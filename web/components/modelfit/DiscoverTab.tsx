@@ -1,7 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiscoverEntry, DiscoverHardware, DiscoverResult } from "@/lib/modelfit";
-import { discoverModels, pullModel } from "@/lib/modelfit";
+import { discoverModels } from "@/lib/modelfit";
+import { SystemReport } from "@/components/modelfit/SystemReport";
+import { PullConfirmModal } from "@/components/modelfit/PullConfirmModal";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -83,33 +85,16 @@ function PullCommand({ cmd }: { cmd: string }) {
 
 // ── Expanded row detail panel ─────────────────────────────────────────────────
 
-type PullState = "idle" | "pulling" | "done" | "error";
-
 function ExpandedPanel({
   entry,
-  onPulled,
+  onRequestPull,
 }: {
   entry: DiscoverEntry;
-  onPulled: (modelId: string) => void;
+  onRequestPull: (entry: DiscoverEntry) => void;
 }) {
-  const [pullState, setPullState] = useState<PullState>("idle");
-  const [pullError, setPullError] = useState<string | null>(null);
   const sc = scoreColor(entry.overall_score);
   const re = entry.resource_estimate;
   const isOllama = entry.source === "ollama";
-
-  async function doPull() {
-    setPullState("pulling");
-    setPullError(null);
-    try {
-      await pullModel(entry.model_id);
-      setPullState("done");
-      onPulled(entry.model_id);
-    } catch (e) {
-      setPullState("error");
-      setPullError(String(e).replace(/^Error:\s*/, ""));
-    }
-  }
 
   const bars = [
     { label: "Hardware fit", value: entry.hardware_fit },
@@ -187,39 +172,13 @@ function ExpandedPanel({
           </p>
           <PullCommand cmd={entry.pull_command} />
 
-          {isOllama && !entry.already_installed && (
-            <div className="flex items-center gap-3">
-              {pullState === "idle" && (
-                <button
-                  onClick={doPull}
-                  className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-sm text-white font-medium transition-colors"
-                >
-                  <span>↓</span> Pull now
-                </button>
-              )}
-              {pullState === "pulling" && (
-                <div className="flex items-center gap-2 text-sm text-zinc-400">
-                  <span className="animate-spin">⟳</span>
-                  <span>Pulling… this may take several minutes (Ollama handles progress)</span>
-                </div>
-              )}
-              {pullState === "done" && (
-                <div className="flex items-center gap-2 text-sm text-emerald-400">
-                  <span>✓</span> Pull complete — model is installed
-                </div>
-              )}
-              {pullState === "error" && (
-                <div className="space-y-1">
-                  <p className="text-sm text-red-400">Pull failed: {pullError}</p>
-                  <button
-                    onClick={doPull}
-                    className="text-xs text-zinc-400 hover:text-zinc-200 underline"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-            </div>
+          {!entry.already_installed && (
+            <button
+              onClick={() => onRequestPull(entry)}
+              className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-sm text-white font-medium transition-colors"
+            >
+              <span>{isOllama ? "↓" : "⎘"}</span> {isOllama ? "Pull now" : "Download command"}
+            </button>
           )}
         </div>
       )}
@@ -248,23 +207,18 @@ function ExpandedPanel({
 function ModelRow({
   entry,
   rank,
-  onPulled,
+  onRequestPull,
 }: {
   entry: DiscoverEntry;
   rank: number;
-  onPulled: (modelId: string) => void;
+  onRequestPull: (entry: DiscoverEntry) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [installed, setInstalled] = useState(entry.already_installed);
+  const installed = entry.already_installed;
   const sc = scoreColor(entry.overall_score);
   const re = entry.resource_estimate;
   const displayName = (entry.model_meta.display_name || entry.model_id)
     .replace(/^(ollama:|hf:|local:)/, "");
-
-  function handlePulled(id: string) {
-    setInstalled(true);
-    onPulled(id);
-  }
 
   return (
     <div
@@ -341,9 +295,7 @@ function ModelRow({
       </button>
 
       {/* Expanded detail */}
-      {expanded && (
-        <ExpandedPanel entry={{ ...entry, already_installed: installed }} onPulled={handlePulled} />
-      )}
+      {expanded && <ExpandedPanel entry={entry} onRequestPull={onRequestPull} />}
     </div>
   );
 }
@@ -487,6 +439,7 @@ export function DiscoverTab() {
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState<string>("—");
   const [showCopy, setShowCopy] = useState(false);
+  const [pullTarget, setPullTarget] = useState<DiscoverEntry | null>(null);
 
   // tick elapsed display every 5s
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -541,11 +494,21 @@ export function DiscoverTab() {
         </h2>
         <p className="text-xs text-zinc-500">
           Probes your hardware, queries live Ollama registry + HuggingFace, and ranks
-          every available model against your machine. Pull with one click.
+          every available model against your machine. Review the report, then pull with one click.
         </p>
       </div>
 
-      {/* Hardware strip */}
+      {/* System report hero card + agree-to-pull */}
+      {result && (
+        <SystemReport
+          result={result}
+          onPull={(entry) => setPullTarget(entry)}
+          onRefresh={() => discover(true)}
+          loading={loading}
+        />
+      )}
+
+      {/* Compact hardware strip (kept for the ranked list below) */}
       {result && <HardwareStrip hw={result.hardware} />}
 
       {/* Controls */}
@@ -658,13 +621,23 @@ export function DiscoverTab() {
               key={entry.model_id}
               entry={entry}
               rank={i + 1}
-              onPulled={handlePulled}
+              onRequestPull={(e) => setPullTarget(e)}
             />
           ))}
           {result.recommendations.length === 0 && (
             <p className="text-sm text-zinc-500">No models found for this combination of task and hardware.</p>
           )}
         </div>
+      )}
+
+      {/* Agree-to-pull confirmation */}
+      {pullTarget && result && (
+        <PullConfirmModal
+          entry={pullTarget}
+          hardware={result.hardware}
+          onClose={() => setPullTarget(null)}
+          onPulled={handlePulled}
+        />
       )}
 
       {/* Copy results modal */}

@@ -10,21 +10,34 @@ export interface GPUInfo {
   vram_gb: number;
   backend: string;
   device_index: number;
+  vram_free_gb?: number | null;
+  vram_used_gb?: number | null;
+  integrated?: boolean;
 }
 
 export interface HardwareProfile {
   os: { name: string; version: string };
   python_version: string;
-  cpu: { model: string; cores_physical: number; cores_logical: number };
+  cpu: {
+    model: string;
+    cores_physical: number;
+    cores_logical: number;
+    arch?: string;
+    avx2?: boolean;
+    avx512?: boolean;
+  };
   ram_gb: number;
   gpus: GPUInfo[];
   total_vram_gb: number;
+  total_vram_free_gb?: number | null;
   disk_free_gb: number;
   best_backend: string;
   cuda_available: boolean;
   cuda_version: string | null;
   metal_available: boolean;
   rocm_available: boolean;
+  avx2?: boolean;
+  avx512?: boolean;
   ollama_available: boolean;
   ollama_version: string | null;
   hf_available: boolean;
@@ -32,6 +45,15 @@ export interface HardwareProfile {
   in_container: boolean;
   warnings: string[];
 }
+
+/** UI-facing verdict from the resource estimator (see resource_estimator.py). */
+export type Verdict =
+  | "runs_great"
+  | "runs_ok"
+  | "runs_offload"
+  | "runs_cpu"
+  | "runs_cpu_tight"
+  | "too_big";
 
 export interface ModelMeta {
   model_id: string;
@@ -67,6 +89,11 @@ export interface ResourceEstimate {
   fits: boolean;
   recommended_context: number;
   peak_vram_at_max_ctx_gb: number;
+  verdict?: Verdict;
+  fits_in_vram?: boolean;
+  requires_cpu_offload?: boolean;
+  headroom_gb?: number;
+  vram_free_gb?: number | null;
   warnings: string[];
   is_estimate: true;
 }
@@ -244,11 +271,18 @@ export async function fetchBenchmarkRun(run_id: string): Promise<BenchmarkResult
 export interface DiscoverHardware {
   os: string;
   cpu: string;
+  cpu_cores_physical?: number;
+  cpu_cores_logical?: number;
+  arch?: string;
+  avx2?: boolean;
+  avx512?: boolean;
   ram_gb: number;
   total_vram_gb: number;
+  total_vram_free_gb?: number | null;
   gpus: GPUInfo[];
   best_backend: string;
   ollama_available: boolean;
+  in_container?: boolean;
 }
 
 export interface DiscoverEntry {
