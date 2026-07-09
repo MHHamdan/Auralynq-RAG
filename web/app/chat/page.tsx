@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 import { isInventoryQuestion } from "@/lib/format";
 import { Message, type Turn } from "@/components/Message";
+import { Toast } from "@/components/ui/Toast";
 import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
@@ -121,7 +122,7 @@ export default function Chat() {
   const [lastStatus, setLastStatus] = useState<string>("answered");
   const [tab, setTab] = useState<Tab>("overview");
   const [showPanel, setShowPanel] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; id: number } | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>(FALLBACK_SUGGESTIONS);
   const [phoenixUrl, setPhoenixUrl] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean | null>(null);
@@ -214,8 +215,7 @@ export default function Chat() {
   }, [turns]);
 
   const flash = useCallback((m: string) => {
-    setToast(m);
-    setTimeout(() => setToast(null), 2200);
+    setToast({ msg: m, id: Date.now() });
   }, []);
 
   function patchLast(update: Partial<Turn>) {
@@ -762,12 +762,7 @@ export default function Chat() {
       )}
 
       {toast && (
-        <div
-          role="status"
-          className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-edge bg-panel px-4 py-2 text-sm shadow-lg"
-        >
-          {toast}
-        </div>
+        <Toast key={toast.id} message={toast.msg} onClose={() => setToast(null)} />
       )}
     </div>
   );

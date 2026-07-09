@@ -13,6 +13,7 @@ import {
   corpusDeleteLastPreview,
 } from "@/lib/api";
 import { displaySource } from "@/lib/format";
+import { Modal } from "@/components/ui/Modal";
 
 type ModalStep = "idle" | "previewing" | "confirming" | "done" | "error";
 type DeleteAction = "clear_all" | "delete_last" | "delete_doc";
@@ -102,22 +103,8 @@ export function CorpusManageModal({ onClose, onDeleted, initialAction }: Props) 
   const phraseMatch = phrase.trim().toUpperCase() === expectedPhrase;
 
   return (
-    <div
-      role="dialog"
-      aria-modal
-      aria-label="Manage corpus"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 p-4 backdrop-blur-sm"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="relative w-full max-w-lg rounded-2xl border border-edge bg-panel shadow-lg">
-        <div className="flex items-center justify-between border-b border-edge px-5 py-4">
-          <h2 className="text-base font-semibold text-fg">Manage Corpus</h2>
-          <button onClick={onClose} className="btn-ghost px-2 py-1 text-sm" aria-label="Close">
-            ✕
-          </button>
-        </div>
-
-        <div className="max-h-[70vh] overflow-y-auto p-5">
+    <Modal open onClose={onClose} title="Manage Corpus" size="md" dismissable={!busy}>
+      <>
           {step === "idle" && (
             <div className="space-y-3">
               <p className="text-sm text-fg2">
@@ -187,9 +174,8 @@ export function CorpusManageModal({ onClose, onDeleted, initialAction }: Props) 
               </button>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 
