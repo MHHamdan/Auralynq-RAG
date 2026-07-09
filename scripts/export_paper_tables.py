@@ -37,6 +37,31 @@ def _eval_table(report: dict) -> str:
     return "\n".join(lines)
 
 
+def _hotpotqa_table(report: dict) -> str:
+    variants = report["retrieval"]
+    lines = [
+        "### Retrieval comparison — multi-hop HotpotQA\n",
+        "| Metric | " + " | ".join(variants.keys()) + " |",
+        "|---|" + "---|" * len(variants),
+    ]
+    for m in ["recall_at_k", "ndcg_at_10", "mrr", "precision_at_k", "latency_p50_ms"]:
+        row = [str(variants[v].get(m, "—")) for v in variants]
+        lines.append(f"| {m} | " + " | ".join(row) + " |")
+    ragas = (report.get("agentic") or {}).get("ragas") or {}
+    if ragas:
+        lines.append("")
+        lines.append("### Answer quality — full agentic pipeline (RAGAS proxy)\n")
+        lines.append("| Faithfulness | Answer relevancy | Context precision |")
+        lines.append("|---:|---:|---:|")
+        lines.append(
+            f"| {ragas.get('faithfulness', '—')} | {ragas.get('answer_relevancy', '—')} "
+            f"| {ragas.get('context_precision', '—')} |"
+        )
+    lines.append("")
+    lines.append(_provenance_line(report))
+    return "\n".join(lines)
+
+
 def _bench_table(report: dict) -> str:
     lines = [
         "### Qdrant quantization trade-off\n",
@@ -92,6 +117,10 @@ def _rag_bench_table(report: dict) -> str:
 
 _TABLE_BUILDERS = {
     "eval_report.json": ("Retrieval & Answer Quality (`make eval`)", _eval_table),
+    "eval_hotpotqa_report.json": (
+        "Multi-Hop QA (`python scripts/bench_hotpotqa.py`)",
+        _hotpotqa_table,
+    ),
     "bench_report.json": ("Vector Index Quantization (`make bench`)", _bench_table),
     "modelfit_bench_report.json": ("ModelFit Index (`make bench-modelfit`)", _modelfit_table),
     "visual_grounding_report.json": (

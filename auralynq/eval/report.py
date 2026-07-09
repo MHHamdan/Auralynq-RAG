@@ -45,8 +45,24 @@ def _ensure_index() -> None:
     build_index(corpus)
 
 
+def _dedup_preserve_order(sources: list[str]) -> list[str]:
+    """Collapse a chunk-level ranking to document granularity.
+
+    Relevance judgements are per document, so a gold document split across
+    several chunks must be credited once at its best (earliest) rank — otherwise
+    nDCG/precision are inflated (nDCG can exceed 1). Keeps first occurrence.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for s in sources:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
 def _ranked_sources(chunks) -> list[str]:
-    return [Path(c.chunk.source).name or c.chunk.source for c in chunks]
+    return _dedup_preserve_order([Path(c.chunk.source).name or c.chunk.source for c in chunks])
 
 
 def _retrieval_variants(golden, k: int) -> dict[str, Any]:
@@ -82,7 +98,7 @@ def _agentic(golden, k: int) -> dict[str, Any]:
     for item in golden:
         res = answer_question(item.question, final_k=k, use_cache=False)
         latencies.append(res.elapsed_ms)
-        ranked = [c.get("source", "") for c in res.citations]
+        ranked = _dedup_preserve_order([Path(c.get("source", "")).name for c in res.citations])
         cases.append((set(item.supporting), ranked))
         samples.append(
             {
