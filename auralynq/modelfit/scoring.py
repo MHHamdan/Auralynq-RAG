@@ -359,6 +359,7 @@ def score_model(
             available_vram_gb=hw.total_vram_gb,
             available_ram_gb=hw.ram_gb,
             context_tokens=context_tokens,
+            available_vram_free_gb=hw.total_vram_free_gb,
         )
         hw_score = _hardware_fit_score(resource, hw)
     else:
