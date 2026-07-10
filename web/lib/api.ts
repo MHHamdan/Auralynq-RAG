@@ -124,6 +124,7 @@ export type StreamEvent =
       detected_entities?: string[];
       evidence_coverage?: number;
       rag_strategy?: string;
+      sources?: Citation[];
     }
   | { type: "token"; text: string }
   | {

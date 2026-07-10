@@ -4,6 +4,7 @@ import {
   AnswerResult,
   CorpusSummary,
   DeploymentMode,
+  Citation,
   PathEvidence,
   StreamEvent,
   TraceSpan,
@@ -119,6 +120,7 @@ export default function Chat() {
   const [paths, setPaths] = useState<PathEvidence[]>([]);
   const [seeds, setSeeds] = useState<string[]>([]);
   const [streamEntities, setStreamEntities] = useState<string[]>([]);
+  const [streamSources, setStreamSources] = useState<Citation[]>([]);
   const [coverage, setCoverage] = useState(0);
   const [lastConfidence, setLastConfidence] = useState(0);
   const [lastRoute, setLastRoute] = useState("fast");
@@ -223,6 +225,7 @@ export default function Chat() {
 
   function patchLast(update: Partial<Turn>) {
     setTurns((t) => {
+      if (t.length === 0) return t;
       const c = [...t];
       c[c.length - 1] = { ...c[c.length - 1], ...update };
       return c;
@@ -236,6 +239,7 @@ export default function Chat() {
     setPaths([]);
     setSeeds([]);
     setStreamEntities([]);
+    setStreamSources([]);
     setCoverage(0);
     setLastStatus("answered");
     setVisualGrounding(null);
@@ -253,6 +257,7 @@ export default function Chat() {
             setPaths(e.path_evidence || []);
             setSeeds(e.seeds || []);
             setStreamEntities(e.detected_entities?.length ? e.detected_entities : e.seeds || []);
+            setStreamSources(e.sources || []);
             setCoverage(e.evidence_coverage ?? 0);
             setLastRoute(e.route);
             const isSystemRoute = ["corpus_inventory", "corpus_management", "app_help"].includes(e.route);
@@ -267,8 +272,12 @@ export default function Chat() {
           } else if (e.type === "token") {
             setAgentActivity((prev) => ({ ...prev, phase: "generating" }));
             setTurns((t) => {
+              // Guard: a token can arrive when the assistant turn isn't present
+              // (e.g. a StrictMode remount racing the in-flight stream). Never
+              // dereference an absent turn.
+              if (t.length === 0 || t[t.length - 1]?.role !== "assistant") return t;
               const c = [...t];
-              c[c.length - 1] = { ...c[c.length - 1], text: c[c.length - 1].text + e.text };
+              c[c.length - 1] = { ...c[c.length - 1], text: (c[c.length - 1].text ?? "") + (e.text ?? "") };
               return c;
             });
           } else if (e.type === "final") {
@@ -616,8 +625,8 @@ export default function Chat() {
                     (t.citations?.length ?? 0) > 0;
                   return (
                     <div key={i} className="msg-in">
-                      {isLastAssistant && streaming && (streamEntities.length > 0 || !!t.route) && (
-                        <StreamingEvidence route={t.route} entities={streamEntities} />
+                      {isLastAssistant && streaming && (streamEntities.length > 0 || streamSources.length > 0 || !!t.route) && (
+                        <StreamingEvidence route={t.route} entities={streamEntities} sources={streamSources} />
                       )}
                       <Message
                         turn={t}
