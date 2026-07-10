@@ -358,6 +358,20 @@ def stream_answer_question(
     _detected = detect_entities(question, _summary)
     _suggestions = suggested_questions(3, _summary)
 
+    # Retrieved source candidates — emitted before generation so the UI can show
+    # real source cards while the answer streams (progressive evidence). These are
+    # candidates; the `final` event carries the actually-cited subset. `marker`
+    # aligns with the eventual citation index so cards are number-matched early.
+    _source_candidates = [
+        {
+            **c.chunk.citation(),
+            "marker": i,
+            "score": round(float(c.score or 0.0), 4),
+            "method": c.method or "unknown",
+        }
+        for i, c in enumerate(state.contexts[:8], start=1)
+    ]
+
     yield {
         "type": "meta",
         "route": state.route.value,
@@ -367,6 +381,7 @@ def stream_answer_question(
         "path_evidence": [e.model_dump() for e in state.path_evidence],
         "detected_entities": _detected,
         "evidence_coverage": state.coverage,
+        "sources": _source_candidates,
     }
 
     contexts = _contexts_for_llm(state)
