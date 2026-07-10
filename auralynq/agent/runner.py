@@ -224,6 +224,11 @@ def _build_deps(trace: Trace, filt: Filter | None) -> AgentDeps:
     s = get_settings()
     graph = load_graph()
     hybrid = HybridRetriever()
+    wiki = None
+    if s.wiki.enabled:
+        from auralynq.wiki.retriever import WikiRetriever
+
+        wiki = WikiRetriever(s.wiki_dir)
     return AgentDeps(
         hybrid=hybrid,
         pathrag=PathRAGRetriever(graph, store=hybrid.store, embedder=hybrid.embedder),
@@ -232,6 +237,7 @@ def _build_deps(trace: Trace, filt: Filter | None) -> AgentDeps:
         trace=trace,
         settings=s,
         filt=filt,
+        wiki=wiki,
     )
 
 
