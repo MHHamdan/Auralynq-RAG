@@ -1,8 +1,9 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CorpusSummary, DocumentMeta, GroundingSummary, corpusSummary, fetchGroundingSummary, fetchSuggestions, ingestFile } from "@/lib/api";
 import { displaySource, timeAgo } from "@/lib/format";
 import { CorpusManageModal } from "@/components/CorpusManageModal";
+import { IngestSources } from "@/components/IngestSources";
 
 const ACCEPT = ".pdf,.docx,.html,.htm,.md,.txt,.wav,.mp3,.m4a";
 const TYPES = ["PDF", "DOCX", "HTML", "Markdown", "TXT", "WAV", "MP3", "M4A"];
@@ -19,6 +20,7 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
   const [status, setStatus] = useState<{ kind: "ok" | "err" | "info"; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [summary, setSummary] = useState<CorpusSummary | null>(null);
   const [groundingSummary, setGroundingSummary] = useState<GroundingSummary | null>(null);
   const [showReindexInfo, setShowReindexInfo] = useState(false);
@@ -90,6 +92,7 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
 
   return (
     <div className="space-y-4">
+      <IngestSources onUpload={() => fileInputRef.current?.click()} />
       {/* corpus stats */}
       {summary && (
         <div className="card-inset">
@@ -255,6 +258,7 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
         </span>
         <span className="text-[11px] text-fg3">Chunked with source spans → hybrid index + graph</span>
         <input
+          ref={fileInputRef}
           type="file"
           className="hidden"
           disabled={busy}
