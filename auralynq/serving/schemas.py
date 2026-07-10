@@ -124,6 +124,14 @@ class WikiPageResponse(BaseModel):
     markdown: str = ""
 
 
+class WikiLintResponse(BaseModel):
+    enabled: bool = False
+    pages: int = 0
+    contradiction_count: int = 0
+    contradictions: list[dict[str, Any]] = Field(default_factory=list)
+    orphan_pages: list[str] = Field(default_factory=list)
+
+
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     corpus_indexed: bool = False

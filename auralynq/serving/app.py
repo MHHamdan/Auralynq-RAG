@@ -51,6 +51,7 @@ from auralynq.serving.schemas import (
     CorpusClearConfirmRequest,
     CorpusDocument,
     CorpusDocumentsResponse,
+    WikiLintResponse,
     WikiPageResponse,
     WikiPageSummary,
     WikiPagesResponse,
@@ -464,6 +465,17 @@ def create_app() -> FastAPI:
             sources=page.get("sources", []) or [],
             markdown=page.get("markdown", ""),
         )
+
+    @app.get("/wiki/lint", response_model=WikiLintResponse)
+    async def wiki_lint_ep() -> WikiLintResponse:
+        # Health-check: flagged contradictions + orphan pages (#Phase 3).
+        s = get_settings()
+        if not s.wiki.enabled:
+            return WikiLintResponse(enabled=False)
+        from auralynq.wiki.store import WikiStore
+
+        report = WikiStore(s.wiki_dir).lint()
+        return WikiLintResponse(enabled=True, **report)
 
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)

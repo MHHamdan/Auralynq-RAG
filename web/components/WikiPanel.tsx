@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { BookText, ChevronLeft, FileText, RefreshCw } from "lucide-react";
-import { wikiEntities, wikiEntity, type WikiPageSummary, type WikiPageDetail } from "@/lib/api";
+import { AlertTriangle, BookText, ChevronLeft, FileText, RefreshCw, Unlink } from "lucide-react";
+import { wikiEntities, wikiEntity, wikiLint, type WikiPageSummary, type WikiPageDetail, type WikiLint } from "@/lib/api";
 import { Markdown } from "@/components/Markdown";
 
 function stripFrontmatter(md: string): string {
@@ -26,6 +26,7 @@ export function WikiPanel({ refreshKey }: { refreshKey?: number }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<WikiPageDetail | null>(null);
   const [loadingPage, setLoadingPage] = useState(false);
+  const [lint, setLint] = useState<WikiLint | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -33,6 +34,7 @@ export function WikiPanel({ refreshKey }: { refreshKey?: number }) {
       .then(setState)
       .catch(() => {})
       .finally(() => setLoading(false));
+    wikiLint().then(setLint).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -93,6 +95,23 @@ export function WikiPanel({ refreshKey }: { refreshKey?: number }) {
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden />
         </button>
       </div>
+
+      {state.enabled && lint && (lint.contradiction_count > 0 || lint.orphan_pages.length > 0) && (
+        <div className="flex flex-wrap gap-1.5">
+          {lint.contradiction_count > 0 && (
+            <span className="pill pill-warn" title="New sources contradicted prior claims — see the flagged pages">
+              <AlertTriangle className="h-3 w-3" aria-hidden /> {lint.contradiction_count} contradiction
+              {lint.contradiction_count === 1 ? "" : "s"} flagged
+            </span>
+          )}
+          {lint.orphan_pages.length > 0 && (
+            <span className="pill pill-neutral" title="Pages nothing links to">
+              <Unlink className="h-3 w-3" aria-hidden /> {lint.orphan_pages.length} orphan
+              {lint.orphan_pages.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+      )}
 
       {!state.enabled ? (
         <div className="card-inset text-xs text-fg3">
