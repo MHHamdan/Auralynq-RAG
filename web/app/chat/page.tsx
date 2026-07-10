@@ -24,6 +24,10 @@ import { Message, type Turn } from "@/components/Message";
 import { Toast } from "@/components/ui/Toast";
 import { AnswerSteps } from "@/components/AnswerSteps";
 import { StreamingEvidence } from "@/components/StreamingEvidence";
+import { CommandPalette, type Cmd } from "@/components/CommandPalette";
+import { useRouter } from "next/navigation";
+import { Plus, Cpu, Home, PanelRight, MessageSquarePlus, Zap, Palette } from "lucide-react";
+import { THEME_KEY, nextTheme, coerceTheme } from "@/lib/theme";
 import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
@@ -142,6 +146,8 @@ export default function Chat() {
   const [visualGrounding, setVisualGrounding] = useState<VisualGrounding | null>(null);
   const [activeCitation, setActiveCitation] = useState<string | null>(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const router = useRouter();
   // new-chat corpus-clear confirmation state
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
@@ -479,12 +485,12 @@ export default function Chat() {
       if (e.key === "Escape" && streaming) stop();
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        handleNewChat();
+        setPaletteOpen((v) => !v);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [streaming, stop, handleNewChat]);
+  }, [streaming, stop]);
 
   function onVoice(r: AnswerResult & { transcript?: string }) {
     setTurns((t) => [
@@ -784,6 +790,46 @@ export default function Chat() {
       {toast && (
         <Toast key={toast.id} message={toast.msg} onClose={() => setToast(null)} />
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={
+          [
+            { id: "new", group: "Chat", label: "New chat", icon: Plus, keywords: ["reset", "clear"], run: handleNewChat },
+            {
+              id: "focus",
+              group: "Chat",
+              label: "Focus composer",
+              icon: MessageSquarePlus,
+              run: () =>
+                document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask a question"]')?.focus(),
+            },
+            ...(visualGrounding?.visual_grounding_available
+              ? [{ id: "src", group: "Chat", label: "Open Source Workspace", icon: PanelRight, run: () => setShowWorkspace(true) }]
+              : []),
+            { id: "modelfit", group: "Navigate", label: "Go to ModelFit", icon: Cpu, run: () => router.push("/modelfit") },
+            { id: "home", group: "Navigate", label: "Go to Home", icon: Home, run: () => router.push("/") },
+            { id: "s-aura", group: "Retrieval strategy", label: "Use Auralynq-RAG", icon: Zap, run: () => setRagStrategy("auralynq_rag") },
+            { id: "s-hybrid", group: "Retrieval strategy", label: "Use Hybrid vector", icon: Zap, run: () => setRagStrategy("hybrid") },
+            { id: "s-naive", group: "Retrieval strategy", label: "Use Naive vector", icon: Zap, run: () => setRagStrategy("naive_vector") },
+            { id: "s-bm25", group: "Retrieval strategy", label: "Use Keyword BM25", icon: Zap, run: () => setRagStrategy("keyword_bm25") },
+            {
+              id: "theme",
+              group: "Appearance",
+              label: "Switch theme",
+              icon: Palette,
+              run: () => {
+                const nx = nextTheme(coerceTheme(document.documentElement.dataset.theme));
+                document.documentElement.dataset.theme = nx;
+                try {
+                  localStorage.setItem(THEME_KEY, nx);
+                } catch {}
+              },
+            },
+          ] as Cmd[]
+        }
+      />
     </div>
   );
 }
