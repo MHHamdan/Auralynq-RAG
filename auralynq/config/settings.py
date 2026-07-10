@@ -135,6 +135,23 @@ class VisualGroundingSettings(BaseSettings):
     metadata_version: int = 1
 
 
+class WikiSettings(BaseSettings):
+    """Compounding Wiki layer (Phase 1) — persistent LLM-synthesized entity pages
+    built from the knowledge graph at ingest. Off by default; purely additive."""
+
+    enabled: bool = False
+    # Synthesize/refresh pages automatically at the end of each ingest.
+    auto_synthesize: bool = True
+    # Only build a page for entities mentioned at least this many times (noise gate).
+    min_mentions: int = 2
+    # Cap pages generated per ingest (cost/latency guard); highest-mention first.
+    max_entities: int = 150
+    # Token budget per synthesized page.
+    max_page_tokens: int = 1024
+    # Character budget of source-chunk evidence fed into one page's synthesis.
+    max_context_chars: int = 6000
+
+
 class Settings(BaseSettings):
     """Root settings object. Instantiate via :func:`get_settings`."""
 
@@ -168,6 +185,7 @@ class Settings(BaseSettings):
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     visual: VisualGroundingSettings = Field(default_factory=VisualGroundingSettings)
     modelfit: ModelFitSettings = Field(default_factory=ModelFitSettings)
+    wiki: WikiSettings = Field(default_factory=WikiSettings)
 
     # When true, blocks all outbound calls to external LLM/embedding/telemetry
     # providers regardless of which API keys are set. Guarantees zero data
@@ -220,6 +238,10 @@ class Settings(BaseSettings):
     @property
     def page_cache_dir(self) -> Path:
         return self.data_dir / self.visual.page_cache_subdir
+
+    @property
+    def wiki_dir(self) -> Path:
+        return self.storage_dir / "wiki_pages"
 
     def ensure_dirs(self) -> None:
         for p in (self.data_dir, self.reports_dir, self.index_dir, self.storage_dir):

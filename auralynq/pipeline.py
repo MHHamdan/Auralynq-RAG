@@ -56,9 +56,19 @@ def build_index(input_dir: Path, rebuild: bool = False) -> dict[str, Any]:
     # ingested chunks) so an idempotent re-index never wipes the graph. Falls
     # back to this run's chunks if the store can't enumerate (e.g. remote Qdrant).
     kg_chunks = store.all_chunks() or all_chunks
+    wiki_pages = 0
     if kg_chunks:
         kg = build_from_chunks(kg_chunks)
         kg.save(graph_path())
+        # Compounding Wiki (Phase 1) — synthesize durable entity pages from the
+        # fresh KG. Additive and gated; never blocks indexing on failure.
+        if s.wiki.enabled and s.wiki.auto_synthesize:
+            try:
+                from auralynq.wiki.generator import synthesize_wiki
+
+                wiki_pages = synthesize_wiki(kg, kg_chunks, settings=s)
+            except Exception as e:  # pragma: no cover - non-fatal by design
+                _log.warning("wiki.synthesis_failed", error=str(e))
     else:
         kg = load_graph()  # nothing to index and nothing stored; keep existing
 
@@ -76,6 +86,8 @@ def build_index(input_dir: Path, rebuild: bool = False) -> dict[str, Any]:
         "entities": kg.n_entities,
         "relations": kg.n_relations,
     }
+    if s.wiki.enabled:
+        stats["wiki_pages"] = wiki_pages
     _log.info("index.built", **stats)
     return stats
 

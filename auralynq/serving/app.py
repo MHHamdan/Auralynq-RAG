@@ -22,6 +22,7 @@ from fastapi import (
     BackgroundTasks,
     FastAPI,
     File,
+    HTTPException,
     Request,
     UploadFile,
     WebSocket,
@@ -50,6 +51,9 @@ from auralynq.serving.schemas import (
     CorpusClearConfirmRequest,
     CorpusDocument,
     CorpusDocumentsResponse,
+    WikiPageResponse,
+    WikiPageSummary,
+    WikiPagesResponse,
     CorpusClearPreviewResponse,
     CorpusDeleteDocumentConfirmRequest,
     CorpusDeleteDocumentPreviewResponse,
@@ -413,6 +417,53 @@ def create_app() -> FastAPI:
             if d.get("doc_id")
         ]
         return CorpusDocumentsResponse(documents=docs)
+
+    # ---------------------------------------------------- compounding wiki --
+    @app.get("/wiki/entities", response_model=WikiPagesResponse)
+    async def wiki_entities_ep(
+        limit: int = 100, sort: str = "mentions"
+    ) -> WikiPagesResponse:
+        s = get_settings()
+        if not s.wiki.enabled:
+            return WikiPagesResponse(enabled=False, count=0, pages=[])
+        from auralynq.wiki.store import WikiStore
+
+        store = WikiStore(s.wiki_dir)
+        pages = store.list_pages()
+        key = "updated" if sort == "updated" else "mentions"
+        pages.sort(key=lambda p: p.get(key, 0), reverse=True)
+        summaries = [
+            WikiPageSummary(
+                id=p["id"],
+                title=p.get("title", ""),
+                type=p.get("type", "entity"),
+                mentions=int(p.get("mentions", 0) or 0),
+                updated=p.get("updated", ""),
+                sources=p.get("sources", []) or [],
+            )
+            for p in pages[: max(1, limit)]
+        ]
+        return WikiPagesResponse(enabled=True, count=store.count(), pages=summaries)
+
+    @app.get("/wiki/entity/{entity_id}", response_model=WikiPageResponse)
+    async def wiki_entity_ep(entity_id: str) -> WikiPageResponse:
+        s = get_settings()
+        if not s.wiki.enabled:
+            raise HTTPException(status_code=404, detail="wiki disabled")
+        from auralynq.wiki.store import WikiStore
+
+        page = WikiStore(s.wiki_dir).read_page(entity_id)
+        if page is None:
+            raise HTTPException(status_code=404, detail="wiki page not found")
+        return WikiPageResponse(
+            id=page["id"],
+            title=page.get("title", ""),
+            type=page.get("type", "entity"),
+            mentions=int(page.get("mentions", 0) or 0),
+            updated=page.get("updated", ""),
+            sources=page.get("sources", []) or [],
+            markdown=page.get("markdown", ""),
+        )
 
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)
