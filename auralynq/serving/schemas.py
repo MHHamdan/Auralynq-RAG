@@ -99,6 +99,31 @@ class CorpusDocumentsResponse(BaseModel):
     documents: list[CorpusDocument] = Field(default_factory=list)
 
 
+class WikiPageSummary(BaseModel):
+    id: str
+    title: str = ""
+    type: str = "entity"
+    mentions: int = 0
+    updated: str = ""
+    sources: list[str] = Field(default_factory=list)
+
+
+class WikiPagesResponse(BaseModel):
+    enabled: bool = False
+    count: int = 0
+    pages: list[WikiPageSummary] = Field(default_factory=list)
+
+
+class WikiPageResponse(BaseModel):
+    id: str
+    title: str = ""
+    type: str = "entity"
+    mentions: int = 0
+    updated: str = ""
+    sources: list[str] = Field(default_factory=list)
+    markdown: str = ""
+
+
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     corpus_indexed: bool = False
