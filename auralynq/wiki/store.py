@@ -96,8 +96,10 @@ class WikiStore:
         if contras:
             lines = ["", "## ⚠ Contradictions flagged", ""]
             for c in contras:
+                when = str(c.get("flagged_at", ""))[:10]
+                prior_label = f"**Prior** (superseded {when})" if when else "**Prior**"
                 lines.append(
-                    f"- **Prior:** {c.get('old_claim', '')}  \n"
+                    f"- {prior_label}**:** {c.get('old_claim', '')}  \n"
                     f"  **New:** {c.get('new_claim', '')}"
                     + (f"  \n  _{c.get('why', '')}_" if c.get("why") else "")
                 )

@@ -147,6 +147,9 @@ class WikiSettings(BaseSettings):
     # Flag factual contradictions between a page's prior claims and a new
     # synthesis at ingest (LLM-based; advisory — never auto-deletes).
     detect_contradictions: bool = True
+    # File high-confidence answers back as wiki pages so explorations compound.
+    file_answers: bool = True
+    min_answer_confidence: float = 0.55
     # Cap pages generated per ingest (cost/latency guard); highest-mention first.
     max_entities: int = 150
     # Token budget per synthesized page.

@@ -14,9 +14,10 @@ are imperfect validators, so we (a) keep it advisory (flags, never auto-delete),
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from auralynq.telemetry import get_logger
@@ -42,6 +43,11 @@ class Contradiction:
     old_claim: str
     new_claim: str
     why: str = ""
+    # When the prior claim was flagged as superseded — the "valid until" signal
+    # (invalidate-not-delete: the old claim is kept, dated, never removed).
+    flagged_at: str = field(
+        default_factory=lambda: _dt.datetime.now(tz=_dt.UTC).isoformat(timespec="seconds")
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

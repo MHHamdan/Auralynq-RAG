@@ -148,7 +148,11 @@ def _synthesize_one(
     contradictions: list[dict] = []
     if w.detect_contradictions:
         prior = store.read_page(key)
-        if prior:
+        # Only look for contradictions when NEW evidence was added for this entity
+        # — re-synthesizing the same sources just rewords, and contradictions can
+        # only come from a new source (also avoids reword false-positives on re-ingest).
+        new_sources = set(sources) - set(prior.get("sources", []) or []) if prior else set()
+        if prior and new_sources:
             from auralynq.wiki.contradiction import detect_contradictions
 
             old_body = _strip_frontmatter(prior.get("markdown", ""))
@@ -211,3 +215,45 @@ def synthesize_wiki(
     )
     _log.info("wiki.synthesized", entities=len(ents), pages_written=written)
     return written
+
+
+def file_answer(
+    question: str,
+    answer: str,
+    citations: list[dict[str, Any]],
+    confidence: float | None,
+    *,
+    settings: Any | None = None,
+) -> bool:
+    """Compounding loop: file a high-confidence, cited answer back as a durable
+    wiki page (type ``answer``) so explorations accumulate instead of vanishing
+    into chat history. Skips low-confidence, uncited, or refusal answers."""
+    s = settings or get_settings()
+    w = s.wiki
+    if not (w.enabled and w.file_answers):
+        return False
+    answer = (answer or "").strip()
+    if not answer or not citations or (confidence or 0.0) < w.min_answer_confidence:
+        return False
+
+    from auralynq.utils import stable_id
+
+    sources = sorted({str(c.get("source", "")) for c in citations if c.get("source")})
+    body = [answer, "", "## Sources"]
+    for c in citations:
+        src = str(c.get("source", ""))
+        loc = str(c.get("locator", ""))
+        if src:
+            body.append(f"- {src}" + (f" · {loc}" if loc else ""))
+    page_id = f"answer_{stable_id(question)[:12]}"
+    store = WikiStore(s.wiki_dir)
+    store.write_page(
+        page_id,
+        title=question.strip()[:160],
+        body="\n".join(body),
+        page_type="answer",
+        sources=sources,
+    )
+    store.append_log("file_answer", page=page_id, question=question[:120], sources=len(sources))
+    _log.info("wiki.answer_filed", page=page_id)
+    return True
