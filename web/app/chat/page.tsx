@@ -25,6 +25,7 @@ import { Toast } from "@/components/ui/Toast";
 import { AnswerSteps } from "@/components/AnswerSteps";
 import { StreamingEvidence } from "@/components/StreamingEvidence";
 import { SourceScope } from "@/components/SourceScope";
+import { WikiPanel } from "@/components/WikiPanel";
 import { CommandPalette, type Cmd } from "@/components/CommandPalette";
 import { useRouter } from "next/navigation";
 import { Plus, Cpu, Home, PanelRight, MessageSquarePlus, Zap, Palette } from "lucide-react";
@@ -48,7 +49,7 @@ const FALLBACK_SUGGESTIONS = [
   "What are the key entities and how do they relate?",
 ];
 const STORE_KEY = "auralynq.chat.v1";
-const TABS = ["overview", "trace", "evidence", "source", "ingest", "eval"] as const;
+const TABS = ["overview", "trace", "evidence", "source", "ingest", "wiki", "eval"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_ICON: Record<Tab, string> = {
@@ -57,6 +58,7 @@ const TAB_ICON: Record<Tab, string> = {
   evidence: "◈ ",
   source:   "⬚ ",
   ingest:   "↑ ",
+  wiki:     "▤ ",
   eval:     "▣ ",
 };
 
@@ -778,6 +780,7 @@ export default function Chat() {
               />
             )}
             {tab === "ingest" && <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />}
+            {tab === "wiki" && <WikiPanel refreshKey={corpusRefreshKey} />}
             {tab === "eval" && <EvalPanel />}
           </div>
         </aside>

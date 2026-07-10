@@ -89,3 +89,31 @@ def test_min_mentions_gate(tmp_path):
     s.wiki.min_mentions = 999  # gate everything out
     kg = build_from_chunks(_chunks())
     assert synthesize_wiki(kg, _chunks(), llm=_StubLLM(), settings=s) == 0
+
+
+def test_wiki_retriever_matches_entity(tmp_path):
+    from auralynq.wiki.retriever import WikiRetriever
+
+    store = WikiStore(tmp_path / "w")
+    store.write_page("auralynq", title="Auralynq",
+                     body="## Summary\nAuralynq fuses dense and sparse vectors [1][2].",
+                     sources=["a.md"], mentions=3)
+    store.write_page("france", title="France", body="Country in Europe [1].", mentions=2)
+
+    res = WikiRetriever(tmp_path / "w").retrieve("Tell me about Auralynq", k=2)
+    assert res.chunks, "matched the Auralynq page"
+    top = res.chunks[0]
+    assert top.method == "wiki"
+    assert top.chunk.source == "Auralynq (wiki)"
+    # Internal [n] markers are stripped so they don't clash with answer citations.
+    assert "[1]" not in top.chunk.text and "[2]" not in top.chunk.text
+    assert "fuses dense and sparse" in top.chunk.text
+
+
+def test_wiki_retriever_no_match_is_empty(tmp_path):
+    from auralynq.wiki.retriever import WikiRetriever
+
+    store = WikiStore(tmp_path / "w")
+    store.write_page("france", title="France", body="A country.", mentions=2)
+    res = WikiRetriever(tmp_path / "w").retrieve("quantum chromodynamics gluons", k=2)
+    assert res.chunks == []

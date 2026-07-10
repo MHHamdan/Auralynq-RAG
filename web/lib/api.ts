@@ -204,6 +204,31 @@ export async function corpusDocuments(): Promise<CorpusDocument[]> {
   return data.documents ?? [];
 }
 
+export interface WikiPageSummary {
+  id: string;
+  title: string;
+  type: string;
+  mentions: number;
+  updated: string;
+  sources: string[];
+}
+
+export interface WikiPageDetail extends WikiPageSummary {
+  markdown: string;
+}
+
+export async function wikiEntities(): Promise<{ enabled: boolean; count: number; pages: WikiPageSummary[] }> {
+  const r = await fetch(`${API_BASE}/wiki/entities?limit=200`, { cache: "no-store" });
+  if (!r.ok) return { enabled: false, count: 0, pages: [] };
+  return r.json();
+}
+
+export async function wikiEntity(id: string): Promise<WikiPageDetail | null> {
+  const r = await fetch(`${API_BASE}/wiki/entity/${encodeURIComponent(id)}`, { cache: "no-store" });
+  if (!r.ok) return null;
+  return r.json();
+}
+
 export async function fetchSuggestions(
   limit = 4,
 ): Promise<{ suggestions: string[]; corpus_indexed: boolean }> {
