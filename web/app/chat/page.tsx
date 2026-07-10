@@ -22,6 +22,7 @@ import { isInventoryQuestion } from "@/lib/format";
 import { Message, type Turn } from "@/components/Message";
 import { Toast } from "@/components/ui/Toast";
 import { AnswerSteps } from "@/components/AnswerSteps";
+import { StreamingEvidence } from "@/components/StreamingEvidence";
 import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
@@ -117,6 +118,7 @@ export default function Chat() {
   const [traceSteps, setTraceSteps] = useState<TraceStep[]>([]);
   const [paths, setPaths] = useState<PathEvidence[]>([]);
   const [seeds, setSeeds] = useState<string[]>([]);
+  const [streamEntities, setStreamEntities] = useState<string[]>([]);
   const [coverage, setCoverage] = useState(0);
   const [lastConfidence, setLastConfidence] = useState(0);
   const [lastRoute, setLastRoute] = useState("fast");
@@ -233,6 +235,7 @@ export default function Chat() {
     setTraceSteps([]);
     setPaths([]);
     setSeeds([]);
+    setStreamEntities([]);
     setCoverage(0);
     setLastStatus("answered");
     setVisualGrounding(null);
@@ -249,6 +252,7 @@ export default function Chat() {
           if (e.type === "meta") {
             setPaths(e.path_evidence || []);
             setSeeds(e.seeds || []);
+            setStreamEntities(e.detected_entities?.length ? e.detected_entities : e.seeds || []);
             setCoverage(e.evidence_coverage ?? 0);
             setLastRoute(e.route);
             const isSystemRoute = ["corpus_inventory", "corpus_management", "app_help"].includes(e.route);
@@ -612,6 +616,9 @@ export default function Chat() {
                     (t.citations?.length ?? 0) > 0;
                   return (
                     <div key={i} className="msg-in">
+                      {isLastAssistant && streaming && (streamEntities.length > 0 || !!t.route) && (
+                        <StreamingEvidence route={t.route} entities={streamEntities} />
+                      )}
                       <Message
                         turn={t}
                         streaming={streaming}
