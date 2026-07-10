@@ -44,9 +44,12 @@ from auralynq.serving.errors import (
     unhandled_error_handler,
     validation_error_handler,
 )
+from auralynq.retrieval.models import Filter
 from auralynq.serving.ratelimit import RateLimitMiddleware
 from auralynq.serving.schemas import (
     CorpusClearConfirmRequest,
+    CorpusDocument,
+    CorpusDocumentsResponse,
     CorpusClearPreviewResponse,
     CorpusDeleteDocumentConfirmRequest,
     CorpusDeleteDocumentPreviewResponse,
@@ -393,6 +396,24 @@ def create_app() -> FastAPI:
 
         return CorpusSummaryResponse(**corpus_summary())
 
+    @app.get("/corpus/documents", response_model=CorpusDocumentsResponse)
+    async def corpus_documents_ep() -> CorpusDocumentsResponse:
+        # Indexed documents with ids/titles, for source-scoping the retrieval (#16).
+        from auralynq.serving.corpus_manager import _all_indexed_documents
+
+        docs = [
+            CorpusDocument(
+                doc_id=str(d.get("doc_id", "")),
+                title=str(d.get("title", "")),
+                source=str(d.get("source", "")),
+                source_type=str(d.get("source_type", "")),
+                chunks=int(d.get("chunks", 0) or 0),
+            )
+            for d in _all_indexed_documents()
+            if d.get("doc_id")
+        ]
+        return CorpusDocumentsResponse(documents=docs)
+
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)
     async def corpus_inventory_ep() -> CorpusSummaryResponse:
@@ -619,8 +640,10 @@ def create_app() -> FastAPI:
                     )
 
             if effective_id == "auralynq_rag":
-                # Full token-streaming path via the agentic runner.
-                gen = stream_answer_question(req.question, final_k=req.final_k)
+                # Full token-streaming path via the agentic runner. Optional
+                # source scoping: restrict retrieval to selected documents (#16).
+                _filt = Filter(doc_ids=req.doc_ids) if req.doc_ids else None
+                gen = stream_answer_question(req.question, final_k=req.final_k, filt=_filt)
                 async for event in _aiter_sync(gen):
                     if await request.is_disconnected():
                         close = getattr(gen, "close", None)

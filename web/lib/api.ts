@@ -189,6 +189,21 @@ export async function corpusSummary(): Promise<CorpusSummary> {
   return r.json();
 }
 
+export interface CorpusDocument {
+  doc_id: string;
+  title: string;
+  source: string;
+  source_type: string;
+  chunks: number;
+}
+
+export async function corpusDocuments(): Promise<CorpusDocument[]> {
+  const r = await fetch(`${API_BASE}/corpus/documents`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`corpus documents failed: ${r.status}`);
+  const data = (await r.json()) as { documents?: CorpusDocument[] };
+  return data.documents ?? [];
+}
+
 export async function fetchSuggestions(
   limit = 4,
 ): Promise<{ suggestions: string[]; corpus_indexed: boolean }> {
@@ -596,11 +611,16 @@ export async function askStreamWithStrategy(
   strategyId: string | null,
   onEvent: (e: StreamEvent) => void,
   signal?: AbortSignal,
+  docIds?: string[] | null,
 ): Promise<void> {
   const r = await fetch(`${API_BASE}/query/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, rag_strategy: strategyId }),
+    body: JSON.stringify({
+      question,
+      rag_strategy: strategyId,
+      ...(docIds && docIds.length ? { doc_ids: docIds } : {}),
+    }),
     signal,
   });
   if (!r.ok) {
