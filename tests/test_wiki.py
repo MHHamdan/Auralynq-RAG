@@ -117,3 +117,65 @@ def test_wiki_retriever_no_match_is_empty(tmp_path):
     store.write_page("france", title="France", body="A country.", mentions=2)
     res = WikiRetriever(tmp_path / "w").retrieve("quantum chromodynamics gluons", k=2)
     assert res.chunks == []
+
+
+# ---------------------------------------------------------- Phase 3 --------
+def test_detect_contradictions_parses_json():
+    from auralynq.wiki.contradiction import detect_contradictions
+
+    class J:
+        def generate(self, p, *, system=None, temperature=None, max_tokens=None):
+            return 'noise [{"old_claim":"X is blue","new_claim":"X is red","why":"color"}] trailing'
+
+    out = detect_contradictions("X", "X is blue.", "X is red.", J())
+    assert len(out) == 1
+    assert out[0].old_claim == "X is blue" and out[0].new_claim == "X is red"
+    assert out[0].entity == "X"
+
+
+def test_detect_contradictions_none_and_missing_side():
+    from auralynq.wiki.contradiction import detect_contradictions
+
+    class E:
+        def generate(self, p, *, system=None, temperature=None, max_tokens=None):
+            return "[]"
+
+    assert detect_contradictions("X", "a", "b", E()) == []
+    assert detect_contradictions("X", "", "b", E()) == []  # missing side → skip
+
+
+class _DualStub:
+    """Returns markdown for synthesis prompts, a JSON contradiction for the
+    contradiction-detection prompt (distinguished by its system prompt)."""
+
+    def generate(self, p, *, system=None, temperature=None, max_tokens=None):
+        if system and "CONTRADICTIONS" in system:
+            return '[{"old_claim":"Paris is small","new_claim":"Paris is large","why":"size"}]'
+        return "Paris is a city [1]."
+
+
+def test_contradiction_flagged_on_page_update(tmp_path):
+    s = Settings(data_dir=tmp_path)
+    s.wiki.enabled = True
+    s.wiki.min_mentions = 1
+    kg = build_from_chunks(_chunks())
+    llm = _DualStub()
+    synthesize_wiki(kg, _chunks(), llm=llm, settings=s)  # first pass creates pages
+    synthesize_wiki(kg, _chunks(), llm=llm, settings=s)  # second pass compares vs prior
+
+    store = WikiStore(s.wiki_dir)
+    paris = store.read_page("paris")
+    assert "Contradictions flagged" in paris["markdown"]
+    report = store.lint()
+    assert report["contradiction_count"] >= 1
+    assert any(c["entity"] == "paris" for c in report["contradictions"])
+    assert (tmp_path / "storage" / "wiki_pages" / "_log.jsonl").exists()
+
+
+def test_lint_orphans(tmp_path):
+    store = WikiStore(tmp_path / "w")
+    store.write_page("a", title="A", body="Links to [[B]].", mentions=1)
+    store.write_page("b", title="B", body="No links here.", mentions=1)
+    report = store.lint()
+    assert "a" in report["orphan_pages"]  # nobody links to A
+    assert "b" not in report["orphan_pages"]  # A links to B

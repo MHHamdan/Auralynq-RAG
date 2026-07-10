@@ -229,6 +229,20 @@ export async function wikiEntity(id: string): Promise<WikiPageDetail | null> {
   return r.json();
 }
 
+export interface WikiLint {
+  enabled: boolean;
+  pages: number;
+  contradiction_count: number;
+  contradictions: { entity: string; old_claim: string; new_claim: string; why?: string }[];
+  orphan_pages: string[];
+}
+
+export async function wikiLint(): Promise<WikiLint> {
+  const r = await fetch(`${API_BASE}/wiki/lint`, { cache: "no-store" });
+  if (!r.ok) return { enabled: false, pages: 0, contradiction_count: 0, contradictions: [], orphan_pages: [] };
+  return r.json();
+}
+
 export async function fetchSuggestions(
   limit = 4,
 ): Promise<{ suggestions: string[]; corpus_indexed: boolean }> {

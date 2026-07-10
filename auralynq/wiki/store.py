@@ -86,11 +86,22 @@ class WikiStore:
         page_type: str = "entity",
         sources: list[str] | None = None,
         mentions: int = 0,
+        contradictions: list[dict[str, Any]] | None = None,
     ) -> WikiPageMeta:
         """Write (or overwrite) a page with YAML frontmatter and register it."""
         self.dir.mkdir(parents=True, exist_ok=True)
         srcs = sorted(set(sources or []))
+        contras = contradictions or []
         updated = _now()
+        if contras:
+            lines = ["", "## ⚠ Contradictions flagged", ""]
+            for c in contras:
+                lines.append(
+                    f"- **Prior:** {c.get('old_claim', '')}  \n"
+                    f"  **New:** {c.get('new_claim', '')}"
+                    + (f"  \n  _{c.get('why', '')}_" if c.get("why") else "")
+                )
+            body = body.rstrip() + "\n" + "\n".join(lines)
         lines = [
             "---",
             f"id: {json.dumps(page_id)}",
@@ -126,6 +137,7 @@ class WikiStore:
             "mentions": mentions,
             "updated": updated,
             "path": path.name,
+            "contradictions": contras,
         }
         self._write_index(index)
         return meta
@@ -144,6 +156,35 @@ class WikiStore:
 
     def count(self) -> int:
         return len(self._read_index())
+
+    # ----------------------------------------------------------- lint -----
+    def lint(self) -> dict[str, Any]:
+        """Health-check the wiki: flagged contradictions + orphan pages (never
+        referenced by a [[wikilink]] from any other page)."""
+        index = self._read_index()
+        contradictions: list[dict[str, Any]] = []
+        for pid, meta in index.items():
+            for c in meta.get("contradictions", []) or []:
+                contradictions.append({**c, "entity": pid})
+        linked: set[str] = set()
+        for pid in index:
+            page = self.read_page(pid)
+            if not page:
+                continue
+            for target in re.findall(r"\[\[([^\]]+)\]\]", page["markdown"]):
+                linked.add(target.strip().lower())
+        orphans = [
+            pid
+            for pid, meta in index.items()
+            if pid.lower() not in linked
+            and str(meta.get("title", pid)).lower() not in linked
+        ]
+        return {
+            "pages": len(index),
+            "contradiction_count": len(contradictions),
+            "contradictions": contradictions,
+            "orphan_pages": sorted(orphans),
+        }
 
     # ------------------------------------------------------------ log -----
     def append_log(self, event: str, **fields: Any) -> None:

@@ -144,6 +144,9 @@ class WikiSettings(BaseSettings):
     auto_synthesize: bool = True
     # Only build a page for entities mentioned at least this many times (noise gate).
     min_mentions: int = 2
+    # Flag factual contradictions between a page's prior claims and a new
+    # synthesis at ingest (LLM-based; advisory — never auto-deletes).
+    detect_contradictions: bool = True
     # Cap pages generated per ingest (cost/latency guard); highest-mention first.
     max_entities: int = 150
     # Token budget per synthesized page.
