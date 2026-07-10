@@ -24,6 +24,7 @@ import { Message, type Turn } from "@/components/Message";
 import { Toast } from "@/components/ui/Toast";
 import { AnswerSteps } from "@/components/AnswerSteps";
 import { StreamingEvidence } from "@/components/StreamingEvidence";
+import { SourceScope } from "@/components/SourceScope";
 import { CommandPalette, type Cmd } from "@/components/CommandPalette";
 import { useRouter } from "next/navigation";
 import { Plus, Cpu, Home, PanelRight, MessageSquarePlus, Zap, Palette } from "lucide-react";
@@ -139,6 +140,7 @@ export default function Chat() {
   const [entities, setEntities] = useState<number | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [corpusRefreshKey, setCorpusRefreshKey] = useState(0);
+  const [scopedDocIds, setScopedDocIds] = useState<string[] | null>(null);
   const [ragStrategy, setRagStrategy] = useState<string>("auralynq_rag");
   const [showSettings, setShowSettings] = useState(false);
   const [agentActivity, setAgentActivity] = useState<AgentActivity>({ phase: "idle" });
@@ -327,6 +329,7 @@ export default function Chat() {
           }
         },
         ac.signal,
+        scopedDocIds,
       );
     } catch (err) {
       if (ac.signal.aborted) {
@@ -347,7 +350,7 @@ export default function Chat() {
       setHasAnswered(true);
       abortRef.current = null;
     }
-  }, [ragStrategy, lastRoute]);
+  }, [ragStrategy, lastRoute, scopedDocIds]);
 
   const answerInventory = useCallback(async (q: string) => {
     setAgentActivity({ phase: "system_route", route: "corpus_inventory" });
@@ -722,13 +725,16 @@ export default function Chat() {
           </div>
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3">
             {tab === "overview" && (
-              <InspectorOverview
-                suggestions={suggestions}
-                recent={recentMeta}
-                onAsk={send}
-                onIngest={openIngest}
-                refreshKey={corpusRefreshKey}
-              />
+              <div className="space-y-3">
+                <InspectorOverview
+                  suggestions={suggestions}
+                  recent={recentMeta}
+                  onAsk={send}
+                  onIngest={openIngest}
+                  refreshKey={corpusRefreshKey}
+                />
+                <SourceScope refreshKey={corpusRefreshKey} onChange={setScopedDocIds} />
+              </div>
             )}
             {tab === "trace" && (
               <TracePanel

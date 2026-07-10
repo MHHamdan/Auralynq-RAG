@@ -19,6 +19,11 @@ class QueryRequest(BaseModel):
         default=None,
         description="RAG strategy id from /api/rag/strategies. Defaults to auralynq_rag.",
     )
+    doc_ids: list[str] | None = Field(
+        default=None,
+        description="Restrict retrieval to these document ids (source scoping). "
+        "None or empty = search the whole corpus.",
+    )
 
 
 class Citation(BaseModel):
@@ -80,6 +85,18 @@ class CorpusSummaryResponse(BaseModel):
     last_document_title: str | None = None
     languages: list[str] = Field(default_factory=list)
     failed_files: list[str] = Field(default_factory=list)
+
+
+class CorpusDocument(BaseModel):
+    doc_id: str
+    title: str
+    source: str = ""
+    source_type: str = ""
+    chunks: int = 0
+
+
+class CorpusDocumentsResponse(BaseModel):
+    documents: list[CorpusDocument] = Field(default_factory=list)
 
 
 class SuggestionsResponse(BaseModel):
