@@ -5,6 +5,7 @@ import { discoverModels } from "@/lib/modelfit";
 import { SystemReport } from "@/components/modelfit/SystemReport";
 import { PullConfirmModal } from "@/components/modelfit/PullConfirmModal";
 import { VerdictPill } from "@/components/modelfit/VerdictPill";
+import { MemoryPlanner } from "@/components/modelfit/MemoryPlanner";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -174,6 +175,16 @@ function ExpandedPanel({
           </div>
         </div>
       </div>
+
+      {/* Live memory planner — drag context, watch VRAM + verdict update */}
+      {entry.model_meta.parameter_count_b != null && (
+        <MemoryPlanner
+          modelId={entry.model_id}
+          paramsB={entry.model_meta.parameter_count_b}
+          quantization={entry.best_quantization}
+          initial={re}
+        />
+      )}
 
       {/* Quantization options — grouped by fidelity, best one flagged */}
       {entry.model_meta.available_quantizations.length > 0 && (
