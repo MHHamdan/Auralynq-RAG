@@ -158,10 +158,15 @@ def test_contradiction_flagged_on_page_update(tmp_path):
     s = Settings(data_dir=tmp_path)
     s.wiki.enabled = True
     s.wiki.min_mentions = 1
-    kg = build_from_chunks(_chunks())
     llm = _DualStub()
-    synthesize_wiki(kg, _chunks(), llm=llm, settings=s)  # first pass creates pages
-    synthesize_wiki(kg, _chunks(), llm=llm, settings=s)  # second pass compares vs prior
+    synthesize_wiki(build_from_chunks(_chunks()), _chunks(), llm=llm, settings=s)  # first pass
+    # Second pass adds a NEW source about Paris → contradiction check fires only
+    # when new evidence appears (re-synthesizing the same sources must NOT flag).
+    extra = _chunks() + [
+        Chunk(id="c9", doc_id="d2", ordinal=0, source="new.txt", source_type=SourceType.text,
+              text="Paris is a major capital city in France."),
+    ]
+    synthesize_wiki(build_from_chunks(extra), extra, llm=llm, settings=s)
 
     store = WikiStore(s.wiki_dir)
     paris = store.read_page("paris")
@@ -172,6 +177,19 @@ def test_contradiction_flagged_on_page_update(tmp_path):
     assert (tmp_path / "storage" / "wiki_pages" / "_log.jsonl").exists()
 
 
+def test_no_contradiction_when_sources_unchanged(tmp_path):
+    # Re-synthesizing the exact same sources must NOT flag contradictions (only
+    # new evidence can contradict) — guards against reword false-positives.
+    s = Settings(data_dir=tmp_path)
+    s.wiki.enabled = True
+    s.wiki.min_mentions = 1
+    llm = _DualStub()
+    synthesize_wiki(build_from_chunks(_chunks()), _chunks(), llm=llm, settings=s)
+    synthesize_wiki(build_from_chunks(_chunks()), _chunks(), llm=llm, settings=s)  # same sources
+    report = WikiStore(s.wiki_dir).lint()
+    assert report["contradiction_count"] == 0
+
+
 def test_lint_orphans(tmp_path):
     store = WikiStore(tmp_path / "w")
     store.write_page("a", title="A", body="Links to [[B]].", mentions=1)
@@ -179,3 +197,58 @@ def test_lint_orphans(tmp_path):
     report = store.lint()
     assert "a" in report["orphan_pages"]  # nobody links to A
     assert "b" not in report["orphan_pages"]  # A links to B
+
+
+# --------------------------------------------------------- Phase 3b -------
+def test_file_answer_creates_answer_page(tmp_path):
+    from auralynq.wiki.generator import file_answer
+
+    s = Settings(data_dir=tmp_path)
+    s.wiki.enabled = True
+    ok = file_answer(
+        "What is Auralynq?",
+        "Auralynq is a local-first RAG platform [1].",
+        [{"source": "a.md", "locator": "p.1"}],
+        0.8,
+        settings=s,
+    )
+    assert ok
+    store = WikiStore(s.wiki_dir)
+    answers = [p for p in store.list_pages() if p["type"] == "answer"]
+    assert len(answers) == 1
+    page = store.read_page(answers[0]["id"])
+    assert "Auralynq is a local-first RAG platform" in page["markdown"]
+    assert "## Sources" in page["markdown"]
+    assert "a.md" in page["markdown"]
+
+
+def test_file_answer_gates(tmp_path):
+    from auralynq.wiki.generator import file_answer
+
+    s = Settings(data_dir=tmp_path)
+    s.wiki.enabled = True
+    assert file_answer("q", "ans", [{"source": "a"}], 0.1, settings=s) is False  # low conf
+    assert file_answer("q", "ans", [], 0.9, settings=s) is False  # no citations
+    assert file_answer("q", "", [{"source": "a"}], 0.9, settings=s) is False  # empty answer
+    s.wiki.file_answers = False
+    assert file_answer("q", "ans", [{"source": "a"}], 0.9, settings=s) is False  # disabled
+
+
+def test_file_answer_is_idempotent_by_question(tmp_path):
+    from auralynq.wiki.generator import file_answer
+
+    s = Settings(data_dir=tmp_path)
+    s.wiki.enabled = True
+    file_answer("Same question?", "First answer [1].", [{"source": "a"}], 0.9, settings=s)
+    file_answer("Same question?", "Updated answer [1].", [{"source": "a"}], 0.9, settings=s)
+    store = WikiStore(s.wiki_dir)
+    answers = [p for p in store.list_pages() if p["type"] == "answer"]
+    assert len(answers) == 1  # same question → same page, updated in place
+
+
+def test_contradiction_has_flagged_at():
+    from auralynq.wiki.contradiction import Contradiction
+
+    c = Contradiction("e", "old", "new")
+    assert len(c.flagged_at) >= 10  # ISO timestamp
+    assert "flagged_at" in c.to_dict()

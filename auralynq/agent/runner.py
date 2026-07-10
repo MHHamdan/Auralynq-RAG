@@ -241,6 +241,20 @@ def _build_deps(trace: Trace, filt: Filter | None) -> AgentDeps:
     )
 
 
+def _maybe_file_answer(question: str, state: AgentState, refused: bool) -> None:
+    """Compounding loop (Phase 3b): file a good answer back as a wiki page.
+    Gated + non-fatal — never affects the response on failure."""
+    s = get_settings()
+    if refused or not (s.wiki.enabled and s.wiki.file_answers):
+        return
+    try:
+        from auralynq.wiki.generator import file_answer
+
+        file_answer(question, state.answer, state.citations, state.confidence, settings=s)
+    except Exception as e:  # pragma: no cover - non-fatal by design
+        _log.warning("wiki.file_answer_failed", error=str(e))
+
+
 def _new_state(question: str, final_k: int | None, route_hint: str = "") -> AgentState:
     s = get_settings()
     return AgentState(
@@ -285,6 +299,7 @@ def answer_question(
     suggestions = suggested_questions(3, summary)
     refused = _is_refusal(state.answer, bool(state.contexts))
     trace_list = trace.to_list()
+    _maybe_file_answer(question, state, refused)
 
     result = AnswerResult(
         answer=state.answer,
@@ -420,6 +435,7 @@ def stream_answer_question(
 
     refused = _is_refusal(state.answer, bool(state.contexts))
     trace_list = trace.to_list()
+    _maybe_file_answer(question, state, refused)
 
     _model_fit = None
     try:
