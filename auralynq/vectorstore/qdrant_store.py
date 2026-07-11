@@ -181,6 +181,39 @@ class QdrantStore(VectorStore):
             return 0
         return int(self.client.count(self.collection, exact=True).count)
 
+    def all_chunks(self, max_points: int = 20_000) -> list[Chunk]:
+        """Scroll the whole collection and reconstruct chunks from their full
+        payload. Enables rebuilding the knowledge graph and synthesizing the
+        Compounding Wiki from an existing remote index (not just fresh ingests).
+        Bounded to stay tractable on large collections; best-effort."""
+        if not self._exists():
+            return []
+        out: list[Chunk] = []
+        offset: Any = None
+        try:
+            while len(out) < max_points:
+                points, offset = self.client.scroll(
+                    self.collection,
+                    limit=512,
+                    with_payload=True,
+                    with_vectors=False,
+                    offset=offset,
+                )
+                if not points:
+                    break
+                for p in points:
+                    payload = dict(p.payload or {})
+                    payload.pop("speaker", None)
+                    try:
+                        out.append(Chunk.model_validate(payload))
+                    except Exception:
+                        continue
+                if offset is None:
+                    break
+        except Exception:  # pragma: no cover - defensive; best-effort enumeration
+            pass
+        return out
+
     def document_facts(self, max_points: int = 20_000) -> dict[str, Any]:
         """Distinct source documents + source-type histogram via a bounded scroll.
 
