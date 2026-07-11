@@ -36,12 +36,27 @@ def process_once() -> int:
 def main(poll_seconds: float = 5.0) -> None:  # pragma: no cover - long-running
     s = get_settings()
     configure_logging(level=s.log_level, json=s.log_json)
-    _log.info("worker.start", inbox=str(s.data_dir / "inbox"))
+    _log.info(
+        "worker.start",
+        inbox=str(s.data_dir / "inbox"),
+        watch=s.watch.enabled,
+        watch_dirs=[str(d) for d in s.watch_dirs] if s.watch.enabled else [],
+    )
+    last_watch = 0.0
     while True:
         try:
             process_once()
         except Exception as exc:
             _log.warning("worker.error", error=str(exc))
+        # Watch Folder sync, throttled to its own poll interval.
+        if s.watch.enabled and time.monotonic() - last_watch >= s.watch.poll_seconds:
+            try:
+                from auralynq.serving.watcher import sync_once
+
+                sync_once()
+            except Exception as exc:
+                _log.warning("worker.watch_error", error=str(exc))
+            last_watch = time.monotonic()
         time.sleep(poll_seconds)
 
 

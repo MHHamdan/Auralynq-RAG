@@ -99,6 +99,31 @@ class CorpusDocumentsResponse(BaseModel):
     documents: list[CorpusDocument] = Field(default_factory=list)
 
 
+class WatchDirStatus(BaseModel):
+    path: str
+    exists: bool = False
+    files: int = 0
+
+
+class WatchStatusResponse(BaseModel):
+    enabled: bool = False
+    poll_seconds: float = 10.0
+    recursive: bool = True
+    delete_missing: bool = True
+    tracked: int = 0
+    directories: list[WatchDirStatus] = Field(default_factory=list)
+
+
+class WatchSyncResponse(BaseModel):
+    enabled: bool = False
+    added: int = 0
+    updated: int = 0
+    removed: int = 0
+    reindexed: bool = False
+    chunks_indexed: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
 class WikiPageSummary(BaseModel):
     id: str
     title: str = ""

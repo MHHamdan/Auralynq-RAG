@@ -158,6 +158,27 @@ class WikiSettings(BaseSettings):
     max_context_chars: int = 6000
 
 
+class WatchSettings(BaseSettings):
+    """Watch Folder — auto-reindex local directories on change. Off by default.
+
+    The worker polls each configured directory; new and modified files are
+    ingested incrementally (content-hash idempotent), and — when
+    ``delete_missing`` is on — a document whose source file has disappeared is
+    removed from the index and knowledge graph. Files are watched in place (they
+    are never moved, unlike the ``inbox`` queue worker)."""
+
+    enabled: bool = False
+    #: Directories to watch. Relative paths resolve against ``data_dir``. When
+    #: empty (and enabled), defaults to ``<data_dir>/watch``. Set via env as a
+    #: JSON array, e.g. AURALYNQ_WATCH__DIRS='["/mnt/docs","reports"]'.
+    dirs: list[str] = []
+    #: Minimum seconds between folder scans (the worker never scans faster).
+    poll_seconds: float = 10.0
+    recursive: bool = True
+    #: Remove a document from the index when its source file disappears.
+    delete_missing: bool = True
+
+
 class Settings(BaseSettings):
     """Root settings object. Instantiate via :func:`get_settings`."""
 
@@ -192,6 +213,7 @@ class Settings(BaseSettings):
     visual: VisualGroundingSettings = Field(default_factory=VisualGroundingSettings)
     modelfit: ModelFitSettings = Field(default_factory=ModelFitSettings)
     wiki: WikiSettings = Field(default_factory=WikiSettings)
+    watch: WatchSettings = Field(default_factory=WatchSettings)
 
     # When true, blocks all outbound calls to external LLM/embedding/telemetry
     # providers regardless of which API keys are set. Guarantees zero data
@@ -248,6 +270,13 @@ class Settings(BaseSettings):
     @property
     def wiki_dir(self) -> Path:
         return self.storage_dir / "wiki_pages"
+
+    @property
+    def watch_dirs(self) -> list[Path]:
+        """Resolved Watch Folder directories. Relative entries resolve against
+        ``data_dir``; defaults to ``<data_dir>/watch`` when none configured."""
+        raw = [Path(d) for d in self.watch.dirs] if self.watch.dirs else [self.data_dir / "watch"]
+        return [d if d.is_absolute() else (self.data_dir / d) for d in raw]
 
     def ensure_dirs(self) -> None:
         for p in (self.data_dir, self.reports_dir, self.index_dir, self.storage_dir):
