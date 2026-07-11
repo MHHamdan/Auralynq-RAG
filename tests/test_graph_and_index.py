@@ -79,3 +79,27 @@ def test_build_index_end_to_end(corpus_dir):
     assert stats["entities"] >= 1
     kg = load_graph()
     assert kg.n_entities == stats["entities"]
+
+
+# ---- Phase 4: entity canonicalization ------------------------------------
+def test_normalize_entity_canonicalizes_possessives():
+    from auralynq.retrieval.pathrag.graph import normalize_entity
+
+    assert normalize_entity("Ford") == "ford"
+    assert normalize_entity("Ford's") == "ford"
+    assert normalize_entity("Ford’s") == "ford"  # curly apostrophe
+    assert normalize_entity("Ericsson.") == "ericsson"
+    assert normalize_entity("employees'") == "employees"
+    assert normalize_entity("'s") == "'s"  # never collapses to empty (fallback)
+
+
+def test_add_entity_merges_variants_and_prefers_clean_display():
+    from auralynq.retrieval.pathrag.graph import KnowledgeGraph, normalize_entity
+
+    kg = KnowledgeGraph()
+    kg.add_entity("Ford's")
+    kg.add_entity("Ford")
+    assert kg.n_entities == 1  # variants merged onto one node
+    node = kg.g.nodes[normalize_entity("Ford")]
+    assert node["name"] == "Ford"  # non-possessive display preferred
+    assert node["mentions"] == 2
