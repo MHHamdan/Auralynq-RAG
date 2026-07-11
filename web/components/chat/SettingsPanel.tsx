@@ -56,11 +56,25 @@ const INSPECTOR_WIDTH: Record<UISettings["inspectorSize"], string> = {
   wide: "clamp(420px,36vw,680px)",
 };
 
+// A free drag on the panel divider (PanelResizer) writes a pixel override here.
+// It wins over the size preset until the user picks a preset or resets the divider.
+export const INSPECTOR_OVERRIDE_KEY = "auralynq.inspectorWidth";
+
 export function applySettings(s: UISettings) {
   const root = document.documentElement;
   root.style.setProperty("--font-scale", FONT_SCALE[s.fontSize]);
   root.style.setProperty("--density-scale", DENSITY_SCALE[s.density]);
-  root.style.setProperty("--inspector-width", INSPECTOR_WIDTH[s.inspectorSize]);
+  // Respect a manual drag override if present, else fall back to the preset.
+  let override = 0;
+  try {
+    override = Number(localStorage.getItem(INSPECTOR_OVERRIDE_KEY));
+  } catch {
+    /* ignore */
+  }
+  root.style.setProperty(
+    "--inspector-width",
+    override > 0 ? `${override}px` : INSPECTOR_WIDTH[s.inspectorSize],
+  );
 }
 
 function OptionGroup<T extends string>({
@@ -108,6 +122,14 @@ export function SettingsPanel({
 }) {
   function update<K extends keyof UISettings>(key: K, value: UISettings[K]) {
     const next = { ...settings, [key]: value };
+    // Picking a size preset discards any manual divider-drag override.
+    if (key === "inspectorSize") {
+      try {
+        localStorage.removeItem(INSPECTOR_OVERRIDE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
     onChange(next);
     saveSettings(next);
     applySettings(next);

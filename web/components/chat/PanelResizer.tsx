@@ -1,7 +1,7 @@
 "use client";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
+import { INSPECTOR_OVERRIDE_KEY as KEY, applySettings, loadSettings } from "./SettingsPanel";
 
-const KEY = "auralynq.inspectorWidth";
 const MIN_PX = 300;
 const MAX_VW = 0.72; // inspector may take up to 72% of the viewport
 
@@ -21,12 +21,8 @@ export function PanelResizer() {
     return w;
   };
 
-  useEffect(() => {
-    try {
-      const stored = Number(localStorage.getItem(KEY));
-      if (stored > 0) apply(stored);
-    } catch {}
-  }, []);
+  // Note: the persisted override is restored on load by `applySettings`
+  // (SettingsPanel owns `--inspector-width`), so no restore effect is needed here.
 
   const onDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -57,10 +53,11 @@ export function PanelResizer() {
   }, []);
 
   const reset = useCallback(() => {
-    document.documentElement.style.removeProperty("--inspector-width");
     try {
       localStorage.removeItem(KEY);
     } catch {}
+    // Drop the manual override and fall back to the chosen size preset.
+    applySettings(loadSettings());
   }, []);
 
   return (
