@@ -8,6 +8,7 @@ reliability score derived from corroboration. Persisted as versioned JSON.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,10 @@ class KnowledgeGraph:
         if not self.g.has_node(key):
             self.g.add_node(key, name=name, type=etype, mentions=0, chunk_ids=set())
         node = self.g.nodes[key]
+        # When variants merge onto one key, show the cleanest display: prefer a
+        # form without a possessive, then the shorter one ("Ford" over "Ford's").
+        if _better_display(name, node["name"]):
+            node["name"] = name
         node["mentions"] += 1
         if chunk_id:
             node["chunk_ids"].add(chunk_id)
@@ -154,5 +159,26 @@ class KnowledgeGraph:
         return kg
 
 
+# Entity canonicalization (Phase 4): collapse the near-duplicates rule-based
+# extraction produces — possessives and punctuation — so "Ford" / "Ford's" and
+# "Ericsson" / "Ericsson's." resolve to one entity node (one wiki page, one KG
+# hub). Deterministic and reproducible; semantic aliases (IBM / International
+# Business Machines) are out of scope here.
+_POSSESSIVE_RE = re.compile(r"[’']s\b|[’']$")
+_PUNCT_EDGE = " \t\"'’“”.,;:!?()[]{}<>"
+
+
 def normalize_entity(name: str) -> str:
-    return " ".join(name.lower().split())
+    s = " ".join(name.lower().split())
+    s = _POSSESSIVE_RE.sub("", s)  # ford's -> ford ; employees' -> employees
+    s = " ".join(s.strip(_PUNCT_EDGE).split())
+    return s or " ".join(name.lower().split())  # never collapse to empty
+
+
+def _better_display(candidate: str, current: str) -> bool:
+    """Is `candidate` a cleaner display name than `current`?"""
+    c_poss = bool(_POSSESSIVE_RE.search(candidate.lower()))
+    cur_poss = bool(_POSSESSIVE_RE.search(current.lower()))
+    if c_poss != cur_poss:
+        return not c_poss  # prefer the non-possessive form
+    return len(candidate) < len(current)  # else prefer the shorter form
