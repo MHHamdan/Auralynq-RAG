@@ -19,6 +19,18 @@ function Icon({ children, tint }: { children: ReactNode; tint: string }) {
 
 const FEATURES = [
   {
+    title: "Compounding Wiki — knowledge that accumulates",
+    body: "Beyond query-time RAG: as you ingest, Auralynq synthesizes durable, cited entity pages from the knowledge graph — compiled once, kept current. Answers consult these pre-built pages and file good answers back, so exploration compounds. When a new source contradicts a prior claim, it's flagged and dated (invalidate-not-delete) — never silently overwritten.",
+    tint: "text-accent",
+    ring: "ring-accent/15",
+    icon: (tint: string) => (
+      <Icon tint={tint}>
+        <path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" />
+        <path d="M14 3v5h5M8 12h6M8 16h4" />
+      </Icon>
+    ),
+  },
+  {
     title: "Span-level visual grounding",
     body: "Every citation resolves to an exact bounding box on the original PDF page, rendered in a full-screen Source Workspace at 144 DPI. Verify any claim against the pixels — not just a page number. Staged span → page → unavailable so you always know the grounding quality.",
     tint: "text-brand2",
