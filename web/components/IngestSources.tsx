@@ -15,8 +15,8 @@ interface SourceTile {
 const TILES: SourceTile[] = [
   { id: "upload", label: "Upload files", desc: "PDF · DOCX · HTML · MD · TXT · audio", icon: <Upload className="h-4 w-4" />, status: "available" },
   { id: "voice", label: "Voice note", desc: "WAV · MP3 · M4A — transcribed + diarized", icon: <Mic className="h-4 w-4" />, status: "available" },
+  { id: "folder", label: "Watch folder", desc: "Auto-reindex a local directory", icon: <FolderSync className="h-4 w-4" />, status: "available" },
   { id: "url", label: "Web URL", desc: "Scrape + index a page", icon: <Globe className="h-4 w-4" />, status: "planned" },
-  { id: "folder", label: "Watch folder", desc: "Auto-reindex a local directory", icon: <FolderSync className="h-4 w-4" />, status: "planned" },
   { id: "cloud", label: "Cloud connectors", desc: "Drive · Slack · Notion", icon: <Cloud className="h-4 w-4" />, status: "planned" },
 ];
 
@@ -31,16 +31,24 @@ export function IngestSources({ onUpload }: { onUpload: () => void }) {
     <div>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-fg">Add a source</h3>
-        <span className="text-[10px] text-fg3">2 available · 3 planned</span>
+        <span className="text-[10px] text-fg3">3 available · 2 planned</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {TILES.map((t) => {
           const available = t.status === "available";
           const Tag = available ? "button" : "div";
+          // The folder tile jumps to the Watch Folder manager below; others open upload.
+          const onClick =
+            t.id === "folder"
+              ? () =>
+                  document
+                    .getElementById("watch-panel")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              : onUpload;
           return (
             <Tag
               key={t.id}
-              {...(available ? { type: "button" as const, onClick: onUpload } : { "aria-disabled": true })}
+              {...(available ? { type: "button" as const, onClick } : { "aria-disabled": true })}
               className={`flex flex-col gap-1 rounded-xl border p-2.5 text-left transition ${
                 available
                   ? "border-edge bg-panel2 hover:border-brand/50 hover:bg-panel"

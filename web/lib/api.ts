@@ -243,6 +243,51 @@ export async function wikiLint(): Promise<WikiLint> {
   return r.json();
 }
 
+// ---- Watch Folder ---------------------------------------------------------
+export interface WatchDirStatus {
+  path: string;
+  exists: boolean;
+  files: number;
+}
+export interface WatchStatus {
+  enabled: boolean;
+  poll_seconds: number;
+  recursive: boolean;
+  delete_missing: boolean;
+  tracked: number;
+  directories: WatchDirStatus[];
+}
+export interface WatchSyncResult {
+  enabled: boolean;
+  added: number;
+  updated: number;
+  removed: number;
+  reindexed: boolean;
+  chunks_indexed: number;
+  errors: string[];
+}
+
+export async function watchStatus(): Promise<WatchStatus> {
+  const r = await fetch(`${API_BASE}/watch/status`, { cache: "no-store" });
+  if (!r.ok)
+    return {
+      enabled: false,
+      poll_seconds: 10,
+      recursive: true,
+      delete_missing: true,
+      tracked: 0,
+      directories: [],
+    };
+  return r.json();
+}
+
+export async function watchSync(): Promise<WatchSyncResult> {
+  const r = await fetch(`${API_BASE}/watch/sync`, { method: "POST" });
+  if (!r.ok)
+    return { enabled: false, added: 0, updated: 0, removed: 0, reindexed: false, chunks_indexed: 0, errors: ["request failed"] };
+  return r.json();
+}
+
 export async function fetchSuggestions(
   limit = 4,
 ): Promise<{ suggestions: string[]; corpus_indexed: boolean }> {

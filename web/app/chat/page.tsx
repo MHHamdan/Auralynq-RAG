@@ -26,6 +26,7 @@ import { AnswerSteps } from "@/components/AnswerSteps";
 import { StreamingEvidence } from "@/components/StreamingEvidence";
 import { SourceScope } from "@/components/SourceScope";
 import { WikiPanel } from "@/components/WikiPanel";
+import { WatchPanel } from "@/components/WatchPanel";
 import { CommandPalette, type Cmd } from "@/components/CommandPalette";
 import { useRouter } from "next/navigation";
 import { Plus, Cpu, Home, PanelRight, MessageSquarePlus, Zap, Palette } from "lucide-react";
@@ -783,7 +784,14 @@ export default function Chat() {
                 }
               />
             )}
-            {tab === "ingest" && <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />}
+            {tab === "ingest" && (
+              <div className="space-y-4">
+                <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />
+                <div className="border-t border-edge/60 pt-3">
+                  <WatchPanel onSynced={onCorpusDeleted} />
+                </div>
+              </div>
+            )}
             {tab === "wiki" && <WikiPanel refreshKey={corpusRefreshKey} />}
             {tab === "eval" && <EvalPanel />}
           </div>
