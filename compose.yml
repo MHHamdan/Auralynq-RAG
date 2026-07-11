@@ -130,11 +130,15 @@ services:
       - AURALYNQ_SERVE__CORS_ORIGINS=${AURALYNQ_SERVE__CORS_ORIGINS:-["http://localhost:3000"]}
       # Compounding Wiki (off by default): synthesize durable entity pages at ingest.
       - AURALYNQ_WIKI__ENABLED=${AURALYNQ_WIKI__ENABLED:-false}
+      # Watch Folder (off by default): auto-reindex files dropped in the bind below.
+      - AURALYNQ_WATCH__ENABLED=${AURALYNQ_WATCH__ENABLED:-false}
     volumes:
       # Podman-managed named volumes initialize with the image's (non-root) owner,
       # so the non-root runtime user can write without host-ownership clashes.
       - auralynq-data:/app/data
       - auralynq-reports:/app/reports
+      # Host folder auto-reindexed when AURALYNQ_WATCH__ENABLED=true.
+      - ${AURALYNQ_WATCH_HOST:-./data/watch}:/app/data/watch:z
     depends_on:
       - qdrant
       - phoenix
@@ -205,8 +209,10 @@ services:
       - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
       - AURALYNQ_DATA_DIR=/app/data
       - AURALYNQ_WIKI__ENABLED=${AURALYNQ_WIKI__ENABLED:-false}
+      - AURALYNQ_WATCH__ENABLED=${AURALYNQ_WATCH__ENABLED:-false}
     volumes:
       - auralynq-data:/app/data
+      - ${AURALYNQ_WATCH_HOST:-./data/watch}:/app/data/watch:z
     depends_on:
       - qdrant
     healthcheck:

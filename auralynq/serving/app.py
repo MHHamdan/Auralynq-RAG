@@ -51,6 +51,8 @@ from auralynq.serving.schemas import (
     CorpusClearConfirmRequest,
     CorpusDocument,
     CorpusDocumentsResponse,
+    WatchStatusResponse,
+    WatchSyncResponse,
     WikiLintResponse,
     WikiPageResponse,
     WikiPageSummary,
@@ -418,6 +420,22 @@ def create_app() -> FastAPI:
             if d.get("doc_id")
         ]
         return CorpusDocumentsResponse(documents=docs)
+
+    # ------------------------------------------------------- watch folder --
+    @app.get("/watch/status", response_model=WatchStatusResponse)
+    async def watch_status_ep() -> WatchStatusResponse:
+        from auralynq.serving.watcher import watch_status
+
+        return WatchStatusResponse(**watch_status())
+
+    @app.post("/watch/sync", response_model=WatchSyncResponse)
+    async def watch_sync_ep() -> WatchSyncResponse:
+        # Manual trigger — reconcile the index with the watch folders now.
+        from auralynq.serving.watcher import sync_once
+
+        report = await asyncio.to_thread(sync_once)
+        fields = WatchSyncResponse.model_fields
+        return WatchSyncResponse(**{k: v for k, v in report.items() if k in fields})
 
     # ---------------------------------------------------- compounding wiki --
     @app.get("/wiki/entities", response_model=WikiPagesResponse)
