@@ -13,9 +13,12 @@ A **local-first, voice-native, agentic RAG platform** with hybrid vector retriev
 PPR-augmented PathRAG graph reasoning, 13 pluggable RAG strategies, visual source
 grounding with exact span-level bounding boxes, and a full-screen document inspection
 workspace. Grounded answers with citations you can visually verify against the original
-PDF. Runs at **$0** on a laptop; upgrades to GPU models via env flags.
+PDF. A **Compounding Wiki** turns ingest into a persistent, cited knowledge base that
+accumulates — synthesizing durable entity pages and flagging cross-source
+contradictions instead of re-deriving everything each query. Runs at **$0** on a
+laptop; upgrades to GPU models via env flags.
 
-[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Research contributions](docs/research/research-contributions.md) · [Decisions](DECISIONS.md)
+[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Compounding Wiki](#-compounding-wiki) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Research contributions](docs/research/research-contributions.md) · [Decisions](DECISIONS.md)
 
 </div>
 
@@ -458,6 +461,46 @@ Recommended, Score Cards, Benchmark Lab, and Comparison.
 - Hardware telemetry stays local; no private data leaves the machine.
 
 **Implementation**: `auralynq/modelfit/` — `hardware.py`, `scoring.py`, `benchmark_runner.py`, `rag_bench.py`, `cli.py`, `router.py`
+
+---
+
+## 📚 Compounding Wiki
+
+**Knowledge that accumulates instead of being re-derived on every query.** Ordinary
+RAG (and NotebookLM) re-find and re-stitch chunks each time you ask — nothing is
+built up. The Compounding Wiki adds a persistent layer *over* the knowledge graph:
+at ingest, Auralynq synthesizes durable, cited **entity pages**, keeps them current,
+flags contradictions across sources, and lets good answers compound back into the
+wiki. Compiled once, kept current — inspired by the LLM-Wiki pattern and Vannevar
+Bush's Memex, framed as **non-parametric continual learning** (HippoRAG 2).
+
+Off by default; purely additive — enable with `AURALYNQ_WIKI__ENABLED=true`.
+
+### What it does
+
+| Capability | How |
+|-----------|-----|
+| **Synthesize entity pages** | At ingest, each qualifying entity gets a cited markdown page built **from the existing knowledge graph** (name, mentions, relations + full provenance) — no re-extraction. |
+| **Consult before re-deriving** | For entity questions the answer is already compiled, so the agent surfaces the pre-built page as a clean, citable context (falls back to chunk retrieval). |
+| **Flag contradictions** | When a **new source** contradicts a prior claim, it's flagged and dated — *invalidate-not-delete* (both versions kept). No mainstream RAG surfaces this. |
+| **Compound answers back** | High-confidence, cited answers are filed back as durable pages so explorations accumulate rather than vanish into chat history. |
+| **Lint** | `GET /wiki/lint` reports contradictions + orphan pages (via the `[[wikilink]]` graph). |
+| **Entity canonicalization** | Possessive/punctuation variants (`Ford` / `Ford's`) merge to one page and one KG hub. |
+
+### API & UI
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /wiki/entities` | List synthesized pages (title, mentions, sources) |
+| `GET /wiki/entity/{id}` | A page's markdown + metadata |
+| `GET /wiki/lint` | Contradictions + orphan-page health report |
+
+The **Wiki** tab in the chat inspector browses the pages, shows contradiction/orphan
+pills, and renders each page. The wiki is plain markdown under
+`data/storage/wiki_pages/` (Obsidian-vault-compatible: YAML frontmatter → Dataview).
+
+**Implementation**: `auralynq/wiki/` — `store.py`, `generator.py`, `retriever.py`,
+`contradiction.py`. Design + related work: [docs/research/auralynq-compounding-wiki-proposal.md](docs/research/auralynq-compounding-wiki-proposal.md).
 
 ---
 
@@ -1036,6 +1079,7 @@ Claude Desktop config:
 ## Roadmap
 
 - [x] **Auralynq ModelFit Index** — hardware-aware model selection, scoring, CLI, REST API, frontend page, ModelFitChip in chat, RAG quality benchmark metrics
+- [x] **Compounding Wiki** — synthesize durable cited entity pages at ingest, consult them at query time, flag cross-source contradictions (invalidate-not-delete), file answers back, `/wiki/*` endpoints + inspector tab, entity canonicalization
 - [ ] Page thumbnail rail in Source Workspace (requires `/thumbnail` endpoint)
 - [ ] Layout block store written at ingest for cheaper page-level queries
 - [ ] ColPali visual retrieval (image-to-image semantic search)

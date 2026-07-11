@@ -2,6 +2,11 @@ import type { ReactNode } from "react";
 
 const POINTS: { title: string; body: string; icon: ReactNode }[] = [
   {
+    title: "Compounding knowledge, not just retrieval",
+    body: "Auralynq builds a persistent, cited wiki from your knowledge graph as you ingest — and flags when a new source contradicts a prior claim, keeping both with dates. Most RAG (and NotebookLM) re-derive everything each query and never tell you when your sources disagree.",
+    icon: <path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z M8 12h6M8 16h4M14 3v5h5" />,
+  },
+  {
     title: "Span-level visual source grounding",
     body: "Click any citation and the exact answer span is drawn as a bounding box on the original PDF page — pixel-accurate, not a fuzzy region highlight. No other open-source local RAG ties answer spans to visual proof this way.",
     icon: <path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z M9 12h6M9 16h4M14 3v5h5" />,
