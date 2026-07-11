@@ -132,10 +132,10 @@ class SLMLlm(LLM):  # pragma: no cover - requires llama-cpp-python install
 class OpenAILLM(LLM):  # pragma: no cover - paid path
     name = "openai"
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, base_url: str | None = None) -> None:
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key)
+        self._client = OpenAI(api_key=api_key, **({"base_url": base_url} if base_url else {}))
         self.model = model
 
     def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
@@ -163,6 +163,23 @@ class OpenAILLM(LLM):  # pragma: no cover - paid path
             delta = chunk.choices[0].delta.content  # type: ignore[union-attr]
             if delta:
                 yield delta
+
+
+class HuggingFaceLLM(OpenAILLM):  # pragma: no cover - paid path
+    """Powerful hosted models via Hugging Face **Inference Providers**.
+
+    HF exposes an OpenAI-compatible router, so we reuse the OpenAI client with a
+    different ``base_url`` and the HF token as the key. Model ids are HF repo ids,
+    e.g. ``meta-llama/Llama-3.3-70B-Instruct``. Most large models require a paid /
+    PRO account. Optionally pin a specific backend with ``model:provider`` (e.g.
+    ``deepseek-ai/DeepSeek-V3:together``); bare ids let HF pick.
+    """
+
+    name = "huggingface"
+    ROUTER_URL = "https://router.huggingface.co/v1"
+
+    def __init__(self, api_key: str, model: str) -> None:
+        super().__init__(api_key=api_key, model=model, base_url=self.ROUTER_URL)
 
 
 class AnthropicLLM(LLM):  # pragma: no cover - paid path
