@@ -37,6 +37,7 @@ import { EvalPanel } from "@/components/EvalPanel";
 import { SourceViewPanel } from "@/components/SourceViewPanel";
 import { SourceWorkspaceModal } from "@/components/SourceWorkspaceModal";
 import { AppBar } from "@/components/chat/AppBar";
+import { PanelResizer } from "@/components/chat/PanelResizer";
 import { Composer, type ChatMode } from "@/components/chat/Composer";
 import { InspectorOverview, type RecentMeta } from "@/components/chat/InspectorOverview";
 import { AgentActivityRail, type AgentActivity } from "@/components/chat/AgentActivityRail";
@@ -611,7 +612,7 @@ export default function Chat() {
 
       {/* Full-viewport grid: chat | inspector */}
       <div
-        className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_var(--inspector-width,clamp(360px,30vw,560px))]"
+        className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_auto_var(--inspector-width,clamp(360px,30vw,560px))]"
       >
         {/* Conversation column */}
         <section className="flex min-h-0 flex-col">
@@ -685,6 +686,9 @@ export default function Chat() {
             />
           </div>
         </section>
+
+        {/* Draggable divider — expand the chat or the inspector on the fly (lg+). */}
+        <PanelResizer />
 
         {/* Inspector — always visible on desktop (lg+), mobile drawer when showPanel */}
         <aside
