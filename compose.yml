@@ -128,6 +128,8 @@ services:
       - AURALYNQ_DATA_DIR=/app/data
       - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
       - AURALYNQ_SERVE__CORS_ORIGINS=${AURALYNQ_SERVE__CORS_ORIGINS:-["http://localhost:3000"]}
+      # Compounding Wiki (off by default): synthesize durable entity pages at ingest.
+      - AURALYNQ_WIKI__ENABLED=${AURALYNQ_WIKI__ENABLED:-false}
     volumes:
       # Podman-managed named volumes initialize with the image's (non-root) owner,
       # so the non-root runtime user can write without host-ownership clashes.
@@ -202,6 +204,7 @@ services:
       - AURALYNQ_LLM__MODEL=${AURALYNQ_LLM__MODEL:-llama3.1:8b}
       - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
       - AURALYNQ_DATA_DIR=/app/data
+      - AURALYNQ_WIKI__ENABLED=${AURALYNQ_WIKI__ENABLED:-false}
     volumes:
       - auralynq-data:/app/data
     depends_on:
