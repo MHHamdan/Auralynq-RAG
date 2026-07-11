@@ -80,7 +80,10 @@ def test_synthesize_wiki_from_kg(tmp_path):
 
 
 def test_wiki_disabled_by_default():
-    assert Settings().wiki.enabled is False
+    # Assert the declared code default (immune to a local .env that enables it).
+    from auralynq.config.settings import WikiSettings
+
+    assert WikiSettings.model_fields["enabled"].default is False
 
 
 def test_min_mentions_gate(tmp_path):
