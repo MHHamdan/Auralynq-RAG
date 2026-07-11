@@ -57,6 +57,8 @@ _PROVIDER_DEFAULT_MODEL = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-3-5-haiku-latest",
     "cohere": "command-r-08-2024",
+    # HF Inference Providers — a strong, broadly-available default for PRO accounts.
+    "huggingface": "meta-llama/Llama-3.3-70B-Instruct",
 }
 _OLLAMA_MODEL_HINTS = ("llama", "qwen", "mistral", "gemma", "phi", "deepseek", ":")
 
@@ -65,6 +67,10 @@ def _model_for(provider: str, configured: str) -> str:
     default = _PROVIDER_DEFAULT_MODEL.get(provider)
     if default is None:
         return configured
+    # HF model ids are repo paths ("org/model") and legitimately contain the
+    # ollama-ish substrings above — trust any "/"-shaped id, else use the default.
+    if provider == "huggingface":
+        return configured if "/" in configured else default
     looks_like_ollama = any(h in configured.lower() for h in _OLLAMA_MODEL_HINTS)
     if looks_like_ollama:
         _log.info("llm.model_defaulted", provider=provider, model=default, ignored=configured)
@@ -123,7 +129,7 @@ def build_llm(provider: str | None = None) -> LLM:
 
     # Hard-fail: if air-gapped and a commercial provider was explicitly configured,
     # refuse rather than silently sending data out.
-    if s.air_gapped and provider in ("openai", "anthropic", "cohere"):
+    if s.air_gapped and provider in ("openai", "anthropic", "cohere", "huggingface"):
         _log.warning(
             "llm.air_gapped_block",
             provider=provider,
@@ -168,6 +174,20 @@ def build_llm(provider: str | None = None) -> LLM:
 
             return ResilientLLM(CohereLLM(s.cohere_api_key, _model_for("cohere", s.llm.model)))
 
+        if provider == "huggingface":
+            # Powerful hosted models via HF Inference Providers (OpenAI-compatible
+            # router). Explicit-only: never auto-selected, so a token present for
+            # gated *downloads* never silently routes generation to a paid API.
+            from auralynq.llm.providers import HuggingFaceLLM
+            from auralynq.llm.resilient import ResilientLLM
+
+            if not s.huggingface_token:
+                _log.warning("llm.huggingface_no_token", fallback="extractive")
+                return ExtractiveLLM()
+            return ResilientLLM(
+                HuggingFaceLLM(s.huggingface_token, _model_for("huggingface", s.llm.model))
+            )
+
     except Exception as exc:  # construction failure (e.g. missing sdk) → extractive
         _log.warning("llm.fallback_extractive", error=str(exc))
 
@@ -178,7 +198,7 @@ def build_llm(provider: str | None = None) -> LLM:
 def resolved_provider() -> str:
     s = get_settings()
     if s.llm.provider != "auto":
-        if s.air_gapped and s.llm.provider in ("openai", "anthropic", "cohere"):
+        if s.air_gapped and s.llm.provider in ("openai", "anthropic", "cohere", "huggingface"):
             return "extractive"
         return s.llm.provider
     if s.air_gapped:
