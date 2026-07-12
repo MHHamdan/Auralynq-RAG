@@ -190,6 +190,16 @@ class WebIngestSettings(BaseSettings):
     allow_private_hosts: bool = False
 
 
+class ConnectorSettings(BaseSettings):
+    """Cloud connector credentials — single-token / service-account (no OAuth app).
+    Set via Secrets: AURALYNQ_CONNECTORS__NOTION_TOKEN, __SLACK_BOT_TOKEN,
+    __GDRIVE_CREDENTIALS_JSON. Empty = that connector is not configured."""
+
+    notion_token: str = ""
+    slack_bot_token: str = ""
+    gdrive_credentials_json: str = ""
+
+
 class Settings(BaseSettings):
     """Root settings object. Instantiate via :func:`get_settings`."""
 
@@ -226,6 +236,7 @@ class Settings(BaseSettings):
     wiki: WikiSettings = Field(default_factory=WikiSettings)
     watch: WatchSettings = Field(default_factory=WatchSettings)
     web: WebIngestSettings = Field(default_factory=WebIngestSettings)
+    connectors: ConnectorSettings = Field(default_factory=ConnectorSettings)
 
     # When true, blocks all outbound calls to external LLM/embedding/telemetry
     # providers regardless of which API keys are set. Guarantees zero data

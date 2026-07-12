@@ -438,6 +438,45 @@ export async function ingestUrl(url: string): Promise<IngestUrlResult> {
   return r.json();
 }
 
+// ---- Cloud connectors -----------------------------------------------------
+export interface ConnectorStatus {
+  name: string;
+  configured: boolean;
+  setup_hint: string;
+  synced_at: string | null;
+  docs: number;
+}
+export interface ConnectorSyncResult {
+  connector: string;
+  configured: boolean;
+  added: number;
+  updated: number;
+  removed: number;
+  unchanged: number;
+  chunks_indexed: number;
+  errors: string[];
+}
+
+export async function connectorsStatus(): Promise<ConnectorStatus[]> {
+  const r = await fetch(`${API_BASE}/connectors/status`, { cache: "no-store" });
+  if (!r.ok) return [];
+  return (await r.json()).connectors ?? [];
+}
+
+export async function connectorSync(name: string): Promise<ConnectorSyncResult> {
+  const r = await fetch(`${API_BASE}/connectors/${encodeURIComponent(name)}/sync`, { method: "POST" });
+  if (!r.ok) {
+    let detail = `sync failed: ${r.status}`;
+    try {
+      detail = (await r.json())?.detail || detail;
+    } catch {
+      /* non-JSON */
+    }
+    throw new Error(detail);
+  }
+  return r.json();
+}
+
 export async function sendVoice(blob: Blob) {
   const fd = new FormData();
   fd.append("file", new File([blob], "speech.webm", { type: blob.type }));

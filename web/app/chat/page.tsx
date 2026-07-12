@@ -27,6 +27,7 @@ import { StreamingEvidence } from "@/components/StreamingEvidence";
 import { SourceScope } from "@/components/SourceScope";
 import { WikiPanel } from "@/components/WikiPanel";
 import { WatchPanel } from "@/components/WatchPanel";
+import { ConnectorsPanel } from "@/components/ConnectorsPanel";
 import { CommandPalette, type Cmd } from "@/components/CommandPalette";
 import { useRouter } from "next/navigation";
 import { Plus, Cpu, Home, PanelRight, MessageSquarePlus, Zap, Palette } from "lucide-react";
@@ -789,6 +790,9 @@ export default function Chat() {
                 <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />
                 <div className="border-t border-edge/60 pt-3">
                   <WatchPanel onSynced={onCorpusDeleted} />
+                </div>
+                <div className="border-t border-edge/60 pt-3">
+                  <ConnectorsPanel onSynced={onCorpusDeleted} />
                 </div>
               </div>
             )}

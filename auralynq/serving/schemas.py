@@ -113,6 +113,29 @@ class IngestUrlResponse(BaseModel):
     request_id: str = ""
 
 
+class ConnectorStatus(BaseModel):
+    name: str
+    configured: bool = False
+    setup_hint: str = ""
+    synced_at: str | None = None
+    docs: int = 0
+
+
+class ConnectorsStatusResponse(BaseModel):
+    connectors: list[ConnectorStatus] = Field(default_factory=list)
+
+
+class ConnectorSyncResponse(BaseModel):
+    connector: str
+    configured: bool = False
+    added: int = 0
+    updated: int = 0
+    removed: int = 0
+    unchanged: int = 0
+    chunks_indexed: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
 class WatchDirStatus(BaseModel):
     path: str
     exists: bool = False

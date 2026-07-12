@@ -17,7 +17,7 @@ const TILES: SourceTile[] = [
   { id: "voice", label: "Voice note", desc: "WAV · MP3 · M4A — transcribed + diarized", icon: <Mic className="h-4 w-4" />, status: "available" },
   { id: "url", label: "Web URL", desc: "Scrape + index a page", icon: <Globe className="h-4 w-4" />, status: "available" },
   { id: "folder", label: "Watch folder", desc: "Auto-reindex a local directory", icon: <FolderSync className="h-4 w-4" />, status: "available" },
-  { id: "cloud", label: "Cloud connectors", desc: "Drive · Slack · Notion", icon: <Cloud className="h-4 w-4" />, status: "planned" },
+  { id: "cloud", label: "Cloud connectors", desc: "Drive · Slack · Notion", icon: <Cloud className="h-4 w-4" />, status: "available" },
 ];
 
 /**
@@ -31,7 +31,7 @@ export function IngestSources({ onUpload, onWebUrl }: { onUpload: () => void; on
     <div>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-fg">Add a source</h3>
-        <span className="text-[10px] text-fg3">4 available · 1 planned</span>
+        <span className="text-[10px] text-fg3">5 available</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {TILES.map((t) => {
@@ -46,7 +46,12 @@ export function IngestSources({ onUpload, onWebUrl }: { onUpload: () => void; on
                     ?.scrollIntoView({ behavior: "smooth", block: "start" })
               : t.id === "url"
                 ? onWebUrl ?? onUpload
-                : onUpload;
+                : t.id === "cloud"
+                  ? () =>
+                      document
+                        .getElementById("connectors-panel")
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  : onUpload;
           return (
             <Tag
               key={t.id}
