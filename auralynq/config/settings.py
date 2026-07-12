@@ -87,6 +87,10 @@ class AgentSettings(BaseSettings):
     latency_budget_ms: int = 15_000
     semantic_cache: bool = True
     cache_threshold: float = 0.93
+    # Agentic loop (the `agentic` strategy): decompose into sub-questions, retrieve
+    # per hop with LLM-judged sufficiency + LLM follow-up queries (multi-hop).
+    agentic_max_hops: int = 4
+    agentic_max_subquestions: int = 4
 
 
 class VoiceSettings(BaseSettings):
