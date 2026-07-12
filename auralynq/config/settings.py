@@ -54,6 +54,13 @@ class RetrievalSettings(BaseSettings):
     mmr_lambda: float = 0.6
     dense_weight: float = 0.6
     sparse_weight: float = 0.4
+    # Contextual Retrieval (Anthropic): at ingest, an LLM writes a 1-2 sentence
+    # context situating each chunk in its document, prepended before embedding +
+    # sparse indexing. Off by default — it costs one LLM call per chunk and needs
+    # a real model (extractive fallback produces poor context).
+    contextual_enabled: bool = False
+    contextual_max_doc_chars: int = 8000  # doc window fed to the LLM per chunk
+    contextual_max_context_chars: int = 400  # cap on the generated context
 
 
 class LLMSettings(BaseSettings):
