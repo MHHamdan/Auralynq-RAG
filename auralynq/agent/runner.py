@@ -255,7 +255,9 @@ def _maybe_file_answer(question: str, state: AgentState, refused: bool) -> None:
         _log.warning("wiki.file_answer_failed", error=str(e))
 
 
-def _new_state(question: str, final_k: int | None, route_hint: str = "") -> AgentState:
+def _new_state(
+    question: str, final_k: int | None, route_hint: str = "", agentic: bool = False
+) -> AgentState:
     s = get_settings()
     return AgentState(
         question=question,
@@ -264,6 +266,7 @@ def _new_state(question: str, final_k: int | None, route_hint: str = "") -> Agen
         max_iters=s.agent.max_iters,
         latency_budget_ms=s.agent.latency_budget_ms,
         route_hint=route_hint,
+        agentic=agentic,
     )
 
 
@@ -273,9 +276,14 @@ def answer_question(
     filt: Filter | None = None,
     use_cache: bool | None = None,
     route_hint: str = "",
+    agentic: bool = False,
 ) -> AnswerResult:
     s = get_settings()
     use_cache = s.agent.semantic_cache if use_cache is None else use_cache
+    # The agentic loop produces a distinct answer for the same question; don't
+    # share the single-shot semantic cache across strategies.
+    if agentic:
+        use_cache = False
     trace = Trace(trace_id=stable_id(question))
 
     if use_cache:
@@ -287,7 +295,7 @@ def answer_question(
             )
 
     deps = _build_deps(trace, filt)
-    state = _new_state(question, final_k, route_hint=route_hint)
+    state = _new_state(question, final_k, route_hint=route_hint, agentic=agentic)
     state = run_agent(state, deps)
 
     from auralynq.providers import describe_providers

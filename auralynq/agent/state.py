@@ -30,6 +30,11 @@ class AgentState(BaseModel):
     # control
     iteration: int = 0
     max_iters: int = 3
+    # Agentic retrieve-then-reason loop (decompose → retrieve → judge sufficiency →
+    # re-retrieve). When set, run_agent dispatches to the multi-hop executor.
+    agentic: bool = False
+    sub_questions: list[str] = Field(default_factory=list)
+    hops: int = 0
     need_rewrite: bool = False
     gaps: list[str] = Field(default_factory=list)
     coverage: float = 0.0

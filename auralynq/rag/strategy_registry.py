@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from auralynq.rag.strategies.agentic import AgenticLoopStrategy
 from auralynq.rag.strategies.auralynq_rag import AuralynqRAGStrategy
 from auralynq.rag.strategies.base import RAGStrategy, StrategyResult
 from auralynq.rag.strategies.graph import GraphRAGStrategy
@@ -22,6 +23,7 @@ from auralynq.rag.strategies.planned import (
 
 _ALL_STRATEGIES: list[RAGStrategy] = [
     AuralynqRAGStrategy(),
+    AgenticLoopStrategy(),
     HybridStrategy(),
     NaiveVectorStrategy(),
     KeywordBM25Strategy(),
