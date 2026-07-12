@@ -76,11 +76,19 @@ def citation_scores(samples: list[dict], *, judge=None) -> CitationScores:
         total_cites += len(cites)
         ans_tokens = _content_tokens(answer)
         cite_tokens = [_content_tokens(c.get("text", "")) for c in cites]
+        joined_evidence = "\n".join((c.get("text") or "") for c in cites)
 
-        # precision: each cited chunk should actually overlap the answer content
-        for ct in cite_tokens:
+        # precision: each cited chunk should actually back the answer
+        for c, ct in zip(cites, cite_tokens):
             prec_den += 1
-            if ct and _overlap(ans_tokens, ct) >= CITATION_USED_TAU:
+            lexical_ok = bool(ct) and _overlap(ans_tokens, ct) >= CITATION_USED_TAU
+            if judge is not None:
+                verdict = judge.supports(answer, c.get("text", ""))
+                if verdict is None:
+                    verdict = lexical_ok  # judge undecided → lexical fallback
+            else:
+                verdict = lexical_ok
+            if verdict:
                 prec_num += 1
 
         # attribution: each answer claim should be supported by some citation
@@ -89,7 +97,7 @@ def citation_scores(samples: list[dict], *, judge=None) -> CitationScores:
             if not st:
                 continue
             attr_den += 1
-            if _claim_supported(sent, st, cites, cite_tokens, judge):
+            if _claim_supported(sent, st, joined_evidence, cite_tokens, judge):
                 attr_num += 1
 
     n = len(samples)
@@ -105,25 +113,13 @@ def citation_scores(samples: list[dict], *, judge=None) -> CitationScores:
     )
 
 
-def _claim_supported(sent: str, sent_tokens: set[str], cites, cite_tokens, judge) -> bool:
+def _claim_supported(sent: str, sent_tokens: set[str], joined_evidence: str, cite_tokens, judge) -> bool:
+    lexical = any(_overlap(sent_tokens, ct) >= CLAIM_SUPPORT_TAU for ct in cite_tokens)
     if judge is None:
-        return any(_overlap(sent_tokens, ct) >= CLAIM_SUPPORT_TAU for ct in cite_tokens)
-    # LLM-judge (NLI-style): supported if any cited chunk entails the claim.
-    for c in cites:
-        ev = (c.get("text") or "").strip()
-        if not ev:
-            continue
-        prompt = (
-            "Does the EVIDENCE support the CLAIM? Answer strictly 'yes' or 'no'.\n"
-            f"CLAIM: {sent}\nEVIDENCE: {ev[:600]}"
-        )
-        try:
-            verdict = judge.generate(prompt, max_tokens=3).strip().lower()
-        except Exception:
-            verdict = ""
-        if verdict.startswith("yes"):
-            return True
-    return False
+        return lexical
+    # LLM-judge (NLI): is the claim entailed by the cited evidence?
+    verdict = judge.supports(sent, joined_evidence)
+    return lexical if verdict is None else verdict
 
 
 def to_dict(scores: CitationScores) -> dict:
