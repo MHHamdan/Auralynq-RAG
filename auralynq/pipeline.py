@@ -38,10 +38,21 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
     store = get_store()
     embedder = get_embedder()
 
+    # Contextual Retrieval (Anthropic): situate each chunk in its document before
+    # embedding + sparse indexing. Gated + non-fatal; never blocks indexing.
+    if s.retrieval.contextual_enabled and documents:
+        try:
+            from auralynq.ingest.contextualize import contextualize_documents
+
+            contextualize_documents(documents, settings=s)
+        except Exception as e:  # pragma: no cover - non-fatal by design
+            _log.warning("contextualize.skipped", error=str(e))
+
     all_chunks: list[Chunk] = [c for d in documents for c in d.chunks]
     n_indexed = 0
     for batch in chunked(all_chunks, s.embedding.batch_size):
-        emb = embedder.embed([c.text for c in batch])
+        # embed_text() prepends the situating context when present, else raw text.
+        emb = embedder.embed([c.embed_text() for c in batch])
         n_indexed += store.upsert(batch, emb)
 
     if isinstance(store, MemoryStore):
