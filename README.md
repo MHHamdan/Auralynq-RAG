@@ -18,7 +18,7 @@ accumulates — synthesizing durable entity pages and flagging cross-source
 contradictions instead of re-deriving everything each query. Runs at **$0** on a
 laptop; upgrades to GPU models via env flags.
 
-[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Compounding Wiki](#-compounding-wiki) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Research contributions](docs/research/research-contributions.md) · [Decisions](DECISIONS.md)
+[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Compounding Wiki](#-compounding-wiki) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
 
 </div>
 
@@ -500,7 +500,7 @@ pills, and renders each page. The wiki is plain markdown under
 `data/storage/wiki_pages/` (Obsidian-vault-compatible: YAML frontmatter → Dataview).
 
 **Implementation**: `auralynq/wiki/` — `store.py`, `generator.py`, `retriever.py`,
-`contradiction.py`. Design + related work: [docs/research/auralynq-compounding-wiki-proposal.md](docs/research/auralynq-compounding-wiki-proposal.md).
+`contradiction.py`.
 
 ---
 
@@ -1091,14 +1091,6 @@ Claude Desktop config:
 - [ ] ModelFit community index web UI (submit + browse verified benchmark results)
 
 ---
-
-## Research contributions
-
-[docs/research/research-contributions.md](docs/research/research-contributions.md)
-covers Auralynq-RAG, Visual Source Grounding, the ModelFit Index, and the
-(unimplemented, roadmap-only) CALoRA-RAG track — motivation, what's
-implemented vs. experimental vs. planned, how to run each, and honest
-limitations, with no unbenchmarked "state of the art" claims.
 
 ## Design decisions
 
