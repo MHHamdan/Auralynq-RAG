@@ -90,10 +90,11 @@ def _retrieval_variants(golden, k: int) -> dict[str, Any]:
     return out
 
 
-def _agentic(golden, k: int) -> dict[str, Any]:
+def _agentic(golden, k: int, judge=None) -> dict[str, Any]:
     cases, latencies, samples = [], [], []
     cite_samples: list[dict] = []
     cal_pairs: list[tuple[float, bool]] = []
+    faith_judged: list[float] = []
     from auralynq.agent import runner
     from auralynq.eval.calibration import answer_correct, calibration_scores
     from auralynq.eval.citation_eval import citation_scores
@@ -104,20 +105,34 @@ def _agentic(golden, k: int) -> dict[str, Any]:
         latencies.append(res.elapsed_ms)
         ranked = _dedup_preserve_order([Path(c.get("source", "")).name for c in res.citations])
         cases.append((set(item.supporting), ranked))
+        contexts = res.contexts or [item.answer]
         samples.append(
             {
                 "question": item.question,
                 "answer": res.answer,
-                "contexts": res.contexts or [item.answer],
+                "contexts": contexts,
                 "ground_truth": item.answer,
             }
         )
         cite_samples.append({"answer": res.answer, "citations": res.citations})
-        cal_pairs.append((res.confidence, answer_correct(res.answer, item.answer)))
+        # correctness label: LLM-judge when available, else lexical.
+        if judge is not None:
+            verdict = judge.correct(item.question, res.answer, item.answer)
+            correct = answer_correct(res.answer, item.answer) if verdict is None else verdict
+            jf = judge.faithfulness(res.answer, contexts)
+            if jf is not None:
+                faith_judged.append(jf)
+        else:
+            correct = answer_correct(res.answer, item.answer)
+        cal_pairs.append((res.confidence, correct))
     scores = aggregate(cases, k=k)
     ragas = ragas_evaluate(samples)
-    citation = citation_scores(cite_samples)
+    citation = citation_scores(cite_samples, judge=judge)
     calibration = calibration_scores(cal_pairs)
+    faithfulness = (
+        round(sum(faith_judged) / len(faith_judged), 4) if faith_judged else ragas.faithfulness
+    )
+    ragas_method = "llm_judge" if faith_judged else ragas.provider
     return {
         "retrieval": {
             "recall_at_k": scores.recall_at_k,
@@ -127,10 +142,11 @@ def _agentic(golden, k: int) -> dict[str, Any]:
             "latency_p50_ms": round(statistics.median(latencies), 2) if latencies else 0.0,
         },
         "ragas": {
-            "faithfulness": ragas.faithfulness,
+            "faithfulness": faithfulness,
             "answer_relevancy": ragas.answer_relevancy,
             "context_precision": ragas.context_precision,
             "provider": ragas.provider,
+            "faithfulness_method": ragas_method,
         },
         # Trust metrics (ADR: citation attribution + confidence calibration).
         "citation": {
@@ -195,7 +211,7 @@ def _drift_check(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_eval(smoke: bool = False, write_report: bool = False) -> dict[str, Any]:
+def run_eval(smoke: bool = False, write_report: bool = False, judge: bool = False) -> dict[str, Any]:
     s = get_settings()
     s.ensure_dirs()
     _ensure_index()
@@ -203,6 +219,13 @@ def run_eval(smoke: bool = False, write_report: bool = False) -> dict[str, Any]:
     if smoke:
         golden = golden[:3]
     k = s.retrieval.final_k
+
+    judge_obj = None
+    if judge:
+        from auralynq.eval.judge import LLMJudge
+        from auralynq.llm.factory import get_llm
+
+        judge_obj = LLMJudge(get_llm())
 
     report: dict[str, Any] = {
         "version": 1,
@@ -212,9 +235,10 @@ def run_eval(smoke: bool = False, write_report: bool = False) -> dict[str, Any]:
             "k": k,
             "n_golden": len(golden),
             "smoke": smoke,
+            "judge": judge_obj.name if judge_obj else "lexical",
         },
         "retrieval": _retrieval_variants(golden, k),
-        "agentic": _agentic(golden, k),
+        "agentic": _agentic(golden, k, judge=judge_obj),
         "asr": _asr(),
     }
     report["drift"] = _drift_check(report)

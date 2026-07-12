@@ -146,16 +146,19 @@ def eval(
     report: bool = typer.Option(False, "--report", help="Write a full report to reports/."),
     smoke: bool = typer.Option(False, "--smoke", help="Tiny smoke eval for CI."),
     gate: bool = typer.Option(False, "--gate", help="Exit non-zero if the trust gate fails (CI)."),
+    judge: bool = typer.Option(
+        False, "--judge", help="Use the configured LLM as an NLI judge for citation/faithfulness/correctness."
+    ),
 ) -> None:
     """Run the evaluation harness — retrieval metrics, faithfulness, citation
     attribution, confidence calibration (ECE) + a pass/fail regression gate.
 
-    Example: auralynq eval --report --gate
+    Example: auralynq eval --report --gate --judge
     """
     _bootstrap()
     from auralynq.eval.report import run_eval
 
-    out = run_eval(smoke=smoke, write_report=report)
+    out = run_eval(smoke=smoke, write_report=report, judge=judge)
     console.print_json(json.dumps(out))
 
     g = out.get("gate", {})
