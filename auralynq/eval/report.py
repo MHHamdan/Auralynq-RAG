@@ -92,7 +92,11 @@ def _retrieval_variants(golden, k: int) -> dict[str, Any]:
 
 def _agentic(golden, k: int) -> dict[str, Any]:
     cases, latencies, samples = [], [], []
+    cite_samples: list[dict] = []
+    cal_pairs: list[tuple[float, bool]] = []
     from auralynq.agent import runner
+    from auralynq.eval.calibration import answer_correct, calibration_scores
+    from auralynq.eval.citation_eval import citation_scores
 
     runner._CACHE.clear()
     for item in golden:
@@ -108,8 +112,12 @@ def _agentic(golden, k: int) -> dict[str, Any]:
                 "ground_truth": item.answer,
             }
         )
+        cite_samples.append({"answer": res.answer, "citations": res.citations})
+        cal_pairs.append((res.confidence, answer_correct(res.answer, item.answer)))
     scores = aggregate(cases, k=k)
     ragas = ragas_evaluate(samples)
+    citation = citation_scores(cite_samples)
+    calibration = calibration_scores(cal_pairs)
     return {
         "retrieval": {
             "recall_at_k": scores.recall_at_k,
@@ -123,6 +131,22 @@ def _agentic(golden, k: int) -> dict[str, Any]:
             "answer_relevancy": ragas.answer_relevancy,
             "context_precision": ragas.context_precision,
             "provider": ragas.provider,
+        },
+        # Trust metrics (ADR: citation attribution + confidence calibration).
+        "citation": {
+            "citation_precision": citation.citation_precision,
+            "attribution_rate": citation.attribution_rate,
+            "unsupported_claim_rate": citation.unsupported_claim_rate,
+            "avg_citations": citation.avg_citations,
+            "method": citation.method,
+        },
+        "calibration": {
+            "ece": calibration.ece,
+            "mce": calibration.mce,
+            "brier": calibration.brier,
+            "accuracy": calibration.accuracy,
+            "avg_confidence": calibration.avg_confidence,
+            "bins": calibration.bins,
         },
     }
 
@@ -194,6 +218,9 @@ def run_eval(smoke: bool = False, write_report: bool = False) -> dict[str, Any]:
         "asr": _asr(),
     }
     report["drift"] = _drift_check(report)
+    from auralynq.eval.gate import eval_gate
+
+    report["gate"] = eval_gate(report)
     report["provenance"] = report_provenance(
         dataset_version=f"golden_qa.json n={len(golden)} (smoke={smoke})"
     )

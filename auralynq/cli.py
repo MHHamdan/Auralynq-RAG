@@ -145,16 +145,30 @@ def talk(
 def eval(
     report: bool = typer.Option(False, "--report", help="Write a full report to reports/."),
     smoke: bool = typer.Option(False, "--smoke", help="Tiny smoke eval for CI."),
+    gate: bool = typer.Option(False, "--gate", help="Exit non-zero if the trust gate fails (CI)."),
 ) -> None:
-    """Run the evaluation harness (Ragas + retrieval metrics + WER).
+    """Run the evaluation harness — retrieval metrics, faithfulness, citation
+    attribution, confidence calibration (ECE) + a pass/fail regression gate.
 
-    Example: auralynq eval --report
+    Example: auralynq eval --report --gate
     """
     _bootstrap()
     from auralynq.eval.report import run_eval
 
     out = run_eval(smoke=smoke, write_report=report)
     console.print_json(json.dumps(out))
+
+    g = out.get("gate", {})
+    if gate:
+        if g.get("passed"):
+            console.print("[green]✓ eval gate PASSED[/]")
+        else:
+            fails = ", ".join(
+                f"{f['metric']}={f['value']} (need {f['op']} {f['threshold']})"
+                for f in g.get("failures", [])
+            )
+            console.print(f"[red]✗ eval gate FAILED:[/] {fails}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
