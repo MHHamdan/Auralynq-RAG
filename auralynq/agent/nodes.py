@@ -353,6 +353,9 @@ def node_validate_citations(state: AgentState, deps: AgentDeps) -> AgentState:
             # Thread retrieval score and method so the UI can show evidence quality.
             cit["score"] = round(float(sc.score or 0.0), 4)
             cit["method"] = sc.method or "unknown"
+            # Carry the cited span's text so citations can be verified (attribution
+            # eval) and previewed in the UI — this is the evidence for the claim.
+            cit["text"] = (sc.chunk.text or "")[:280]
             citations.append(cit)
         state.citations = citations
         sp.attributes.update(n_citations=len(citations))

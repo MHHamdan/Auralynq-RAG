@@ -176,6 +176,10 @@ check-docs: ## Verify doc links, referenced make targets, and env.example vars
 eval: ## Run evaluation harness, write reports/
 	$(PY) -m auralynq.cli eval --report
 
+.PHONY: eval-gate
+eval-gate: ## Run the trust gate (faithfulness/citation/calibration) — exits non-zero on regression
+	$(PY) -m auralynq.cli eval --report --gate
+
 .PHONY: bench
 bench: ## Benchmark Qdrant recall/latency/memory trade-offs
 	$(PY) -m auralynq.cli bench --report
