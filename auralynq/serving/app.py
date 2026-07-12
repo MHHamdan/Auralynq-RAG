@@ -51,6 +51,9 @@ from auralynq.serving.schemas import (
     CorpusClearConfirmRequest,
     CorpusDocument,
     CorpusDocumentsResponse,
+    ConnectorsStatusResponse,
+    ConnectorStatus,
+    ConnectorSyncResponse,
     IngestUrlRequest,
     IngestUrlResponse,
     WatchStatusResponse,
@@ -438,6 +441,39 @@ def create_app() -> FastAPI:
         report = await asyncio.to_thread(sync_once)
         fields = WatchSyncResponse.model_fields
         return WatchSyncResponse(**{k: v for k, v in report.items() if k in fields})
+
+    # --------------------------------------------------- cloud connectors --
+    @app.get("/connectors/status", response_model=ConnectorsStatusResponse)
+    async def connectors_status_ep() -> ConnectorsStatusResponse:
+        from auralynq.connectors.factory import connectors_status
+
+        return ConnectorsStatusResponse(
+            connectors=[ConnectorStatus(**c) for c in connectors_status()]
+        )
+
+    @app.post("/connectors/{name}/sync", response_model=ConnectorSyncResponse)
+    async def connector_sync_ep(name: str) -> ConnectorSyncResponse:
+        s = get_settings()
+        if not s.allow_uploads:
+            raise AuralynqError(
+                "uploads_disabled",
+                detail="Adding sources is disabled on this deployment.",
+                status_code=403,
+            )
+        from auralynq.connectors.factory import get_connector
+        from auralynq.connectors.sync import sync_connector
+
+        conn = get_connector(name)
+        if conn is None:
+            raise AuralynqError("unknown_connector", detail=f"No connector '{name}'.", status_code=404)
+        report = await asyncio.to_thread(sync_connector, conn)
+        invalidate = report.get("added", 0) or report.get("updated", 0) or report.get("removed", 0)
+        if invalidate:
+            from auralynq.serving.corpus import invalidate_corpus_cache
+
+            invalidate_corpus_cache()
+        fields = ConnectorSyncResponse.model_fields
+        return ConnectorSyncResponse(**{k: v for k, v in report.items() if k in fields})
 
     # ---------------------------------------------------- compounding wiki --
     @app.get("/wiki/entities", response_model=WikiPagesResponse)
