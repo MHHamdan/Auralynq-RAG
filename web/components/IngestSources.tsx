@@ -15,8 +15,8 @@ interface SourceTile {
 const TILES: SourceTile[] = [
   { id: "upload", label: "Upload files", desc: "PDF · DOCX · HTML · MD · TXT · audio", icon: <Upload className="h-4 w-4" />, status: "available" },
   { id: "voice", label: "Voice note", desc: "WAV · MP3 · M4A — transcribed + diarized", icon: <Mic className="h-4 w-4" />, status: "available" },
+  { id: "url", label: "Web URL", desc: "Scrape + index a page", icon: <Globe className="h-4 w-4" />, status: "available" },
   { id: "folder", label: "Watch folder", desc: "Auto-reindex a local directory", icon: <FolderSync className="h-4 w-4" />, status: "available" },
-  { id: "url", label: "Web URL", desc: "Scrape + index a page", icon: <Globe className="h-4 w-4" />, status: "planned" },
   { id: "cloud", label: "Cloud connectors", desc: "Drive · Slack · Notion", icon: <Cloud className="h-4 w-4" />, status: "planned" },
 ];
 
@@ -26,25 +26,27 @@ const TILES: SourceTile[] = [
  * "Planned" tiles — the same available/planned discipline the RAG strategy
  * selector uses — rather than faking connectors that don't exist.
  */
-export function IngestSources({ onUpload }: { onUpload: () => void }) {
+export function IngestSources({ onUpload, onWebUrl }: { onUpload: () => void; onWebUrl?: () => void }) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-fg">Add a source</h3>
-        <span className="text-[10px] text-fg3">3 available · 2 planned</span>
+        <span className="text-[10px] text-fg3">4 available · 1 planned</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {TILES.map((t) => {
           const available = t.status === "available";
           const Tag = available ? "button" : "div";
-          // The folder tile jumps to the Watch Folder manager below; others open upload.
+          // folder → jump to the Watch Folder manager; url → open the URL input; others → upload.
           const onClick =
             t.id === "folder"
               ? () =>
                   document
                     .getElementById("watch-panel")
                     ?.scrollIntoView({ behavior: "smooth", block: "start" })
-              : onUpload;
+              : t.id === "url"
+                ? onWebUrl ?? onUpload
+                : onUpload;
           return (
             <Tag
               key={t.id}

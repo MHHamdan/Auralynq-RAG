@@ -179,6 +179,17 @@ class WatchSettings(BaseSettings):
     delete_missing: bool = True
 
 
+class WebIngestSettings(BaseSettings):
+    """Web URL ingestion — scrape + index a page. SSRF-guarded by default."""
+
+    enabled: bool = True
+    timeout_s: float = 15.0
+    max_bytes: int = 5_000_000
+    # SSRF guard: refuse private/loopback/link-local/metadata hosts. Only set True
+    # for trusted internal use (e.g. scraping an intranet you control).
+    allow_private_hosts: bool = False
+
+
 class Settings(BaseSettings):
     """Root settings object. Instantiate via :func:`get_settings`."""
 
@@ -214,6 +225,7 @@ class Settings(BaseSettings):
     modelfit: ModelFitSettings = Field(default_factory=ModelFitSettings)
     wiki: WikiSettings = Field(default_factory=WikiSettings)
     watch: WatchSettings = Field(default_factory=WatchSettings)
+    web: WebIngestSettings = Field(default_factory=WebIngestSettings)
 
     # When true, blocks all outbound calls to external LLM/embedding/telemetry
     # providers regardless of which API keys are set. Guarantees zero data

@@ -99,6 +99,20 @@ class CorpusDocumentsResponse(BaseModel):
     documents: list[CorpusDocument] = Field(default_factory=list)
 
 
+class IngestUrlRequest(BaseModel):
+    url: str
+
+
+class IngestUrlResponse(BaseModel):
+    url: str = ""
+    title: str = ""
+    documents: int = 0
+    chunks: int = 0
+    skipped: int = 0
+    unchanged: bool = False
+    request_id: str = ""
+
+
 class WatchDirStatus(BaseModel):
     path: str
     exists: bool = False

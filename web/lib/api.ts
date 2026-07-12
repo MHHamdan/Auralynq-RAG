@@ -410,6 +410,34 @@ export async function ingestFile(file: File) {
   return r.json();
 }
 
+export interface IngestUrlResult {
+  url: string;
+  title: string;
+  documents: number;
+  chunks: number;
+  skipped: number;
+  unchanged: boolean;
+}
+
+export async function ingestUrl(url: string): Promise<IngestUrlResult> {
+  const r = await fetch(`${API_BASE}/ingest/url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!r.ok) {
+    let detail = `ingest url failed: ${r.status}`;
+    try {
+      const j = await r.json();
+      detail = j?.detail || j?.error || detail;
+    } catch {
+      /* non-JSON error */
+    }
+    throw new Error(detail);
+  }
+  return r.json();
+}
+
 export async function sendVoice(blob: Blob) {
   const fd = new FormData();
   fd.append("file", new File([blob], "speech.webm", { type: blob.type }));

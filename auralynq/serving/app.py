@@ -51,6 +51,8 @@ from auralynq.serving.schemas import (
     CorpusClearConfirmRequest,
     CorpusDocument,
     CorpusDocumentsResponse,
+    IngestUrlRequest,
+    IngestUrlResponse,
     WatchStatusResponse,
     WatchSyncResponse,
     WikiLintResponse,
@@ -914,6 +916,45 @@ def create_app() -> FastAPI:
             documents=stats["documents"],
             chunks=stats["chunks_indexed"],
             skipped=stats["skipped"],
+            request_id=request.state.request_id,
+        )
+
+    @app.post("/ingest/url", response_model=IngestUrlResponse)
+    async def ingest_url(request: Request, req: IngestUrlRequest) -> IngestUrlResponse:
+        s = get_settings()
+        if not s.allow_uploads:
+            raise AuralynqError(
+                "uploads_disabled",
+                detail="Adding sources is disabled on this deployment "
+                "(AURALYNQ_ALLOW_UPLOADS=false).",
+                status_code=403,
+            )
+        if not s.web.enabled:
+            raise AuralynqError(
+                "web_ingest_disabled",
+                detail="URL ingestion is disabled (AURALYNQ_WEB__ENABLED=false).",
+                status_code=403,
+            )
+        url = (req.url or "").strip()
+        if not url:
+            raise AuralynqError("missing_url", detail="A URL is required.", status_code=400)
+        from auralynq.ingest.web import WebFetchError
+        from auralynq.pipeline import ingest_web_page
+        from auralynq.serving.corpus import invalidate_corpus_cache
+
+        try:
+            stats = await asyncio.to_thread(ingest_web_page, url)
+        except WebFetchError as exc:
+            raise AuralynqError("web_fetch_failed", detail=str(exc), status_code=400) from exc
+        invalidate_corpus_cache()
+        _METRICS["ingest_total"] += 1
+        return IngestUrlResponse(
+            url=str(stats.get("url", "")),
+            title=str(stats.get("title", "")),
+            documents=int(stats.get("documents", 0) or 0),
+            chunks=int(stats.get("chunks_indexed", 0) or 0),
+            skipped=int(stats.get("skipped", 0) or 0),
+            unchanged=bool(stats.get("unchanged")),
             request_id=request.state.request_id,
         )
 
