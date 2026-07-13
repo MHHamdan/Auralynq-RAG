@@ -239,6 +239,21 @@ class BeliefTimelineResponse(BaseModel):
     current_count: int = 0
 
 
+class CommunityItem(BaseModel):
+    id: int
+    level: int = 0
+    entities: list[str] = Field(default_factory=list)
+    size: int = 0
+    summary: str = ""
+    sources: list[str] = Field(default_factory=list)
+
+
+class CommunitiesResponse(BaseModel):
+    enabled: bool = False
+    count: int = 0
+    communities: list[CommunityItem] = Field(default_factory=list)
+
+
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     corpus_indexed: bool = False
