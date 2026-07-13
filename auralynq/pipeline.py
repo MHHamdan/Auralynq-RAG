@@ -63,6 +63,7 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
     # back to this run's chunks if the store can't enumerate (e.g. remote Qdrant).
     kg_chunks = store.all_chunks() or all_chunks
     wiki_pages = 0
+    belief_claims = 0
     if kg_chunks:
         kg = build_from_chunks(kg_chunks)
         kg.save(graph_path())
@@ -75,6 +76,16 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
                 wiki_pages = synthesize_wiki(kg, kg_chunks, settings=s)
             except Exception as e:  # pragma: no cover - non-fatal by design
                 _log.warning("wiki.synthesis_failed", error=str(e))
+        # Bi-temporal belief store — record how KG facts evolve (valid + ingest
+        # time). Additive and gated; never blocks indexing on failure.
+        if s.beliefs.enabled:
+            try:
+                from auralynq.beliefs import get_belief_store
+                from auralynq.beliefs.extractor import populate_beliefs
+
+                belief_claims = populate_beliefs(kg, kg_chunks, get_belief_store(s.beliefs_db))
+            except Exception as e:  # pragma: no cover - non-fatal by design
+                _log.warning("beliefs.populate_failed", error=str(e))
     else:
         kg = load_graph()  # nothing to index and nothing stored; keep existing
 
@@ -92,6 +103,8 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
     }
     if s.wiki.enabled:
         stats["wiki_pages"] = wiki_pages
+    if s.beliefs.enabled:
+        stats["belief_claims"] = belief_claims
     return stats
 
 
