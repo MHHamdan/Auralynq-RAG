@@ -128,6 +128,18 @@ export type StreamEvent =
     }
   | { type: "token"; text: string }
   | {
+      // Agentic multi-hop progress: planning → hop N → checking → synthesizing.
+      type: "step";
+      phase: "decompose" | "hop" | "check" | "synthesize";
+      label: string;
+      detail?: string;
+      hop?: number;
+      query?: string;
+      retrieved?: number;
+      sub_questions?: string[];
+      sufficient?: boolean;
+    }
+  | {
       type: "final";
       answer: string;
       status?: string;

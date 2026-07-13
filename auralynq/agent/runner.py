@@ -361,25 +361,37 @@ def answer_question(
 
 
 def stream_answer_question(
-    question: str, final_k: int | None = None, filt: Filter | None = None
+    question: str, final_k: int | None = None, filt: Filter | None = None, agentic: bool = False
 ) -> Iterator[dict[str, Any]]:
-    """Yield SSE-style events: {'type': 'token'|'meta'|'final', ...}."""
+    """Yield SSE-style events: {'type': 'step'|'token'|'meta'|'final', ...}.
+
+    When ``agentic`` is set, the retrieval phase runs the multi-hop
+    decompose→retrieve→judge loop and emits ``step`` events live (so the UI can
+    show "planning → hop 1 → hop 2 → synthesizing") before the answer streams.
+    """
     trace = Trace(trace_id=stable_id(question))
     deps = _build_deps(trace, filt)
-    state = _new_state(question, final_k)
+    state = _new_state(question, final_k, agentic=agentic)
 
-    # Run retrieval + fusion + critic/rewrite loop (non-streamed).
     state = node_plan(state, deps)
-    while True:
-        state = node_route(state, deps)
-        state = node_retrieve(state, deps)
-        state = node_fuse(state, deps)
-        state = node_critic(state, deps)
+    if agentic:
+        # Multi-hop retrieval; step events flow straight to the client.
+        from auralynq.agent.agentic import agentic_steps
+
+        yield from agentic_steps(state, deps)
         state.elapsed_ms = trace.total_ms
-        if state.need_rewrite and not state.out_of_budget():
-            state = node_rewrite(state, deps)
-            continue
-        break
+    else:
+        # Default single-shot retrieval + fusion + critic/rewrite loop (non-streamed).
+        while True:
+            state = node_route(state, deps)
+            state = node_retrieve(state, deps)
+            state = node_fuse(state, deps)
+            state = node_critic(state, deps)
+            state.elapsed_ms = trace.total_ms
+            if state.need_rewrite and not state.out_of_budget():
+                state = node_rewrite(state, deps)
+                continue
+            break
 
     from auralynq.serving.corpus import corpus_summary, detect_entities, suggested_questions
 

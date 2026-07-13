@@ -53,7 +53,10 @@ _SUFFICIENCY_PROMPT = (
 
 
 def _clean(line: str) -> str:
-    return re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", line).strip()
+    line = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", line).strip()
+    # Strip a leading label the LLM may echo ("QUESTION:", "Sub-question:", "Q:").
+    line = re.sub(r"^(?:sub-?question|question|query|q)\s*[:.)-]\s*", "", line, flags=re.I).strip()
+    return line
 
 
 def _decompose(llm, question: str, max_sub: int) -> list[str]:
@@ -98,17 +101,23 @@ def _judge_sufficiency(llm, question: str, state: AgentState) -> str | None:
     if not out or "sufficient" in out.lower():
         return None
     followup = _clean(out.splitlines()[0])
-    # Guard against junk: a follow-up must be short and query-like.
-    if not followup or len(followup) > 160:
+    # A follow-up must be short and query-like — reject echoed passages (citation
+    # markers, long text, many words), which the offline extractive LLM produces.
+    if (
+        not followup
+        or len(followup) > 120
+        or len(followup.split()) > 15
+        or re.search(r"\[\d+\]", followup)
+    ):
         return None
     return followup
 
 
-def run_agentic(state: AgentState, deps: AgentDeps) -> AgentState:
-    """Multi-hop retrieve-then-reason executor. Same node vocabulary as the
-    default flow, but decomposition + LLM-judged sufficiency drive the loop and
-    evidence accumulates across hops."""
-    state = node_plan(state, deps)
+def agentic_steps(state: AgentState, deps: AgentDeps):
+    """Run decompose → multi-hop retrieval → fuse, mutating ``state`` in place
+    and yielding ``step`` events for the UI. Leaves ``state.contexts`` populated;
+    does NOT synthesize (the caller streams the answer). ``node_plan`` is assumed
+    already done by the caller."""
     s = deps.settings
     max_hops = max(1, s.agent.agentic_max_hops)
 
@@ -116,6 +125,13 @@ def run_agentic(state: AgentState, deps: AgentDeps) -> AgentState:
         sub_questions = _decompose(deps.llm, state.original_question, s.agent.agentic_max_subquestions)
         state.sub_questions = sub_questions
         sp.attributes.update(n_sub=len(sub_questions), sub_questions=sub_questions)
+    yield {
+        "type": "step",
+        "phase": "decompose",
+        "label": "Planning sub-questions",
+        "detail": f"{len(sub_questions)} sub-question(s)",
+        "sub_questions": sub_questions,
+    }
 
     queue: list[str] = list(sub_questions)
     seen: set[str] = set()
@@ -130,23 +146,51 @@ def run_agentic(state: AgentState, deps: AgentDeps) -> AgentState:
         state.question = q
         state.hops += 1
         state.iteration = state.hops
+        before = len(state.contexts)
         with deps.trace.span("agentic_hop", hop=state.hops, query=q):
             state = node_route(state, deps)
             state = node_retrieve(state, deps)  # accumulates into state.contexts
+        yield {
+            "type": "step",
+            "phase": "hop",
+            "hop": state.hops,
+            "label": f"Retrieving (hop {state.hops})",
+            "query": q,
+            "retrieved": len(state.contexts) - before,
+        }
 
         # After exhausting the planned sub-questions, let the LLM decide whether
         # to keep going (Self-RAG sufficiency) and propose the next query.
         if not queue and state.hops < max_hops and not state.out_of_budget():
             followup = _judge_sufficiency(deps.llm, state.original_question, state)
-            if followup and followup.strip().lower() not in seen:
+            sufficient = not (followup and followup.strip().lower() not in seen)
+            if not sufficient:
                 queue.append(followup)
                 state.notes.append(f"hop {state.hops}: follow-up → {followup}")
+            yield {
+                "type": "step",
+                "phase": "check",
+                "label": "Assessing evidence",
+                "sufficient": sufficient,
+                "detail": "sufficient" if sufficient else f"follow-up: {followup}",
+            }
 
-    # Fuse the full accumulated pool once, then answer the ORIGINAL question.
+    # Fuse the full accumulated pool once; the caller synthesizes the answer.
     state.question = state.original_question
     state = node_fuse(state, deps)
+    yield {"type": "step", "phase": "synthesize", "label": "Synthesizing answer"}
+    _log.info("agentic.loop", hops=state.hops, sub_questions=len(sub_questions), contexts=len(state.contexts))
+
+
+def run_agentic(state: AgentState, deps: AgentDeps) -> AgentState:
+    """Multi-hop retrieve-then-reason executor (non-streaming). Same node
+    vocabulary as the default flow, but decomposition + LLM-judged sufficiency
+    drive the loop and evidence accumulates across hops."""
+    state = node_plan(state, deps)
+    for _ in agentic_steps(state, deps):  # drain the step generator (mutates state)
+        pass
     state = node_synthesize(state, deps)
     state = node_self_check(state, deps)
     state = node_validate_citations(state, deps)
-    _log.info("agentic.done", hops=state.hops, sub_questions=len(sub_questions), contexts=len(state.contexts))
+    _log.info("agentic.done", hops=state.hops, contexts=len(state.contexts))
     return state

@@ -8,12 +8,24 @@ import { CopyButton } from "@/components/CopyButton";
 import { InsufficientEvidence } from "@/components/InsufficientEvidence";
 import { CorpusInventory } from "@/components/CorpusInventory";
 
+export interface AgenticStep {
+  phase: "decompose" | "hop" | "check" | "synthesize";
+  label: string;
+  detail?: string;
+  hop?: number;
+  query?: string;
+  retrieved?: number;
+  sub_questions?: string[];
+  sufficient?: boolean;
+}
+
 export interface Turn {
   role: "user" | "assistant";
   text: string;
   citations?: Citation[];
   route?: string;
   rationale?: string;
+  steps?: AgenticStep[];
   voice?: boolean;
   error?: boolean;
   status?: string;
@@ -101,6 +113,63 @@ function RouteTag({ route, rationale }: { route: string; rationale?: string }) {
   );
 }
 
+const STEP_GLYPH: Record<AgenticStep["phase"], string> = {
+  decompose: "◆",
+  hop: "→",
+  check: "✓",
+  synthesize: "✎",
+};
+
+/** Live multi-hop reasoning trace for the agentic strategy. */
+function AgenticSteps({ steps, live }: { steps: AgenticStep[]; live?: boolean }) {
+  if (!steps.length) return null;
+  return (
+    <div className="mb-3 rounded-lg border border-edge/60 bg-panel/40 px-3 py-2">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-fg3">
+        Agentic reasoning
+        {live && <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand animate-pulse" aria-hidden />}
+      </div>
+      <ol className="space-y-1">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-start gap-2 text-xs leading-relaxed">
+            <span
+              className={`mt-0.5 shrink-0 font-mono ${
+                s.phase === "check" && s.sufficient === false ? "text-warn" : "text-brand"
+              }`}
+              aria-hidden
+            >
+              {STEP_GLYPH[s.phase] ?? "·"}
+            </span>
+            <span className="min-w-0 flex-1 text-fg2">
+              {s.phase === "hop" ? (
+                <>
+                  <span className="text-fg3">Hop {s.hop}:</span>{" "}
+                  <span className="font-medium text-fg">{s.query}</span>
+                  {s.retrieved != null && <span className="text-fg3"> · {s.retrieved} passages</span>}
+                </>
+              ) : s.phase === "decompose" ? (
+                <>
+                  <span className="text-fg">{s.label}</span>
+                  {s.sub_questions?.length ? (
+                    <span className="text-fg3"> — {s.sub_questions.join(" · ")}</span>
+                  ) : null}
+                </>
+              ) : s.phase === "check" ? (
+                <span className="text-fg">
+                  {s.sufficient ? "Evidence sufficient" : "Needs more"}
+                  {!s.sufficient && s.detail ? <span className="text-fg3"> — {s.detail}</span> : null}
+                </span>
+              ) : (
+                <span className="text-fg">{s.label}</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function AiDot() {
   return (
     <span
@@ -165,6 +234,7 @@ export function Message({
       <AiDot />
       <div className="flex-1 min-w-0 rounded-2xl rounded-tl-sm border border-edge bg-panel2 px-4 py-3.5 shadow-md">
         {turn.route && <RouteTag route={turn.route} rationale={turn.rationale} />}
+        {turn.steps?.length ? <AgenticSteps steps={turn.steps} live={live} /> : null}
 
         {empty && live ? (
           <TypingDots />
