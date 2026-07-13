@@ -19,6 +19,7 @@ from auralynq.agent.nodes import (
     node_rewrite,
     node_route,
     node_self_check,
+    node_self_consistency,
     node_validate_citations,
 )
 from auralynq.agent.state import AgentState
@@ -446,6 +447,7 @@ def stream_answer_question(
 
     state.answer = "".join(acc).strip()
     state = node_self_check(state, deps)
+    state = node_self_consistency(state, deps)
     state = node_validate_citations(state, deps)
     _export_langfuse(
         trace,
