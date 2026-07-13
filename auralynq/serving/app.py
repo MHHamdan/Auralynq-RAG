@@ -52,6 +52,8 @@ from auralynq.serving.schemas import (
     AlertReadRequest,
     AlertReadResponse,
     AlertsResponse,
+    BeliefClaimItem,
+    BeliefTimelineResponse,
     ConnectorsStatusResponse,
     ConnectorStatus,
     ConnectorSyncResponse,
@@ -555,6 +557,27 @@ def create_app() -> FastAPI:
 
         marked = get_alert_store().mark_read(req.ids)
         return AlertReadResponse(marked=marked)
+
+    # --------------------------------------- bi-temporal belief timeline (04) ---
+    @app.get("/beliefs/{entity}/timeline", response_model=BeliefTimelineResponse)
+    async def belief_timeline_ep(entity: str) -> BeliefTimelineResponse:
+        """How a fact about ``entity`` evolved — every recorded claim with its
+        valid-time and ingest-time, oldest first."""
+        from auralynq.beliefs import get_belief_store
+
+        hist = get_belief_store().history(entity)
+        items = [
+            BeliefClaimItem(
+                **c.as_dict(),
+                current=(c.valid_to is None and c.superseded_by is None),
+            )
+            for c in hist
+        ]
+        return BeliefTimelineResponse(
+            entity=entity,
+            claims=items,
+            current_count=sum(1 for i in items if i.current),
+        )
 
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)

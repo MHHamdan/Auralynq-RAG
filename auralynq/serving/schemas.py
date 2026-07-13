@@ -218,6 +218,27 @@ class AlertReadResponse(BaseModel):
     marked: int = 0
 
 
+class BeliefClaimItem(BaseModel):
+    claim_id: str
+    entity: str
+    predicate: str
+    object: str
+    source: str = ""
+    doc_id: str = ""
+    valid_from: str = ""
+    valid_to: str | None = None
+    ingest_time: str = ""
+    superseded_by: str | None = None
+    confidence: float = 1.0
+    current: bool = False
+
+
+class BeliefTimelineResponse(BaseModel):
+    entity: str
+    claims: list[BeliefClaimItem] = Field(default_factory=list)
+    current_count: int = 0
+
+
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     corpus_indexed: bool = False
