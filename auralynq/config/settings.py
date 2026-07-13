@@ -169,6 +169,21 @@ class WikiSettings(BaseSettings):
     max_context_chars: int = 6000
 
 
+class BeliefSettings(BaseSettings):
+    """Bi-temporal belief store — records how facts (claims) evolve across
+    valid-time (when the fact holds in the world) and ingest-time (when the
+    system learned it), so knowledge compounds and self-corrects.
+
+    Off by default; purely additive. Backs proactive contradiction alerts and
+    the belief-revision timeline."""
+
+    enabled: bool = False
+    # Filename, under ``storage_dir``, for the sqlite claim store.
+    db_filename: str = "beliefs.db"
+    # Confidence assigned to claims recorded without an explicit score.
+    default_confidence: float = 1.0
+
+
 class WatchSettings(BaseSettings):
     """Watch Folder — auto-reindex local directories on change. Off by default.
 
@@ -245,6 +260,7 @@ class Settings(BaseSettings):
     visual: VisualGroundingSettings = Field(default_factory=VisualGroundingSettings)
     modelfit: ModelFitSettings = Field(default_factory=ModelFitSettings)
     wiki: WikiSettings = Field(default_factory=WikiSettings)
+    beliefs: BeliefSettings = Field(default_factory=BeliefSettings)
     watch: WatchSettings = Field(default_factory=WatchSettings)
     web: WebIngestSettings = Field(default_factory=WebIngestSettings)
     connectors: ConnectorSettings = Field(default_factory=ConnectorSettings)
@@ -304,6 +320,10 @@ class Settings(BaseSettings):
     @property
     def wiki_dir(self) -> Path:
         return self.storage_dir / "wiki_pages"
+
+    @property
+    def beliefs_db(self) -> Path:
+        return self.storage_dir / self.beliefs.db_filename
 
     @property
     def watch_dirs(self) -> list[Path]:
