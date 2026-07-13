@@ -17,8 +17,18 @@ ModelTask = Literal[
     "chat", "coding", "rag", "summarization", "agents", "vision", "multilingual", "math"
 ]
 QuantizationLevel = Literal[
-    "fp32", "fp16", "bf16", "int8", "q8",
-    "q6_k", "q5_k", "q5_1", "q4_k", "q4_0", "q3_k", "q2_k",
+    "fp32",
+    "fp16",
+    "bf16",
+    "int8",
+    "q8",
+    "q6_k",
+    "q5_k",
+    "q5_1",
+    "q4_k",
+    "q4_0",
+    "q3_k",
+    "q2_k",
 ]
 
 
@@ -41,7 +51,7 @@ class ModelMetadata:
     tool_calling: bool = False
     multilingual: bool = False
     ollama_tag: str | None = None  # e.g. "llama3.1:8b"
-    hf_repo: str | None = None     # e.g. "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    hf_repo: str | None = None  # e.g. "meta-llama/Meta-Llama-3.1-8B-Instruct"
     local_path: str | None = None
     notes: list[str] = field(default_factory=list)
 

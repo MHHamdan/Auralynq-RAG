@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 from auralynq.config import get_settings
+from auralynq.eval.provenance import report_provenance
 from auralynq.eval.report import _ensure_index
 from auralynq.telemetry import get_logger
 from auralynq.vectorstore.factory import get_store, resolved_backend
@@ -149,6 +150,7 @@ def run_bench(k: int = 10, n_queries: int = 32, write_report: bool = False) -> d
             "Recall measured vs exact float32 top-k. Memory is resident vector "
             "bytes for the stored set; latency is mean brute-force query time."
         ),
+        "provenance": report_provenance(dataset_version=f"n_vectors={n} dim={mat.shape[1]}"),
     }
     if write_report:
         out = s.reports_dir / "bench_report.json"

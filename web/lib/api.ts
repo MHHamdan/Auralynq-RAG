@@ -124,8 +124,21 @@ export type StreamEvent =
       detected_entities?: string[];
       evidence_coverage?: number;
       rag_strategy?: string;
+      sources?: Citation[];
     }
   | { type: "token"; text: string }
+  | {
+      // Agentic multi-hop progress: planning → hop N → checking → synthesizing.
+      type: "step";
+      phase: "decompose" | "hop" | "check" | "synthesize";
+      label: string;
+      detail?: string;
+      hop?: number;
+      query?: string;
+      retrieved?: number;
+      sub_questions?: string[];
+      sufficient?: boolean;
+    }
   | {
       type: "final";
       answer: string;
@@ -188,6 +201,105 @@ export async function corpusSummary(): Promise<CorpusSummary> {
   return r.json();
 }
 
+export interface CorpusDocument {
+  doc_id: string;
+  title: string;
+  source: string;
+  source_type: string;
+  chunks: number;
+}
+
+export async function corpusDocuments(): Promise<CorpusDocument[]> {
+  const r = await fetch(`${API_BASE}/corpus/documents`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`corpus documents failed: ${r.status}`);
+  const data = (await r.json()) as { documents?: CorpusDocument[] };
+  return data.documents ?? [];
+}
+
+export interface WikiPageSummary {
+  id: string;
+  title: string;
+  type: string;
+  mentions: number;
+  updated: string;
+  sources: string[];
+}
+
+export interface WikiPageDetail extends WikiPageSummary {
+  markdown: string;
+}
+
+export async function wikiEntities(): Promise<{ enabled: boolean; count: number; pages: WikiPageSummary[] }> {
+  const r = await fetch(`${API_BASE}/wiki/entities?limit=200`, { cache: "no-store" });
+  if (!r.ok) return { enabled: false, count: 0, pages: [] };
+  return r.json();
+}
+
+export async function wikiEntity(id: string): Promise<WikiPageDetail | null> {
+  const r = await fetch(`${API_BASE}/wiki/entity/${encodeURIComponent(id)}`, { cache: "no-store" });
+  if (!r.ok) return null;
+  return r.json();
+}
+
+export interface WikiLint {
+  enabled: boolean;
+  pages: number;
+  contradiction_count: number;
+  contradictions: { entity: string; old_claim: string; new_claim: string; why?: string }[];
+  orphan_pages: string[];
+}
+
+export async function wikiLint(): Promise<WikiLint> {
+  const r = await fetch(`${API_BASE}/wiki/lint`, { cache: "no-store" });
+  if (!r.ok) return { enabled: false, pages: 0, contradiction_count: 0, contradictions: [], orphan_pages: [] };
+  return r.json();
+}
+
+// ---- Watch Folder ---------------------------------------------------------
+export interface WatchDirStatus {
+  path: string;
+  exists: boolean;
+  files: number;
+}
+export interface WatchStatus {
+  enabled: boolean;
+  poll_seconds: number;
+  recursive: boolean;
+  delete_missing: boolean;
+  tracked: number;
+  directories: WatchDirStatus[];
+}
+export interface WatchSyncResult {
+  enabled: boolean;
+  added: number;
+  updated: number;
+  removed: number;
+  reindexed: boolean;
+  chunks_indexed: number;
+  errors: string[];
+}
+
+export async function watchStatus(): Promise<WatchStatus> {
+  const r = await fetch(`${API_BASE}/watch/status`, { cache: "no-store" });
+  if (!r.ok)
+    return {
+      enabled: false,
+      poll_seconds: 10,
+      recursive: true,
+      delete_missing: true,
+      tracked: 0,
+      directories: [],
+    };
+  return r.json();
+}
+
+export async function watchSync(): Promise<WatchSyncResult> {
+  const r = await fetch(`${API_BASE}/watch/sync`, { method: "POST" });
+  if (!r.ok)
+    return { enabled: false, added: 0, updated: 0, removed: 0, reindexed: false, chunks_indexed: 0, errors: ["request failed"] };
+  return r.json();
+}
+
 export async function fetchSuggestions(
   limit = 4,
 ): Promise<{ suggestions: string[]; corpus_indexed: boolean }> {
@@ -196,10 +308,59 @@ export async function fetchSuggestions(
   return r.json();
 }
 
-export async function statusSummary() {
+export interface StatusResponse {
+  status: string;
+  version: string;
+  env: string;
+  providers: { subsystem: string; provider: string; status?: string }[];
+  index: { vectors?: number };
+  corpus: { vector_count?: number; entity_count?: number };
+  tracing: { provider?: string; phoenix_endpoint?: string };
+  // Deployment posture (see auralynq/config/settings.py + /api/status). Present
+  // on any recent backend; older backends simply omit them (all optional here).
+  hf_space?: boolean;
+  demo_mode?: boolean;
+  public_demo?: boolean;
+  allow_uploads?: boolean;
+}
+
+export async function statusSummary(): Promise<StatusResponse> {
   const r = await fetch(`${API_BASE}/status`, { cache: "no-store" });
   if (!r.ok) throw new Error(`status failed: ${r.status}`);
   return r.json();
+}
+
+/**
+ * Derive a user-facing "deployment mode" from a StatusResponse: whether the
+ * backend is in an explicit demo/HF-Space posture, and whether it's running on
+ * the offline $0 fallback providers (extractive LLM / hash embeddings) rather
+ * than a real model. Pure function so it's unit-testable without a DOM.
+ */
+export interface DeploymentMode {
+  demo: boolean;
+  publicDemo: boolean;
+  hfSpace: boolean;
+  uploadsDisabled: boolean;
+  offlineFallback: boolean;
+  offlineProviders: string[];
+}
+
+export function deploymentMode(s: StatusResponse | null | undefined): DeploymentMode {
+  const providers = s?.providers ?? [];
+  const offline: string[] = [];
+  for (const p of providers) {
+    if (p.subsystem === "llm" && p.provider === "extractive") offline.push("extractive answering");
+    if (p.subsystem === "embeddings" && p.provider === "hash") offline.push("hash embeddings");
+  }
+  return {
+    demo: Boolean(s?.demo_mode),
+    publicDemo: Boolean(s?.public_demo),
+    hfSpace: Boolean(s?.hf_space),
+    // allow_uploads defaults to true when the field is absent (older backend)
+    uploadsDisabled: s?.allow_uploads === false,
+    offlineFallback: offline.length > 0,
+    offlineProviders: offline,
+  };
 }
 
 export async function observabilitySummary() {
@@ -258,6 +419,73 @@ export async function ingestFile(file: File) {
   fd.append("file", file);
   const r = await fetch(`${API_BASE}/ingest`, { method: "POST", body: fd });
   if (!r.ok) throw new Error(`ingest failed: ${r.status}`);
+  return r.json();
+}
+
+export interface IngestUrlResult {
+  url: string;
+  title: string;
+  documents: number;
+  chunks: number;
+  skipped: number;
+  unchanged: boolean;
+}
+
+export async function ingestUrl(url: string): Promise<IngestUrlResult> {
+  const r = await fetch(`${API_BASE}/ingest/url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!r.ok) {
+    let detail = `ingest url failed: ${r.status}`;
+    try {
+      const j = await r.json();
+      detail = j?.detail || j?.error || detail;
+    } catch {
+      /* non-JSON error */
+    }
+    throw new Error(detail);
+  }
+  return r.json();
+}
+
+// ---- Cloud connectors -----------------------------------------------------
+export interface ConnectorStatus {
+  name: string;
+  configured: boolean;
+  setup_hint: string;
+  synced_at: string | null;
+  docs: number;
+}
+export interface ConnectorSyncResult {
+  connector: string;
+  configured: boolean;
+  added: number;
+  updated: number;
+  removed: number;
+  unchanged: number;
+  chunks_indexed: number;
+  errors: string[];
+}
+
+export async function connectorsStatus(): Promise<ConnectorStatus[]> {
+  const r = await fetch(`${API_BASE}/connectors/status`, { cache: "no-store" });
+  if (!r.ok) return [];
+  return (await r.json()).connectors ?? [];
+}
+
+export async function connectorSync(name: string): Promise<ConnectorSyncResult> {
+  const r = await fetch(`${API_BASE}/connectors/${encodeURIComponent(name)}/sync`, { method: "POST" });
+  if (!r.ok) {
+    let detail = `sync failed: ${r.status}`;
+    try {
+      detail = (await r.json())?.detail || detail;
+    } catch {
+      /* non-JSON */
+    }
+    throw new Error(detail);
+  }
   return r.json();
 }
 
@@ -335,8 +563,8 @@ export async function corpusClearConfirm(phrase: string): Promise<CorpusDeleteRe
     body: JSON.stringify({ phrase }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `confirm failed: ${r.status}`);
   }
   return r.json();
 }
@@ -354,8 +582,8 @@ export async function corpusDeleteLastConfirm(phrase: string): Promise<CorpusDel
     body: JSON.stringify({ phrase }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `confirm failed: ${r.status}`);
   }
   return r.json();
 }
@@ -373,8 +601,8 @@ export async function corpusDeleteDocumentConfirm(docId: string, phrase: string)
     body: JSON.stringify({ phrase }),
   });
   if (!r.ok) {
-    const detail = await r.json().catch(() => ({ detail: r.statusText }));
-    throw new Error(detail.detail || `confirm failed: ${r.status}`);
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `confirm failed: ${r.status}`);
   }
   return r.json();
 }
@@ -546,11 +774,16 @@ export async function askStreamWithStrategy(
   strategyId: string | null,
   onEvent: (e: StreamEvent) => void,
   signal?: AbortSignal,
+  docIds?: string[] | null,
 ): Promise<void> {
   const r = await fetch(`${API_BASE}/query/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, rag_strategy: strategyId }),
+    body: JSON.stringify({
+      question,
+      rag_strategy: strategyId,
+      ...(docIds && docIds.length ? { doc_ids: docIds } : {}),
+    }),
     signal,
   });
   if (!r.ok) {

@@ -2,7 +2,7 @@
 
 # 🎙️ Auralynq-RAG
 
-### *Retrieval-Augmented Generation — Grounded, Cited, Span-Level Verified*
+### *Talk to Your Data — Retrieval-Augmented Generation, Grounded, Cited, Span-Level Verified*
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
@@ -13,9 +13,12 @@ A **local-first, voice-native, agentic RAG platform** with hybrid vector retriev
 PPR-augmented PathRAG graph reasoning, 13 pluggable RAG strategies, visual source
 grounding with exact span-level bounding boxes, and a full-screen document inspection
 workspace. Grounded answers with citations you can visually verify against the original
-PDF. Runs at **$0** on a laptop; upgrades to GPU models via env flags.
+PDF. A **Compounding Wiki** turns ingest into a persistent, cited knowledge base that
+accumulates — synthesizing durable entity pages and flagging cross-source
+contradictions instead of re-deriving everything each query. Runs at **$0** on a
+laptop; upgrades to GPU models via env flags.
 
-[Quickstart](#-quickstart) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
+[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Compounding Wiki](#-compounding-wiki) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
 
 </div>
 
@@ -461,6 +464,46 @@ Recommended, Score Cards, Benchmark Lab, and Comparison.
 
 ---
 
+## 📚 Compounding Wiki
+
+**Knowledge that accumulates instead of being re-derived on every query.** Ordinary
+RAG (and NotebookLM) re-find and re-stitch chunks each time you ask — nothing is
+built up. The Compounding Wiki adds a persistent layer *over* the knowledge graph:
+at ingest, Auralynq synthesizes durable, cited **entity pages**, keeps them current,
+flags contradictions across sources, and lets good answers compound back into the
+wiki. Compiled once, kept current — inspired by the LLM-Wiki pattern and Vannevar
+Bush's Memex, framed as **non-parametric continual learning** (HippoRAG 2).
+
+Off by default; purely additive — enable with `AURALYNQ_WIKI__ENABLED=true`.
+
+### What it does
+
+| Capability | How |
+|-----------|-----|
+| **Synthesize entity pages** | At ingest, each qualifying entity gets a cited markdown page built **from the existing knowledge graph** (name, mentions, relations + full provenance) — no re-extraction. |
+| **Consult before re-deriving** | For entity questions the answer is already compiled, so the agent surfaces the pre-built page as a clean, citable context (falls back to chunk retrieval). |
+| **Flag contradictions** | When a **new source** contradicts a prior claim, it's flagged and dated — *invalidate-not-delete* (both versions kept). No mainstream RAG surfaces this. |
+| **Compound answers back** | High-confidence, cited answers are filed back as durable pages so explorations accumulate rather than vanish into chat history. |
+| **Lint** | `GET /wiki/lint` reports contradictions + orphan pages (via the `[[wikilink]]` graph). |
+| **Entity canonicalization** | Possessive/punctuation variants (`Ford` / `Ford's`) merge to one page and one KG hub. |
+
+### API & UI
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /wiki/entities` | List synthesized pages (title, mentions, sources) |
+| `GET /wiki/entity/{id}` | A page's markdown + metadata |
+| `GET /wiki/lint` | Contradictions + orphan-page health report |
+
+The **Wiki** tab in the chat inspector browses the pages, shows contradiction/orphan
+pills, and renders each page. The wiki is plain markdown under
+`data/storage/wiki_pages/` (Obsidian-vault-compatible: YAML frontmatter → Dataview).
+
+**Implementation**: `auralynq/wiki/` — `store.py`, `generator.py`, `retriever.py`,
+`contradiction.py`.
+
+---
+
 ## 🔬 Visual Source Grounding
 
 Every cited answer can be visually verified against the original PDF/image.
@@ -753,37 +796,50 @@ flowchart TB
 
 ## 🚀 Quickstart
 
-> Auralynq is **Podman-first** and does **not** require Docker.
-> Full run modes — including **deploying to a remote machine** — are in
-> **[RUNNING.md](RUNNING.md)**.
+> Auralynq runs **without Podman** as two plain processes ($0, no containers),
+> or **with Podman** as the full production-shaped stack — no Docker either
+> way. Full guides: [no-Podman](docs/getting-started/no-podman.md) ·
+> [Podman](docs/getting-started/podman.md) ·
+> [remote server](docs/getting-started/server.md) ·
+> [Hugging Face Space](docs/getting-started/huggingface-space.md) ·
+> [troubleshooting](docs/getting-started/troubleshooting.md). Deploying to a
+> remote machine is also covered in **[RUNNING.md](RUNNING.md)**.
+
+### 5-minute no-Podman path
 
 ```bash
-# 0. (optional) only needed for gated models (e.g. diarization)
-cp .env.example .env && echo "HUGGINGFACE_TOKEN=hf_..." >> .env
-
-# 1. Light install ($0; offline-capable)
+# 1. Light install ($0; offline-capable — no GPU, no paid keys required)
 make setup
 
-# 2. Verify container runtime + start the full stack
-make runtime-check
-make stack-up          # or: make up
+# 2. Sample data -> index -> end-to-end demo
+make data
+make index
+make demo
 
-# 3. Or run end-to-end locally without containers:
-make data              # download sample corpus
-make index             # vector index + knowledge graph
-make demo              # ingest → index → query (text + voice)
-
-# 4. Ask something:
+# 3. Ask something
 auralynq ask "How does PathRAG prune relational paths?"
 auralynq talk          # push-to-talk voice loop
 
-# 5. ModelFit — find the best model for your hardware:
-auralynq-modelfit recommend --task rag --limit 5
-auralynq-modelfit score --model ollama:llama3.1:8b
+# 4. Run the API and web UI as two dev processes
+python -m uvicorn auralynq.serving.app:app --host 0.0.0.0 --port 8000   # terminal 1
+cd web && NEXT_PUBLIC_API_BASE=http://localhost:8000/api npm run dev -- --hostname 0.0.0.0 --port 3000  # terminal 2
 ```
 
-Open the UI at **http://localhost:3000**, API docs at **http://localhost:8000/docs**,
-Phoenix traces at **http://localhost:6006**.
+Open **http://localhost:3000**, API docs at **http://localhost:8000/docs**.
+
+- **Upload a document**: Ingest tab in the UI, or `curl -X POST http://localhost:8000/ingest -F "file=@mydoc.pdf"`.
+- **Visually verify a citation**: click any numbered citation under an answer — the Source Workspace opens full-screen with the original page and bounding-box overlays.
+- **Try a different RAG strategy**: `curl http://localhost:8000/rag/strategies` to list all 13, then `POST /query` with `"rag_strategy": "hybrid"` (or use the Algorithm Selector in the composer bar).
+- **ModelFit — find the best model for your hardware**:
+  ```bash
+  auralynq-modelfit recommend --task rag --limit 5
+  auralynq-modelfit score --model ollama:llama3.1:8b
+  ```
+  or open **http://localhost:3000/modelfit**.
+- **Run benchmarks**: `make eval` / `make bench` — numbers only ever come from these commands, written to `reports/`.
+- **Limitations**: see [Limitations](#limitations) below before relying on this for anything beyond evaluation.
+
+Full walkthrough with data-persistence notes and safe corpus-clearing: [docs/getting-started/no-podman.md](docs/getting-started/no-podman.md).
 
 ### Podman stack (local + remote)
 
@@ -826,6 +882,21 @@ COHERE_API_KEY=<...>                    # optional; degrades to offline fallback
 Browse to **https://&lt;SERVER_IP&gt;:8443** — only `8443` needs to be open in the firewall.
 The browser never holds the API key (the web container's same-origin `/api/*` proxy
 injects the bearer token server-side).
+
+Full guide with TLS-certificate options: [docs/getting-started/server.md](docs/getting-started/server.md).
+
+---
+
+## 🤗 Hugging Face Space
+
+A single-container Space image (`deploy/huggingface/`) packages the API and
+web UI together with a pre-seeded, license-clear demo corpus, offline
+extractive answering, and uploads disabled by default. Built and smoke-tested
+locally with Podman; **not yet published to a real Hugging Face Space** — see
+[docs/getting-started/huggingface-space.md](docs/getting-started/huggingface-space.md)
+for what's verified vs. not, and [deploy/huggingface/README.md](deploy/huggingface/README.md)
+for the publish steps. Nothing is auto-published; deploying a Space is always
+a manual, explicit step you take yourself.
 
 ---
 
@@ -937,7 +1008,11 @@ Claude Desktop config:
 > Numbers produced **only** by `make eval` / `make bench`, written to `reports/`.
 > Measured in the fully-offline `$0` config (hash embeddings, in-memory store,
 > extractive LLM) over a frozen 5-item golden set. Install `embeddings`/`agent`
-> extras for quality numbers.
+> extras for quality numbers. Full command reference, report provenance
+> fields, and the estimated-vs-measured discipline:
+> [docs/evaluation.md](docs/evaluation.md) ·
+> [docs/benchmarks.md](docs/benchmarks.md) (also covers `make bench-rag` /
+> `bench-modelfit` / `bench-visual-grounding` / `export-paper-tables`).
 
 **Retrieval comparison** (k=6, nDCG@10):
 
@@ -1004,6 +1079,7 @@ Claude Desktop config:
 ## Roadmap
 
 - [x] **Auralynq ModelFit Index** — hardware-aware model selection, scoring, CLI, REST API, frontend page, ModelFitChip in chat, RAG quality benchmark metrics
+- [x] **Compounding Wiki** — synthesize durable cited entity pages at ingest, consult them at query time, flag cross-source contradictions (invalidate-not-delete), file answers back, `/wiki/*` endpoints + inspector tab, entity canonicalization
 - [ ] Page thumbnail rail in Source Workspace (requires `/thumbnail` endpoint)
 - [ ] Layout block store written at ingest for cheaper page-level queries
 - [ ] ColPali visual retrieval (image-to-image semantic search)

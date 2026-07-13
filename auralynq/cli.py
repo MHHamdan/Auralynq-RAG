@@ -145,16 +145,35 @@ def talk(
 def eval(
     report: bool = typer.Option(False, "--report", help="Write a full report to reports/."),
     smoke: bool = typer.Option(False, "--smoke", help="Tiny smoke eval for CI."),
+    gate: bool = typer.Option(False, "--gate", help="Exit non-zero if the trust gate fails (CI)."),
+    judge: bool = typer.Option(
+        False,
+        "--judge",
+        help="Use the configured LLM as an NLI judge for citation/faithfulness/correctness.",
+    ),
 ) -> None:
-    """Run the evaluation harness (Ragas + retrieval metrics + WER).
+    """Run the evaluation harness — retrieval metrics, faithfulness, citation
+    attribution, confidence calibration (ECE) + a pass/fail regression gate.
 
-    Example: auralynq eval --report
+    Example: auralynq eval --report --gate --judge
     """
     _bootstrap()
     from auralynq.eval.report import run_eval
 
-    out = run_eval(smoke=smoke, write_report=report)
+    out = run_eval(smoke=smoke, write_report=report, judge=judge)
     console.print_json(json.dumps(out))
+
+    g = out.get("gate", {})
+    if gate:
+        if g.get("passed"):
+            console.print("[green]✓ eval gate PASSED[/]")
+        else:
+            fails = ", ".join(
+                f"{f['metric']}={f['value']} (need {f['op']} {f['threshold']})"
+                for f in g.get("failures", [])
+            )
+            console.print(f"[red]✗ eval gate FAILED:[/] {fails}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
@@ -234,6 +253,7 @@ def info() -> None:
 
 # ── config subcommands ────────────────────────────────────────────────────────
 
+
 @config_app.command("show")
 def config_show() -> None:
     """Show active configuration (resolved values, config file path, provider chain)."""
@@ -277,9 +297,7 @@ def config_init(
         console.print("[red]config.yaml.example not found — reinstall the package.[/]")
         raise typer.Exit(1)
     if output.exists() and not force:
-        console.print(
-            f"[yellow]{output} already exists.[/] Use --force to overwrite."
-        )
+        console.print(f"[yellow]{output} already exists.[/] Use --force to overwrite.")
         raise typer.Exit(1)
     shutil.copy(template, output)
     console.print(f"[green]✓[/] config template written to [bold]{output}[/]")

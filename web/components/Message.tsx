@@ -8,12 +8,24 @@ import { CopyButton } from "@/components/CopyButton";
 import { InsufficientEvidence } from "@/components/InsufficientEvidence";
 import { CorpusInventory } from "@/components/CorpusInventory";
 
+export interface AgenticStep {
+  phase: "decompose" | "hop" | "check" | "synthesize";
+  label: string;
+  detail?: string;
+  hop?: number;
+  query?: string;
+  retrieved?: number;
+  sub_questions?: string[];
+  sufficient?: boolean;
+}
+
 export interface Turn {
   role: "user" | "assistant";
   text: string;
   citations?: Citation[];
   route?: string;
   rationale?: string;
+  steps?: AgenticStep[];
   voice?: boolean;
   error?: boolean;
   status?: string;
@@ -25,46 +37,45 @@ export interface Turn {
   model_fit?: ModelFitSnapshot | null;
 }
 
+// Fit-level → semantic token (theme-aware across dark / light / comfort).
 const FIT_COLOR: Record<string, string> = {
-  "Excellent fit": "text-emerald-400",
-  "Recommended": "text-sky-400",
-  "Usable with limits": "text-amber-400",
-  "Not recommended": "text-orange-400",
-  "Does not fit": "text-red-400",
+  "Excellent fit": "text-ok",
+  "Recommended": "text-brand",
+  "Usable with limits": "text-warn",
+  "Not recommended": "text-warn",
+  "Does not fit": "text-bad",
 };
 
 function ModelFitChip({ mf }: { mf: ModelFitSnapshot }) {
   const modelShort = mf.selected_model.replace(/^(ollama:|local:|hf:)/, "");
-  const labelColor = FIT_COLOR[mf.fit_level ?? ""] ?? "text-zinc-400";
+  const labelColor = FIT_COLOR[mf.fit_level ?? ""] ?? "text-fg3";
   return (
     <Link
       href="/modelfit"
-      className="mt-2 inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] hover:border-sky-700 transition-colors"
-      title="Open ModelFit Index"
+      className="chip mt-2 !text-[11px] hover:border-edge2 transition-colors"
+      title={`ModelFit: ${mf.fit_level ?? "scored"} — open ModelFit Index`}
     >
-      <span className="text-zinc-500">model</span>
-      <span className="font-mono text-zinc-300 max-w-[120px] truncate">{modelShort}</span>
+      <span className="text-fg3">model</span>
+      <span className="max-w-[120px] truncate font-mono text-fg2">{modelShort}</span>
       {mf.fit_score != null && (
         <>
-          <span className="text-zinc-600">·</span>
+          <span className="text-fg3">·</span>
           <span className={`font-semibold ${labelColor}`}>{Math.round(mf.fit_score)}/100</span>
         </>
       )}
       {mf.quantization && (
         <>
-          <span className="text-zinc-600">·</span>
-          <span className="font-mono text-zinc-400">{mf.quantization}</span>
+          <span className="text-fg3">·</span>
+          <span className="font-mono text-fg3">{mf.quantization}</span>
         </>
       )}
       {mf.estimated_vram_gb != null && (
         <>
-          <span className="text-zinc-600">·</span>
-          <span className="text-zinc-400">{mf.estimated_vram_gb.toFixed(1)} GB</span>
+          <span className="text-fg3">·</span>
+          <span className="text-fg3">{mf.estimated_vram_gb.toFixed(1)} GB</span>
         </>
       )}
-      {mf.estimate_used && (
-        <span className="text-zinc-600 italic">est.</span>
-      )}
+      {mf.estimate_used && <span className="italic text-fg3">est.</span>}
     </Link>
   );
 }
@@ -102,6 +113,63 @@ function RouteTag({ route, rationale }: { route: string; rationale?: string }) {
   );
 }
 
+const STEP_GLYPH: Record<AgenticStep["phase"], string> = {
+  decompose: "◆",
+  hop: "→",
+  check: "✓",
+  synthesize: "✎",
+};
+
+/** Live multi-hop reasoning trace for the agentic strategy. */
+function AgenticSteps({ steps, live }: { steps: AgenticStep[]; live?: boolean }) {
+  if (!steps.length) return null;
+  return (
+    <div className="mb-3 rounded-lg border border-edge/60 bg-panel/40 px-3 py-2">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-fg3">
+        Agentic reasoning
+        {live && <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand animate-pulse" aria-hidden />}
+      </div>
+      <ol className="space-y-1">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-start gap-2 text-xs leading-relaxed">
+            <span
+              className={`mt-0.5 shrink-0 font-mono ${
+                s.phase === "check" && s.sufficient === false ? "text-warn" : "text-brand"
+              }`}
+              aria-hidden
+            >
+              {STEP_GLYPH[s.phase] ?? "·"}
+            </span>
+            <span className="min-w-0 flex-1 text-fg2">
+              {s.phase === "hop" ? (
+                <>
+                  <span className="text-fg3">Hop {s.hop}:</span>{" "}
+                  <span className="font-medium text-fg">{s.query}</span>
+                  {s.retrieved != null && <span className="text-fg3"> · {s.retrieved} passages</span>}
+                </>
+              ) : s.phase === "decompose" ? (
+                <>
+                  <span className="text-fg">{s.label}</span>
+                  {s.sub_questions?.length ? (
+                    <span className="text-fg3"> — {s.sub_questions.join(" · ")}</span>
+                  ) : null}
+                </>
+              ) : s.phase === "check" ? (
+                <span className="text-fg">
+                  {s.sufficient ? "Evidence sufficient" : "Needs more"}
+                  {!s.sufficient && s.detail ? <span className="text-fg3"> — {s.detail}</span> : null}
+                </span>
+              ) : (
+                <span className="text-fg">{s.label}</span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function AiDot() {
   return (
     <span
@@ -120,6 +188,7 @@ export function Message({
   onRegenerate,
   onAsk,
   onIngest,
+  onOpenSource,
 }: {
   turn: Turn;
   streaming: boolean;
@@ -127,6 +196,7 @@ export function Message({
   onRegenerate?: () => void;
   onAsk?: (q: string) => void;
   onIngest?: () => void;
+  onOpenSource?: (marker: number) => void;
 }) {
   if (turn.role === "user") {
     return (
@@ -164,6 +234,7 @@ export function Message({
       <AiDot />
       <div className="flex-1 min-w-0 rounded-2xl rounded-tl-sm border border-edge bg-panel2 px-4 py-3.5 shadow-md">
         {turn.route && <RouteTag route={turn.route} rationale={turn.rationale} />}
+        {turn.steps?.length ? <AgenticSteps steps={turn.steps} live={live} /> : null}
 
         {empty && live ? (
           <TypingDots />
@@ -171,7 +242,12 @@ export function Message({
           <p className="whitespace-pre-wrap leading-relaxed text-bad">{turn.text}</p>
         ) : (
           <div className="prose-answer">
-            <Markdown text={turn.text} streaming={live} />
+            <Markdown
+              text={turn.text}
+              streaming={live}
+              citations={turn.citations}
+              onOpenCitation={onOpenSource}
+            />
             {live && (
               <span className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-brand/70 align-middle" />
             )}
@@ -182,7 +258,7 @@ export function Message({
           <InsufficientEvidence reason={turn.insufficient} onAsk={onAsk} onIngest={onIngest} />
         )}
 
-        {hasCitations && <Citations citations={turn.citations!} />}
+        {hasCitations && <Citations citations={turn.citations!} onOpenSource={onOpenSource} />}
 
         {!streaming && turn.model_fit && turn.model_fit.fit_score != null && (
           <ModelFitChip mf={turn.model_fit} />

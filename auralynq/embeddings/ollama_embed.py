@@ -23,7 +23,7 @@ class OllamaEmbedder(Embedder):
         self._dim: int | None = None
 
     @property
-    def dim(self) -> int:
+    def dim(self) -> int:  # type: ignore[override]  # lazy dim vs base's plain int attr
         return self._dim or 768  # nomic-embed-text default
 
     def embed(self, texts: list[str]) -> EmbeddingBatch:

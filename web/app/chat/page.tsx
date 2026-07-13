@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AnswerResult,
   CorpusSummary,
+  DeploymentMode,
+  Citation,
   PathEvidence,
   StreamEvent,
   TraceSpan,
@@ -10,6 +12,7 @@ import {
   VisualGrounding,
   askStreamWithStrategy,
   corpusSummary,
+  deploymentMode,
   fetchSuggestions,
   health,
   statusSummary,
@@ -18,6 +21,17 @@ import {
 } from "@/lib/api";
 import { isInventoryQuestion } from "@/lib/format";
 import { Message, type Turn } from "@/components/Message";
+import { Toast } from "@/components/ui/Toast";
+import { AnswerSteps } from "@/components/AnswerSteps";
+import { StreamingEvidence } from "@/components/StreamingEvidence";
+import { SourceScope } from "@/components/SourceScope";
+import { WikiPanel } from "@/components/WikiPanel";
+import { WatchPanel } from "@/components/WatchPanel";
+import { ConnectorsPanel } from "@/components/ConnectorsPanel";
+import { CommandPalette, type Cmd } from "@/components/CommandPalette";
+import { useRouter } from "next/navigation";
+import { Plus, Cpu, Home, PanelRight, MessageSquarePlus, Zap, Palette } from "lucide-react";
+import { THEME_KEY, nextTheme, coerceTheme } from "@/lib/theme";
 import { TracePanel } from "@/components/TracePanel";
 import { EvidencePaths } from "@/components/EvidencePaths";
 import { IngestPanel } from "@/components/IngestPanel";
@@ -25,18 +39,20 @@ import { EvalPanel } from "@/components/EvalPanel";
 import { SourceViewPanel } from "@/components/SourceViewPanel";
 import { SourceWorkspaceModal } from "@/components/SourceWorkspaceModal";
 import { AppBar } from "@/components/chat/AppBar";
+import { PanelResizer } from "@/components/chat/PanelResizer";
 import { Composer, type ChatMode } from "@/components/chat/Composer";
 import { InspectorOverview, type RecentMeta } from "@/components/chat/InspectorOverview";
 import { AgentActivityRail, type AgentActivity } from "@/components/chat/AgentActivityRail";
 import { SettingsPanel, useUISettings } from "@/components/chat/SettingsPanel";
 import { loadStoredStrategy } from "@/components/chat/AlgorithmSelector";
+import { DemoBanner } from "@/components/DemoBanner";
 
 const FALLBACK_SUGGESTIONS = [
   "Summarize the main topics in the indexed documents.",
   "What are the key entities and how do they relate?",
 ];
 const STORE_KEY = "auralynq.chat.v1";
-const TABS = ["overview", "trace", "evidence", "source", "ingest", "eval"] as const;
+const TABS = ["overview", "trace", "evidence", "source", "ingest", "wiki", "eval"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_ICON: Record<Tab, string> = {
@@ -45,6 +61,7 @@ const TAB_ICON: Record<Tab, string> = {
   evidence: "◈ ",
   source:   "⬚ ",
   ingest:   "↑ ",
+  wiki:     "▤ ",
   eval:     "▣ ",
 };
 
@@ -112,13 +129,15 @@ export default function Chat() {
   const [traceSteps, setTraceSteps] = useState<TraceStep[]>([]);
   const [paths, setPaths] = useState<PathEvidence[]>([]);
   const [seeds, setSeeds] = useState<string[]>([]);
+  const [streamEntities, setStreamEntities] = useState<string[]>([]);
+  const [streamSources, setStreamSources] = useState<Citation[]>([]);
   const [coverage, setCoverage] = useState(0);
   const [lastConfidence, setLastConfidence] = useState(0);
   const [lastRoute, setLastRoute] = useState("fast");
   const [lastStatus, setLastStatus] = useState<string>("answered");
   const [tab, setTab] = useState<Tab>("overview");
   const [showPanel, setShowPanel] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; id: number } | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>(FALLBACK_SUGGESTIONS);
   const [phoenixUrl, setPhoenixUrl] = useState<string | null>(null);
   const [online, setOnline] = useState<boolean | null>(null);
@@ -126,12 +145,16 @@ export default function Chat() {
   const [entities, setEntities] = useState<number | null>(null);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [corpusRefreshKey, setCorpusRefreshKey] = useState(0);
+  const [scopedDocIds, setScopedDocIds] = useState<string[] | null>(null);
   const [ragStrategy, setRagStrategy] = useState<string>("auralynq_rag");
   const [showSettings, setShowSettings] = useState(false);
   const [agentActivity, setAgentActivity] = useState<AgentActivity>({ phase: "idle" });
+  const [deployMode, setDeployMode] = useState<DeploymentMode | null>(null);
   const [visualGrounding, setVisualGrounding] = useState<VisualGrounding | null>(null);
   const [activeCitation, setActiveCitation] = useState<string | null>(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const router = useRouter();
   // new-chat corpus-clear confirmation state
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
@@ -160,6 +183,7 @@ export default function Chat() {
     statusSummary()
       .then((s) => {
         setPhoenixUrl(s?.tracing?.phoenix_endpoint || null);
+        setDeployMode(deploymentMode(s));
         const vecs = s?.index?.vectors ?? s?.corpus?.vector_count ?? null;
         const ents = s?.corpus?.entity_count ?? null;
         setVectors(vecs);
@@ -209,12 +233,12 @@ export default function Chat() {
   }, [turns]);
 
   const flash = useCallback((m: string) => {
-    setToast(m);
-    setTimeout(() => setToast(null), 2200);
+    setToast({ msg: m, id: Date.now() });
   }, []);
 
   function patchLast(update: Partial<Turn>) {
     setTurns((t) => {
+      if (t.length === 0) return t;
       const c = [...t];
       c[c.length - 1] = { ...c[c.length - 1], ...update };
       return c;
@@ -227,6 +251,8 @@ export default function Chat() {
     setTraceSteps([]);
     setPaths([]);
     setSeeds([]);
+    setStreamEntities([]);
+    setStreamSources([]);
     setCoverage(0);
     setLastStatus("answered");
     setVisualGrounding(null);
@@ -243,6 +269,8 @@ export default function Chat() {
           if (e.type === "meta") {
             setPaths(e.path_evidence || []);
             setSeeds(e.seeds || []);
+            setStreamEntities(e.detected_entities?.length ? e.detected_entities : e.seeds || []);
+            setStreamSources(e.sources || []);
             setCoverage(e.evidence_coverage ?? 0);
             setLastRoute(e.route);
             const isSystemRoute = ["corpus_inventory", "corpus_management", "app_help"].includes(e.route);
@@ -257,8 +285,40 @@ export default function Chat() {
           } else if (e.type === "token") {
             setAgentActivity((prev) => ({ ...prev, phase: "generating" }));
             setTurns((t) => {
+              // Guard: a token can arrive when the assistant turn isn't present
+              // (e.g. a StrictMode remount racing the in-flight stream). Never
+              // dereference an absent turn.
+              if (t.length === 0 || t[t.length - 1]?.role !== "assistant") return t;
               const c = [...t];
-              c[c.length - 1] = { ...c[c.length - 1], text: c[c.length - 1].text + e.text };
+              c[c.length - 1] = { ...c[c.length - 1], text: (c[c.length - 1].text ?? "") + (e.text ?? "") };
+              return c;
+            });
+          } else if (e.type === "step") {
+            // Agentic multi-hop progress — append to the streaming turn's trace.
+            setAgentActivity((prev) => ({
+              ...prev,
+              phase: e.phase === "synthesize" ? "generating" : "retrieval_started",
+            }));
+            setTurns((t) => {
+              if (t.length === 0 || t[t.length - 1]?.role !== "assistant") return t;
+              const c = [...t];
+              const last = c[c.length - 1];
+              c[c.length - 1] = {
+                ...last,
+                steps: [
+                  ...(last.steps ?? []),
+                  {
+                    phase: e.phase,
+                    label: e.label,
+                    detail: e.detail,
+                    hop: e.hop,
+                    query: e.query,
+                    retrieved: e.retrieved,
+                    sub_questions: e.sub_questions,
+                    sufficient: e.sufficient,
+                  },
+                ],
+              };
               return c;
             });
           } else if (e.type === "final") {
@@ -302,6 +362,7 @@ export default function Chat() {
           }
         },
         ac.signal,
+        scopedDocIds,
       );
     } catch (err) {
       if (ac.signal.aborted) {
@@ -322,7 +383,7 @@ export default function Chat() {
       setHasAnswered(true);
       abortRef.current = null;
     }
-  }, [ragStrategy, lastRoute]);
+  }, [ragStrategy, lastRoute, scopedDocIds]);
 
   const answerInventory = useCallback(async (q: string) => {
     setAgentActivity({ phase: "system_route", route: "corpus_inventory" });
@@ -460,12 +521,12 @@ export default function Chat() {
       if (e.key === "Escape" && streaming) stop();
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        handleNewChat();
+        setPaletteOpen((v) => !v);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [streaming, stop, handleNewChat]);
+  }, [streaming, stop]);
 
   function onVoice(r: AnswerResult & { transcript?: string }) {
     setTurns((t) => [
@@ -521,6 +582,8 @@ export default function Chat() {
         inspectorOpen={showPanel}
         onToggleSettings={() => setShowSettings((v) => !v)}
       />
+
+      <DemoBanner mode={deployMode} />
 
       {/* Settings overlay */}
       {showSettings && (
@@ -579,7 +642,7 @@ export default function Chat() {
 
       {/* Full-viewport grid: chat | inspector */}
       <div
-        className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_var(--inspector-width,clamp(360px,30vw,560px))]"
+        className="grid w-full flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_auto_var(--inspector-width,clamp(360px,30vw,560px))]"
       >
         {/* Conversation column */}
         <section className="flex min-h-0 flex-col">
@@ -604,6 +667,9 @@ export default function Chat() {
                     (t.citations?.length ?? 0) > 0;
                   return (
                     <div key={i} className="msg-in">
+                      {isLastAssistant && streaming && (streamEntities.length > 0 || streamSources.length > 0 || !!t.route) && (
+                        <StreamingEvidence route={t.route} entities={streamEntities} sources={streamSources} />
+                      )}
                       <Message
                         turn={t}
                         streaming={streaming}
@@ -611,6 +677,10 @@ export default function Chat() {
                         onRegenerate={t.role === "assistant" ? regenerate : undefined}
                         onAsk={send}
                         onIngest={openIngest}
+                        onOpenSource={(marker) => {
+                          setActiveCitation(String(marker));
+                          setShowWorkspace(true);
+                        }}
                       />
                       {showVG && (
                         <InlineSourceStrip
@@ -618,6 +688,9 @@ export default function Chat() {
                           onOpen={() => { setTab("source"); setShowPanel(true); }}
                           onOpenWorkspace={() => setShowWorkspace(true)}
                         />
+                      )}
+                      {isLastAssistant && !streaming && traceSteps.length > 0 && (
+                        <AnswerSteps steps={traceSteps} />
                       )}
                     </div>
                   );
@@ -643,6 +716,9 @@ export default function Chat() {
             />
           </div>
         </section>
+
+        {/* Draggable divider — expand the chat or the inspector on the fly (lg+). */}
+        <PanelResizer />
 
         {/* Inspector — always visible on desktop (lg+), mobile drawer when showPanel */}
         <aside
@@ -685,13 +761,16 @@ export default function Chat() {
           </div>
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto p-3">
             {tab === "overview" && (
-              <InspectorOverview
-                suggestions={suggestions}
-                recent={recentMeta}
-                onAsk={send}
-                onIngest={openIngest}
-                refreshKey={corpusRefreshKey}
-              />
+              <div className="space-y-3">
+                <InspectorOverview
+                  suggestions={suggestions}
+                  recent={recentMeta}
+                  onAsk={send}
+                  onIngest={openIngest}
+                  refreshKey={corpusRefreshKey}
+                />
+                <SourceScope refreshKey={corpusRefreshKey} onChange={setScopedDocIds} />
+              </div>
             )}
             {tab === "trace" && (
               <TracePanel
@@ -734,7 +813,18 @@ export default function Chat() {
                 }
               />
             )}
-            {tab === "ingest" && <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />}
+            {tab === "ingest" && (
+              <div className="space-y-4">
+                <IngestPanel onAsk={send} onDeleted={onCorpusDeleted} />
+                <div className="border-t border-edge/60 pt-3">
+                  <WatchPanel onSynced={onCorpusDeleted} />
+                </div>
+                <div className="border-t border-edge/60 pt-3">
+                  <ConnectorsPanel onSynced={onCorpusDeleted} />
+                </div>
+              </div>
+            )}
+            {tab === "wiki" && <WikiPanel refreshKey={corpusRefreshKey} />}
             {tab === "eval" && <EvalPanel />}
           </div>
         </aside>
@@ -751,13 +841,48 @@ export default function Chat() {
       )}
 
       {toast && (
-        <div
-          role="status"
-          className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-edge bg-panel px-4 py-2 text-sm shadow-lg"
-        >
-          {toast}
-        </div>
+        <Toast key={toast.id} message={toast.msg} onClose={() => setToast(null)} />
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={
+          [
+            { id: "new", group: "Chat", label: "New chat", icon: Plus, keywords: ["reset", "clear"], run: handleNewChat },
+            {
+              id: "focus",
+              group: "Chat",
+              label: "Focus composer",
+              icon: MessageSquarePlus,
+              run: () =>
+                document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Ask a question"]')?.focus(),
+            },
+            ...(visualGrounding?.visual_grounding_available
+              ? [{ id: "src", group: "Chat", label: "Open Source Workspace", icon: PanelRight, run: () => setShowWorkspace(true) }]
+              : []),
+            { id: "modelfit", group: "Navigate", label: "Go to ModelFit", icon: Cpu, run: () => router.push("/modelfit") },
+            { id: "home", group: "Navigate", label: "Go to Home", icon: Home, run: () => router.push("/") },
+            { id: "s-aura", group: "Retrieval strategy", label: "Use Auralynq-RAG", icon: Zap, run: () => setRagStrategy("auralynq_rag") },
+            { id: "s-hybrid", group: "Retrieval strategy", label: "Use Hybrid vector", icon: Zap, run: () => setRagStrategy("hybrid") },
+            { id: "s-naive", group: "Retrieval strategy", label: "Use Naive vector", icon: Zap, run: () => setRagStrategy("naive_vector") },
+            { id: "s-bm25", group: "Retrieval strategy", label: "Use Keyword BM25", icon: Zap, run: () => setRagStrategy("keyword_bm25") },
+            {
+              id: "theme",
+              group: "Appearance",
+              label: "Switch theme",
+              icon: Palette,
+              run: () => {
+                const nx = nextTheme(coerceTheme(document.documentElement.dataset.theme));
+                document.documentElement.dataset.theme = nx;
+                try {
+                  localStorage.setItem(THEME_KEY, nx);
+                } catch {}
+              },
+            },
+          ] as Cmd[]
+        }
+      />
     </div>
   );
 }

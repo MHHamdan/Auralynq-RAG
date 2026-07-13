@@ -1,8 +1,9 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import { CorpusSummary, DocumentMeta, GroundingSummary, corpusSummary, fetchGroundingSummary, fetchSuggestions, ingestFile } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CorpusSummary, DocumentMeta, GroundingSummary, corpusSummary, fetchGroundingSummary, fetchSuggestions, ingestFile, ingestUrl } from "@/lib/api";
 import { displaySource, timeAgo } from "@/lib/format";
 import { CorpusManageModal } from "@/components/CorpusManageModal";
+import { IngestSources } from "@/components/IngestSources";
 
 const ACCEPT = ".pdf,.docx,.html,.htm,.md,.txt,.wav,.mp3,.m4a";
 const TYPES = ["PDF", "DOCX", "HTML", "Markdown", "TXT", "WAV", "MP3", "M4A"];
@@ -19,6 +20,7 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
   const [status, setStatus] = useState<{ kind: "ok" | "err" | "info"; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [summary, setSummary] = useState<CorpusSummary | null>(null);
   const [groundingSummary, setGroundingSummary] = useState<GroundingSummary | null>(null);
   const [showReindexInfo, setShowReindexInfo] = useState(false);
@@ -26,6 +28,9 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
   const [recent, setRecent] = useState<Recent[]>([]);
   const [showManage, setShowManage] = useState(false);
   const [manageAction, setManageAction] = useState<"clear_all" | "delete_last" | undefined>(undefined);
+  const [urlOpen, setUrlOpen] = useState(false);
+  const [urlValue, setUrlValue] = useState("");
+  const urlInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -80,6 +85,35 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
     if (file && !busy) void upload(file);
   }
 
+  const submitUrl = useCallback(async () => {
+    const url = urlValue.trim();
+    if (!url || busy) return;
+    setBusy(true);
+    setStatus({ kind: "info", msg: `Fetching ${url} — extracting → chunking → indexing…` });
+    try {
+      const r = await ingestUrl(url);
+      setStatus({
+        kind: "ok",
+        msg: r.unchanged
+          ? `✓ Already indexed (unchanged): ${r.title || r.url}`
+          : `✓ Indexed “${r.title || r.url}” — ${r.chunks} chunk(s).`,
+      });
+      setRecent((prev) => [{ name: r.title || url, docs: r.documents, chunks: r.chunks, skipped: r.skipped || 0, ok: true }, ...prev].slice(0, 5));
+      setUrlValue("");
+      setUrlOpen(false);
+      await refresh();
+    } catch (err) {
+      setStatus({ kind: "err", msg: `✗ ${(err as Error).message}` });
+    } finally {
+      setBusy(false);
+    }
+  }, [urlValue, busy, refresh]);
+
+  const openUrl = useCallback(() => {
+    setUrlOpen(true);
+    setTimeout(() => urlInputRef.current?.focus(), 50);
+  }, []);
+
   const failed = summary?.failed_files || [];
   const docs: DocumentMeta[] = (summary?.document_titles || []).map((title, i) => ({
     doc_id: `doc_${i}`,
@@ -90,6 +124,50 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
 
   return (
     <div className="space-y-4">
+      <IngestSources onUpload={() => fileInputRef.current?.click()} onWebUrl={openUrl} />
+
+      {/* Web URL input */}
+      {urlOpen && (
+        <div className="card-inset space-y-2">
+          <label className="text-xs font-semibold text-fg2">Add a web page</label>
+          <div className="flex gap-2">
+            <input
+              ref={urlInputRef}
+              type="url"
+              inputMode="url"
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submitUrl();
+                if (e.key === "Escape") setUrlOpen(false);
+              }}
+              placeholder="https://example.com/article"
+              disabled={busy}
+              className="min-w-0 flex-1 rounded-lg border border-edge bg-panel2 px-3 py-1.5 text-sm text-fg placeholder:text-fg3 focus:border-brand/50 focus:outline-none disabled:opacity-60"
+            />
+            <button
+              type="button"
+              onClick={() => void submitUrl()}
+              disabled={busy || !urlValue.trim()}
+              className="btn-cta shrink-0 px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              {busy ? "Fetching…" : "Fetch"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setUrlOpen(false)}
+              className="btn-outline shrink-0 px-2.5 py-1.5 text-xs text-fg3"
+              aria-label="Cancel"
+            >
+              ✕
+            </button>
+          </div>
+          <p className="text-[10px] text-fg3">
+            The page&apos;s main content is extracted and indexed with its URL as the citation source.
+            Private/internal hosts are blocked.
+          </p>
+        </div>
+      )}
       {/* corpus stats */}
       {summary && (
         <div className="card-inset">
@@ -255,6 +333,7 @@ export function IngestPanel({ onAsk, onDeleted }: { onAsk?: (q: string) => void;
         </span>
         <span className="text-[11px] text-fg3">Chunked with source spans → hybrid index + graph</span>
         <input
+          ref={fileInputRef}
           type="file"
           className="hidden"
           disabled={busy}

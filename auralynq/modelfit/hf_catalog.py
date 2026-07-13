@@ -152,6 +152,7 @@ async def search_hf_models(
 
     try:
         import httpx
+
         url = "https://huggingface.co/api/models"
         params = {"search": query, "limit": str(limit), "sort": "downloads", "direction": "-1"}
         async with httpx.AsyncClient(timeout=10.0) as client:

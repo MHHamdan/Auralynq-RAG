@@ -19,6 +19,11 @@ class QueryRequest(BaseModel):
         default=None,
         description="RAG strategy id from /api/rag/strategies. Defaults to auralynq_rag.",
     )
+    doc_ids: list[str] | None = Field(
+        default=None,
+        description="Restrict retrieval to these document ids (source scoping). "
+        "None or empty = search the whole corpus.",
+    )
 
 
 class Citation(BaseModel):
@@ -30,8 +35,8 @@ class Citation(BaseModel):
     start_s: float | None = None
     end_s: float | None = None
     page: int | None = None
-    score: float | None = None   # retrieval score (0-1) — evidence quality signal
-    method: str | None = None    # retrieval method: "hybrid" | "pathrag" | …
+    score: float | None = None  # retrieval score (0-1) — evidence quality signal
+    method: str | None = None  # retrieval method: "hybrid" | "pathrag" | …
 
 
 class QueryResponse(BaseModel):
@@ -82,6 +87,113 @@ class CorpusSummaryResponse(BaseModel):
     failed_files: list[str] = Field(default_factory=list)
 
 
+class CorpusDocument(BaseModel):
+    doc_id: str
+    title: str
+    source: str = ""
+    source_type: str = ""
+    chunks: int = 0
+
+
+class CorpusDocumentsResponse(BaseModel):
+    documents: list[CorpusDocument] = Field(default_factory=list)
+
+
+class IngestUrlRequest(BaseModel):
+    url: str
+
+
+class IngestUrlResponse(BaseModel):
+    url: str = ""
+    title: str = ""
+    documents: int = 0
+    chunks: int = 0
+    skipped: int = 0
+    unchanged: bool = False
+    request_id: str = ""
+
+
+class ConnectorStatus(BaseModel):
+    name: str
+    configured: bool = False
+    setup_hint: str = ""
+    synced_at: str | None = None
+    docs: int = 0
+
+
+class ConnectorsStatusResponse(BaseModel):
+    connectors: list[ConnectorStatus] = Field(default_factory=list)
+
+
+class ConnectorSyncResponse(BaseModel):
+    connector: str
+    configured: bool = False
+    added: int = 0
+    updated: int = 0
+    removed: int = 0
+    unchanged: int = 0
+    chunks_indexed: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class WatchDirStatus(BaseModel):
+    path: str
+    exists: bool = False
+    files: int = 0
+
+
+class WatchStatusResponse(BaseModel):
+    enabled: bool = False
+    poll_seconds: float = 10.0
+    recursive: bool = True
+    delete_missing: bool = True
+    tracked: int = 0
+    directories: list[WatchDirStatus] = Field(default_factory=list)
+
+
+class WatchSyncResponse(BaseModel):
+    enabled: bool = False
+    added: int = 0
+    updated: int = 0
+    removed: int = 0
+    reindexed: bool = False
+    chunks_indexed: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class WikiPageSummary(BaseModel):
+    id: str
+    title: str = ""
+    type: str = "entity"
+    mentions: int = 0
+    updated: str = ""
+    sources: list[str] = Field(default_factory=list)
+
+
+class WikiPagesResponse(BaseModel):
+    enabled: bool = False
+    count: int = 0
+    pages: list[WikiPageSummary] = Field(default_factory=list)
+
+
+class WikiPageResponse(BaseModel):
+    id: str
+    title: str = ""
+    type: str = "entity"
+    mentions: int = 0
+    updated: str = ""
+    sources: list[str] = Field(default_factory=list)
+    markdown: str = ""
+
+
+class WikiLintResponse(BaseModel):
+    enabled: bool = False
+    pages: int = 0
+    contradiction_count: int = 0
+    contradictions: list[dict[str, Any]] = Field(default_factory=list)
+    orphan_pages: list[str] = Field(default_factory=list)
+
+
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     corpus_indexed: bool = False
@@ -95,6 +207,10 @@ class StatusResponse(BaseModel):
     index: dict[str, Any] = Field(default_factory=dict)
     corpus: dict[str, Any] = Field(default_factory=dict)
     tracing: dict[str, Any] = Field(default_factory=dict)
+    hf_space: bool = False
+    demo_mode: bool = False
+    public_demo: bool = False
+    allow_uploads: bool = True
 
 
 class ObservabilitySummaryResponse(BaseModel):
@@ -229,9 +345,15 @@ class QueryRequestV2(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
     final_k: int | None = Field(default=None, ge=1, le=50)
     use_cache: bool | None = None
-    route_hint: str | None = Field(default=None, description="Override route: 'fast' | 'hybrid' | 'graph' | 'auto'")
-    rag_strategy: str | None = Field(default=None, description="RAG strategy id from /api/rag/strategies")
-    force_strategy: bool = Field(default=False, description="Fail if strategy is unavailable (no fallback)")
+    route_hint: str | None = Field(
+        default=None, description="Override route: 'fast' | 'hybrid' | 'graph' | 'auto'"
+    )
+    rag_strategy: str | None = Field(
+        default=None, description="RAG strategy id from /api/rag/strategies"
+    )
+    force_strategy: bool = Field(
+        default=False, description="Fail if strategy is unavailable (no fallback)"
+    )
     fallback_allowed: bool = Field(default=True, description="Allow fallback to default strategy")
 
 

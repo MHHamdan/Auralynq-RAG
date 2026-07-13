@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from auralynq.agent.state import AgentState
 from auralynq.config import Settings
@@ -22,6 +23,9 @@ from auralynq.retrieval.pathrag.retriever import PathRAGRetriever
 from auralynq.retrieval.router import Route, route_query
 from auralynq.telemetry.tracing import Trace
 from auralynq.utils import tokenize
+
+if TYPE_CHECKING:
+    from auralynq.wiki.retriever import WikiRetriever
 
 _MARKER_RE = re.compile(r"\[(\d+)\]")
 _STOP = {
@@ -59,6 +63,7 @@ class AgentDeps:
     trace: Trace
     settings: Settings
     filt: Filter | None = None
+    wiki: WikiRetriever | None = None  # set only when the compounding wiki is on
 
 
 def node_plan(state: AgentState, deps: AgentDeps) -> AgentState:
@@ -119,6 +124,13 @@ def node_retrieve(state: AgentState, deps: AgentDeps) -> AgentState:
             state.route = Route.hybrid  # reflect the actual retrieval path used
             state.route_rationale += " [graph empty → hybrid fallback]"
             sp.attributes.update(n=len(res.chunks), reason="graph_returned_no_contexts")
+    # Compounding wiki (Phase 2): consult pre-synthesized entity pages as an extra,
+    # high-value context source. Purely additive — only runs when the wiki is on.
+    if deps.wiki is not None:
+        with deps.trace.span("wiki_retriever") as sp:
+            res = deps.wiki.retrieve(state.question, k=2)
+            state.contexts.extend(res.chunks)
+            sp.attributes.update(n=len(res.chunks), matched=res.metadata.get("pages_matched", 0))
     return state
 
 
@@ -293,8 +305,8 @@ def node_self_check(state: AgentState, deps: AgentDeps) -> AgentState:
         state.confidence_signals = {
             "s_qual": round(s_qual, 3),
             "s_cite": round(s_cite, 3),
-            "s_sem":  round(s_sem, 3),
-            "s_tok":  round(s_tok, 3),
+            "s_sem": round(s_sem, 3),
+            "s_tok": round(s_tok, 3),
         }
 
         sp.attributes.update(
@@ -339,6 +351,9 @@ def node_validate_citations(state: AgentState, deps: AgentDeps) -> AgentState:
             # Thread retrieval score and method so the UI can show evidence quality.
             cit["score"] = round(float(sc.score or 0.0), 4)
             cit["method"] = sc.method or "unknown"
+            # Carry the cited span's text so citations can be verified (attribution
+            # eval) and previewed in the UI — this is the evidence for the claim.
+            cit["text"] = (sc.chunk.text or "")[:280]
             citations.append(cit)
         state.citations = citations
         sp.attributes.update(n_citations=len(citations))

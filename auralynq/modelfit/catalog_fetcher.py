@@ -34,6 +34,7 @@ _CACHE_TTL_S = 600  # 10 minutes
 # Each entry: family_tag → {variants, family, tasks, license, params_b hint}
 # The registry is queried at runtime to get actual sizes per variant.
 
+
 def _fi(
     variants: list[str],
     family: str,
@@ -57,72 +58,117 @@ _CHAT_RAG = ["chat", "rag"]
 
 _OLLAMA_FAMILIES: dict[str, dict[str, Any]] = {
     "llama3.2": _fi(
-        ["1b", "3b"], "llama",
-        ["chat", "rag", "summarization"], "llama3.2",
+        ["1b", "3b"],
+        "llama",
+        ["chat", "rag", "summarization"],
+        "llama3.2",
         {"1b": 1.0, "3b": 3.0},
     ),
     "llama3.1": _fi(
-        ["8b", "70b"], "llama",
-        ["chat", "rag", "coding", "agents"], "llama3.1",
+        ["8b", "70b"],
+        "llama",
+        ["chat", "rag", "coding", "agents"],
+        "llama3.1",
         {"8b": 8.0, "70b": 70.0},
     ),
     "llama3.3": _fi(
-        ["70b"], "llama",
-        ["chat", "rag", "coding", "agents"], "llama3.3",
+        ["70b"],
+        "llama",
+        ["chat", "rag", "coding", "agents"],
+        "llama3.3",
         {"70b": 70.0},
     ),
     "qwen2.5": _fi(
-        ["0.5b", "1.5b", "3b", "7b", "14b", "32b", "72b"], "qwen",
-        _QWEN_TASKS, "apache-2.0",
-        {"0.5b": 0.5, "1.5b": 1.5, "3b": 3.0, "7b": 7.0,
-         "14b": 14.0, "32b": 32.0, "72b": 72.0},
+        ["0.5b", "1.5b", "3b", "7b", "14b", "32b", "72b"],
+        "qwen",
+        _QWEN_TASKS,
+        "apache-2.0",
+        {"0.5b": 0.5, "1.5b": 1.5, "3b": 3.0, "7b": 7.0, "14b": 14.0, "32b": 32.0, "72b": 72.0},
     ),
     "qwen3": _fi(
-        ["0.6b", "1.7b", "4b", "8b", "14b", "30b", "32b"], "qwen",
-        _QWEN_TASKS, "apache-2.0",
-        {"0.6b": 0.6, "1.7b": 1.7, "4b": 4.0, "8b": 8.0,
-         "14b": 14.0, "30b": 30.0, "32b": 32.0},
+        ["0.6b", "1.7b", "4b", "8b", "14b", "30b", "32b"],
+        "qwen",
+        _QWEN_TASKS,
+        "apache-2.0",
+        {"0.6b": 0.6, "1.7b": 1.7, "4b": 4.0, "8b": 8.0, "14b": 14.0, "30b": 30.0, "32b": 32.0},
     ),
     "mistral": _fi(
-        ["7b"], "mistral", _CHAT_RAG, "apache-2.0", {"7b": 7.0},
+        ["7b"],
+        "mistral",
+        _CHAT_RAG,
+        "apache-2.0",
+        {"7b": 7.0},
     ),
     "mistral-nemo": _fi(
-        ["12b"], "mistral", ["chat", "rag", "coding"], "apache-2.0", {"12b": 12.0},
+        ["12b"],
+        "mistral",
+        ["chat", "rag", "coding"],
+        "apache-2.0",
+        {"12b": 12.0},
     ),
     "gemma3": _fi(
-        ["1b", "4b", "12b", "27b"], "gemma",
-        ["chat", "rag", "vision"], "gemma",
+        ["1b", "4b", "12b", "27b"],
+        "gemma",
+        ["chat", "rag", "vision"],
+        "gemma",
         {"1b": 1.0, "4b": 4.0, "12b": 12.0, "27b": 27.0},
     ),
     "phi4": _fi(
-        ["14b"], "phi",
-        ["chat", "rag", "coding", "math"], "mit", {"14b": 14.0},
+        ["14b"],
+        "phi",
+        ["chat", "rag", "coding", "math"],
+        "mit",
+        {"14b": 14.0},
     ),
     "phi4-mini": _fi(
-        ["3.8b"], "phi", ["chat", "rag", "coding"], "mit", {"3.8b": 3.8},
+        ["3.8b"],
+        "phi",
+        ["chat", "rag", "coding"],
+        "mit",
+        {"3.8b": 3.8},
     ),
     "phi3.5": _fi(
-        ["3.8b"], "phi", ["chat", "rag", "coding"], "mit", {"3.8b": 3.8},
+        ["3.8b"],
+        "phi",
+        ["chat", "rag", "coding"],
+        "mit",
+        {"3.8b": 3.8},
     ),
     "deepseek-r1": _fi(
-        ["1.5b", "7b", "8b", "14b", "32b"], "deepseek",
-        ["chat", "coding", "math"], "mit",
+        ["1.5b", "7b", "8b", "14b", "32b"],
+        "deepseek",
+        ["chat", "coding", "math"],
+        "mit",
         {"1.5b": 1.5, "7b": 7.0, "8b": 8.0, "14b": 14.0, "32b": 32.0},
     ),
     "deepseek-coder": _fi(
-        ["1.3b", "6.7b", "33b"], "deepseek",
-        ["coding"], "mit",
+        ["1.3b", "6.7b", "33b"],
+        "deepseek",
+        ["coding"],
+        "mit",
         {"1.3b": 1.3, "6.7b": 6.7, "33b": 33.0},
     ),
     "nomic-embed-text": _fi(
-        ["latest"], "unknown", [], "apache-2.0", {}, embedding=True,
+        ["latest"],
+        "unknown",
+        [],
+        "apache-2.0",
+        {},
+        embedding=True,
     ),
     "mxbai-embed-large": _fi(
-        ["latest"], "unknown", [], "apache-2.0", {}, embedding=True,
+        ["latest"],
+        "unknown",
+        [],
+        "apache-2.0",
+        {},
+        embedding=True,
     ),
     "codellama": _fi(
-        ["7b", "13b", "34b"], "llama",
-        ["coding"], "llama2",
+        ["7b", "13b", "34b"],
+        "llama",
+        ["coding"],
+        "llama2",
         {"7b": 7.0, "13b": 13.0, "34b": 34.0},
     ),
 }
@@ -139,12 +185,18 @@ _HF_GGUF_QUERIES = [
 
 # Quantization selection: given VRAM budget, pick best quant for a param count
 _QUANT_BYTES: dict[str, float] = {
-    "Q2_K": 0.31, "Q3_K_M": 0.40, "Q4_K_M": 0.55,
-    "Q5_K_M": 0.625, "Q6_K": 0.75, "Q8_0": 1.0, "F16": 2.0,
+    "Q2_K": 0.31,
+    "Q3_K_M": 0.40,
+    "Q4_K_M": 0.55,
+    "Q5_K_M": 0.625,
+    "Q6_K": 0.75,
+    "Q8_0": 1.0,
+    "F16": 2.0,
 }
 
 
 # ── Registry query helpers ─────────────────────────────────────────────────────
+
 
 async def _registry_model_size_gb(client: httpx.AsyncClient, model: str, tag: str) -> float | None:
     """Fetch the model layer size from the Ollama registry manifest.
@@ -161,7 +213,7 @@ async def _registry_model_size_gb(client: httpx.AsyncClient, model: str, tag: st
             (lyr for lyr in d.get("layers", []) if "model" in lyr.get("mediaType", "")),
             None,
         )
-        return layer["size"] / (1024 ** 3) if layer else None
+        return layer["size"] / (1024**3) if layer else None
     except Exception:
         return None
 
@@ -191,6 +243,7 @@ async def _ollama_installed(client: httpx.AsyncClient) -> dict[str, dict]:
 
 
 # ── Metadata builders ─────────────────────────────────────────────────────────
+
 
 def _params_from_tag(tag: str, hints: dict[str, float]) -> float | None:
     """Infer parameter count from a tag like '7b', '3b', '0.5b'."""
@@ -259,7 +312,7 @@ def _make_ollama_entry(
         context_length=None,
         license=family_info.get("license", "unknown"),
         tasks=family_info.get("tasks", []),  # type: ignore[arg-type]
-        available_quantizations=[quant] if quant else [],  # type: ignore[arg-type]
+        available_quantizations=[quant] if quant else [],  # type: ignore[list-item]
         embedding=family_info.get("embedding", False),
         ollama_tag=f"{model_name}:{tag}",
         notes=notes,
@@ -272,6 +325,7 @@ def _parse_size_label(s: str) -> float | None:
 
 
 # ── Main fetch functions ───────────────────────────────────────────────────────
+
 
 async def fetch_ollama_catalog(vram_gb: float, ram_gb: float) -> list[ModelMetadata]:
     """Fetch Ollama model catalog, annotated with registry sizes and hardware fit.
@@ -352,13 +406,16 @@ async def fetch_hf_gguf_catalog(vram_gb: float) -> list[ModelMetadata]:
     results: list[ModelMetadata] = []
     try:
         from huggingface_hub import HfApi
+
         api = HfApi()
-        models = list(api.list_models(
-            filter="gguf",
-            pipeline_tag="text-generation",
-            sort="downloads",
-            limit=80,
-        ))
+        models = list(
+            api.list_models(
+                filter="gguf",
+                pipeline_tag="text-generation",
+                sort="downloads",
+                limit=80,
+            )
+        )
         for m in models:
             tags = m.tags or []
             repo_id = m.id
@@ -381,17 +438,19 @@ async def fetch_hf_gguf_catalog(vram_gb: float) -> list[ModelMetadata]:
             if any(k in repo_id.lower() for k in ["embed", "bge", "e5-"]):
                 tasks = []
 
-            results.append(ModelMetadata(
-                model_id=f"hf:{repo_id}",
-                source="huggingface",
-                display_name=repo_id,
-                family=family,  # type: ignore[arg-type]
-                parameter_count_b=params_b,
-                license=_infer_license(tags),
-                tasks=tasks,  # type: ignore[arg-type]
-                hf_repo=repo_id,
-                notes=[f"HuggingFace GGUF — {getattr(m, 'downloads', 0):,} downloads"],
-            ))
+            results.append(
+                ModelMetadata(
+                    model_id=f"hf:{repo_id}",
+                    source="huggingface",
+                    display_name=repo_id,
+                    family=family,  # type: ignore[arg-type]
+                    parameter_count_b=params_b,
+                    license=_infer_license(tags),
+                    tasks=tasks,  # type: ignore[arg-type]
+                    hf_repo=repo_id,
+                    notes=[f"HuggingFace GGUF — {getattr(m, 'downloads', 0):,} downloads"],
+                )
+            )
     except Exception as exc:
         _log.warning("catalog.hf_failed", error=str(exc))
 
@@ -437,12 +496,16 @@ def _infer_license(tags: list[str]) -> str:
 
 # ── Pull helpers ───────────────────────────────────────────────────────────────
 
+
 async def pull_ollama_model(tag: str) -> tuple[bool, str]:
     """Run `ollama pull <tag>` as a subprocess. Returns (success, message)."""
     import asyncio
+
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ollama", "pull", tag,
+            "ollama",
+            "pull",
+            tag,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -460,6 +523,7 @@ def pull_hf_gguf(repo_id: str, filename: str, hf_token: str = "") -> tuple[bool,
     """Download a HuggingFace GGUF file via hf_hub_download. Returns (success, path)."""
     try:
         from huggingface_hub import hf_hub_download
+
         kwargs: dict[str, Any] = {"repo_id": repo_id, "filename": filename}
         if hf_token:
             kwargs["token"] = hf_token

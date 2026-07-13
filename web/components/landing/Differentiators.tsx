@@ -2,9 +2,29 @@ import type { ReactNode } from "react";
 
 const POINTS: { title: string; body: string; icon: ReactNode }[] = [
   {
+    title: "Compounding knowledge, not just retrieval",
+    body: "Auralynq builds a persistent, cited wiki from your knowledge graph as you ingest — and flags when a new source contradicts a prior claim, keeping both with dates. Most RAG (and NotebookLM) re-derive everything each query and never tell you when your sources disagree.",
+    icon: <path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z M8 12h6M8 16h4M14 3v5h5" />,
+  },
+  {
+    title: "Span-level visual source grounding",
+    body: "Click any citation and the exact answer span is drawn as a bounding box on the original PDF page — pixel-accurate, not a fuzzy region highlight. No other open-source local RAG ties answer spans to visual proof this way.",
+    icon: <path d="M4 5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z M9 12h6M9 16h4M14 3v5h5" />,
+  },
+  {
+    title: "Hardware-aware ModelFit Index",
+    body: "Auralynq profiles your actual VRAM, RAM, and backend and scores every model with a will-it-run verdict — surfacing the best fit for your box, not the biggest or smallest. Nobody else in the local-RAG field ships predictive model selection.",
+    icon: <path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2M6 6h12v12H6zM10 10h4v4h-4z" />,
+  },
+  {
     title: "Local-first by default",
-    body: "Runs entirely on your machine via rootless Podman. No account, no telemetry you didn't opt into, $0 to start. Your documents never leave the box.",
+    body: "Runs entirely on your machine via rootless Podman. No account, no telemetry you didn't opt into, $0 to start. Your documents never leave the box — no data shipped to anyone's cloud.",
     icon: <path d="M4 10V7a8 8 0 0 1 16 0v3M5 10h14a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z" />,
+  },
+  {
+    title: "PPR-augmented PathRAG",
+    body: "Our graph retriever blends flow-based path pruning with Personalised PageRank authority (0.4·flow + 0.6·ppr), fixing PathRAG's short-path bias. On multi-hop HotpotQA it lifts retrieval recall from 0.80 to 1.00.",
+    icon: <path d="M5 6a2 2 0 1 0 0-.01M19 6a2 2 0 1 0 0-.01M12 18a2 2 0 1 0 0-.01M7 6h10M6 8l5 8M18 8l-5 8" />,
   },
   {
     title: "Evidence-gated abstention",
@@ -13,13 +33,8 @@ const POINTS: { title: string; body: string; icon: ReactNode }[] = [
   },
   {
     title: "Auralynq-RAG: observable agentic pipeline",
-    body: "Auralynq-RAG is our own RAG strategy: calibrated confidence, intent routing, evidence sufficiency control, citation validation, and hallucination risk scoring — with a full trace for every query.",
+    body: "Auralynq-RAG is our own RAG strategy: calibrated four-signal confidence, intent routing, evidence sufficiency control, citation validation, and hallucination risk scoring — with a full trace for every query, one of 13 runtime-switchable strategies.",
     icon: <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />,
-  },
-  {
-    title: "Choose your RAG algorithm",
-    body: "Switch between 13+ strategies at runtime: Naive Vector, Hybrid, GraphRAG, PathRAG, and the full Auralynq-RAG pipeline — each with an availability status and latency estimate.",
-    icon: <path d="M4 19V5M4 19h16M8 16v-5M12 16V8M16 16v-3" />,
   },
   {
     title: "Voice and text, one pipeline",
@@ -27,18 +42,8 @@ const POINTS: { title: string; body: string; icon: ReactNode }[] = [
     icon: <path d="M9 3h6v8a3 3 0 0 1-6 0Z M5 11a7 7 0 0 0 14 0M12 18v3" />,
   },
   {
-    title: "Research-ready open RAG lab",
-    body: "Every query produces a structured trace log with retrieval metrics, citation coverage, and confidence scores — ready to export for RAGAS evaluation and strategy comparison.",
-    icon: <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />,
-  },
-  {
-    title: "Evidence & trace always visible",
-    body: "A persistent Agent Activity rail shows live retrieval status, selected algorithm, coverage, confidence, and risk — no tab-clicking required.",
-    icon: <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />,
-  },
-  {
     title: "Open-source & provider-agnostic",
-    body: "MIT-spirited, inspectable, swappable. Start fully local, then bring your own Cohere / OpenAI / Anthropic keys to upgrade any single layer without lock-in.",
+    body: "Apache-2.0 licensed, inspectable, swappable. Start fully local, then bring your own Cohere / OpenAI / Anthropic keys to upgrade any single layer without lock-in.",
     icon: <path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4Z M9 12l2 2 4-4" />,
   },
 ];

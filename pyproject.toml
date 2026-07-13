@@ -43,7 +43,10 @@ dependencies = [
 [project.optional-dependencies]
 embeddings = ["sentence-transformers>=3.0", "FlagEmbedding>=1.2", "torch>=2.2"]
 vector = ["qdrant-client>=1.9", "chromadb>=0.5"]
-ingest = ["pypdf>=4.2", "python-docx>=1.1", "beautifulsoup4>=4.12", "markdown-it-py>=3.0", "pdfplumber>=0.11", "pymupdf>=1.24", "pdf2image>=1.17"]
+ingest = ["pypdf>=4.2", "python-docx>=1.1", "beautifulsoup4>=4.12", "markdown-it-py>=3.0", "pdfplumber>=0.11", "pymupdf>=1.24", "pdf2image>=1.17", "lxml>=5.0", "trafilatura>=1.8"]
+# Cloud connectors. Notion + Slack use raw REST (httpx, already a core dep);
+# only Google Drive's service-account auth needs the google SDK.
+connectors = ["google-api-python-client>=2.0", "google-auth>=2.0"]
 voice = [
   "faster-whisper>=1.0",
   "soundfile>=0.12",
@@ -54,9 +57,6 @@ agent = ["langgraph>=0.2", "langchain-core>=0.2"]
 # Commercial LLM provider SDKs (optional; auto-detected, with offline fallback).
 llm = ["openai>=1.30", "anthropic>=0.30", "cohere>=5.5"]
 eval = ["ragas>=0.1.9", "jiwer>=3.0", "datasets>=2.19", "scikit-learn>=1.4"]
-# Phase 2 research layer: config loading + learned calibration. Pure-Python; the
-# rest of the research layer reuses core/eval deps and degrades offline at $0.
-research = ["scikit-learn>=1.4"]
 telemetry = [
   "opentelemetry-api>=1.25",
   "opentelemetry-sdk>=1.25",
@@ -70,7 +70,7 @@ telemetry = [
 slm = ["llama-cpp-python>=0.3", "huggingface_hub>=0.23"]
 mcp = ["mcp>=1.0"]
 dev = [
-  "ruff>=0.5",
+  "ruff>=0.15.18,<0.16",
   "mypy>=1.10",
   "pytest>=8.2",
   "pytest-cov>=5.0",
@@ -79,18 +79,17 @@ dev = [
   "pre-commit>=3.7",
 ]
 all = [
-  "auralynq[embeddings,vector,ingest,voice,agent,llm,eval,telemetry,mcp,research]",
+  "auralynq[embeddings,vector,ingest,voice,agent,llm,eval,telemetry,mcp]",
 ]
 
 [project.scripts]
 auralynq = "auralynq.cli:app"
 auralynq-mcp = "auralynq.mcp_server.server:main"
-auralynq-research = "auralynq.research.cli:app"
 auralynq-modelfit = "auralynq.modelfit.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/auralynq/auralynq"
-Documentation = "https://github.com/auralynq/auralynq#readme"
+Homepage = "https://github.com/MHHamdan/Auralynq"
+Documentation = "https://github.com/MHHamdan/Auralynq#readme"
 
 [tool.hatch.build.targets.wheel]
 packages = ["auralynq"]
@@ -109,6 +108,10 @@ ignore = ["B008", "C901", "RUF012", "UP042", "RUF001"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011", "SIM117"]
+# planned.py embeds multi-line LLM prompt templates whose prose lines exceed
+# the 100-col limit; reflowing them would alter the prompt text, so E501 is
+# waived for this one file only.
+"auralynq/rag/strategies/planned.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -133,16 +136,20 @@ filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.coverage.run]
 source = ["auralynq"]
-# Omit integration-only paths that require a live server / network / long-running
-# process and therefore cannot run in the offline $0 unit suite. Their logic is
-# covered by integration tests behind the `integration` marker.
+# Omit integration-only paths that require a live server / network / optional
+# heavy dependency and therefore cannot run in the offline $0 unit suite. Their
+# logic is covered by integration tests behind the `integration` marker.
 omit = [
   "*/mcp_server/*",
   "*/__main__.py",
   "*/vectorstore/qdrant_store.py",
+  "*/vectorstore/chroma_store.py",
   "*/llm/providers.py",
+  "*/llm/slm.py",
   "*/serving/worker.py",
   "*/embeddings/bge.py",
+  "*/embeddings/ollama_embed.py",
+  "*/modelfit/catalog_fetcher.py",
 ]
 
 [tool.coverage.report]

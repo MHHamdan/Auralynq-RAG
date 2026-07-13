@@ -20,19 +20,19 @@ from typing import Any
 
 @dataclass
 class VisualEvidence:
-    citation_id: str          # matches citation marker (str of int, e.g. "1")
+    citation_id: str  # matches citation marker (str of int, e.g. "1")
     chunk_id: str
     doc_id: str
     source_title: str
     page: int | None
-    bbox: list[float] | None           # [x0, y0, x1, y1] in PDF space
+    bbox: list[float] | None  # [x0, y0, x1, y1] in PDF space
     normalized_bbox: list[float] | None  # [0..1] relative to page  (Eq. 11)
-    color_index: int                   # for CSS color-coding by citation number
+    color_index: int  # for CSS color-coding by citation number
     snippet: str
-    support_type: str   # span | page | segment | unavailable | graph
-                        # "segment" = audio timestamp grounding (Eq. 1)
-    relevance: float    # retrieval score 0-1
-    confidence: float   # chunk visual grounding confidence
+    support_type: str  # span | page | segment | unavailable | graph
+    # "segment" = audio timestamp grounding (Eq. 1)
+    relevance: float  # retrieval score 0-1
+    confidence: float  # chunk visual grounding confidence
     block_type: str
     grounding_version: int
     reindex_required: bool  # True if doc was indexed before visual grounding
@@ -47,7 +47,7 @@ class ClaimGrounding:
     claim_id: str
     text: str
     citation_ids: list[str]
-    support_status: str        # supported | partial | weak | unsupported
+    support_status: str  # supported | partial | weak | unsupported
     visual_evidence_ids: list[str]
     confidence: float
 
@@ -208,14 +208,19 @@ class GroundingResolver:
                 cit_ids = _citation_ids_for_claim(claim_text, group_cits)
                 status = _support_status(claim_text, cit_ids, highlights)
                 ev_ids = [e.citation_id for e in highlights if e.citation_id in cit_ids]
-                claim_groundings.append(ClaimGrounding(
-                    claim_id=f"claim_{ci}",
-                    text=claim_text,
-                    citation_ids=cit_ids,
-                    support_status=status,
-                    visual_evidence_ids=ev_ids,
-                    confidence=max((e.relevance for e in highlights if e.citation_id in cit_ids), default=0.0),
-                ))
+                claim_groundings.append(
+                    ClaimGrounding(
+                        claim_id=f"claim_{ci}",
+                        text=claim_text,
+                        citation_ids=cit_ids,
+                        support_status=status,
+                        visual_evidence_ids=ev_ids,
+                        confidence=max(
+                            (e.relevance for e in highlights if e.citation_id in cit_ids),
+                            default=0.0,
+                        ),
+                    )
+                )
 
             page_image_url = (
                 f"{base_url}/documents/{doc_id}/pages/{page}/image"
@@ -224,18 +229,20 @@ class GroundingResolver:
             )
             source_title = group_cits[0].get("source", "") if group_cits else ""
 
-            results.append(GroundingResult(
-                answer_id=answer_id,
-                doc_id=doc_id,
-                source_title=source_title,
-                page=page,
-                page_image_url=page_image_url,
-                highlights=highlights,
-                claim_grounding=claim_groundings,
-                warnings=list(dict.fromkeys(warnings)),
-                visual_grounding_available=has_visual_grounding,
-                grounding_stage=grounding_stage,
-            ))
+            results.append(
+                GroundingResult(
+                    answer_id=answer_id,
+                    doc_id=doc_id,
+                    source_title=source_title,
+                    page=page,
+                    page_image_url=page_image_url,
+                    highlights=highlights,
+                    claim_grounding=claim_groundings,
+                    warnings=list(dict.fromkeys(warnings)),
+                    visual_grounding_available=has_visual_grounding,
+                    grounding_stage=grounding_stage,
+                )
+            )
 
         return results
 
@@ -250,37 +257,41 @@ class GroundingResolver:
 
         for r in results:
             for ev in r.highlights:
-                all_highlights.append({
-                    "citation_id": ev.citation_id,
-                    "chunk_id": ev.chunk_id,
-                    "doc_id": ev.doc_id,
-                    "source_title": ev.source_title,
-                    "page": ev.page,
-                    "page_image_url": r.page_image_url,
-                    "bbox": ev.bbox,
-                    "normalized_bbox": ev.normalized_bbox,
-                    "color_index": ev.color_index,
-                    "snippet": ev.snippet,
-                    "support_type": ev.support_type,
-                    "relevance": ev.relevance,
-                    "confidence": ev.confidence,
-                    "block_type": ev.block_type,
-                    "grounding_version": ev.grounding_version,
-                    "reindex_required": ev.reindex_required,
-                    # audio grounding fields (paper §4.5, Eq. 1)
-                    "t_start": ev.t_start,
-                    "t_end": ev.t_end,
-                    "speaker": ev.speaker,
-                })
+                all_highlights.append(
+                    {
+                        "citation_id": ev.citation_id,
+                        "chunk_id": ev.chunk_id,
+                        "doc_id": ev.doc_id,
+                        "source_title": ev.source_title,
+                        "page": ev.page,
+                        "page_image_url": r.page_image_url,
+                        "bbox": ev.bbox,
+                        "normalized_bbox": ev.normalized_bbox,
+                        "color_index": ev.color_index,
+                        "snippet": ev.snippet,
+                        "support_type": ev.support_type,
+                        "relevance": ev.relevance,
+                        "confidence": ev.confidence,
+                        "block_type": ev.block_type,
+                        "grounding_version": ev.grounding_version,
+                        "reindex_required": ev.reindex_required,
+                        # audio grounding fields (paper §4.5, Eq. 1)
+                        "t_start": ev.t_start,
+                        "t_end": ev.t_end,
+                        "speaker": ev.speaker,
+                    }
+                )
             for cg in r.claim_grounding:
-                all_claims.append({
-                    "claim_id": cg.claim_id,
-                    "text": cg.text,
-                    "citation_ids": cg.citation_ids,
-                    "support_status": cg.support_status,
-                    "visual_evidence_ids": cg.visual_evidence_ids,
-                    "confidence": cg.confidence,
-                })
+                all_claims.append(
+                    {
+                        "claim_id": cg.claim_id,
+                        "text": cg.text,
+                        "citation_ids": cg.citation_ids,
+                        "support_status": cg.support_status,
+                        "visual_evidence_ids": cg.visual_evidence_ids,
+                        "confidence": cg.confidence,
+                    }
+                )
             warnings.extend(r.warnings)
 
         return {

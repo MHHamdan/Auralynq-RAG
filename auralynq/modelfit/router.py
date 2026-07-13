@@ -34,6 +34,7 @@ router = APIRouter(prefix="/api/modelfit", tags=["modelfit"])
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+
 class EstimateRequest(BaseModel):
     model_id: str
     params_b: float = Field(..., gt=0, description="Parameter count in billions")
@@ -79,6 +80,7 @@ class PullRequest(BaseModel):
 
 # ── Hardware ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/hardware")
 async def get_hardware() -> dict[str, Any]:
     """Probe local hardware — CPU, RAM, GPU, VRAM, backend, Ollama, HF."""
@@ -87,6 +89,7 @@ async def get_hardware() -> dict[str, Any]:
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
+
 
 @router.get("/models")
 async def list_models(
@@ -158,6 +161,7 @@ async def get_model(model_id: str) -> dict[str, Any]:
 
 # ── Resource estimation ───────────────────────────────────────────────────────
 
+
 @router.post("/estimate")
 async def estimate(req: EstimateRequest) -> dict[str, Any]:
     """Estimate VRAM/RAM/disk for a model+quantization on current hardware."""
@@ -191,6 +195,7 @@ async def recommend_quant(
 
 # ── ModelFit Score ────────────────────────────────────────────────────────────
 
+
 @router.post("/score")
 async def compute_score(req: ScoreRequest) -> dict[str, Any]:
     """Compute a ModelFit Score for a model on current hardware."""
@@ -219,10 +224,7 @@ async def get_recommendations(
     registry = get_registry()
 
     # Score all non-embedding, non-reranker models
-    candidates = [
-        m for m in registry.list_all()
-        if not m.embedding and not m.reranker
-    ]
+    candidates = [m for m in registry.list_all() if not m.embedding and not m.reranker]
     if task:
         candidates = [m for m in candidates if task in m.tasks or not m.tasks]
 
@@ -246,6 +248,7 @@ async def get_recommendations(
 
 
 # ── Benchmark ─────────────────────────────────────────────────────────────────
+
 
 @router.post("/benchmark/preview")
 async def benchmark_preview(req: BenchmarkRunRequest) -> dict[str, Any]:
@@ -297,6 +300,7 @@ async def get_benchmark_run(run_id: str) -> dict[str, Any]:
 
 # ── Community ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/community/results")
 async def get_community_results(
     model_id: str | None = Query(None, description="Filter by model_id prefix"),
@@ -333,13 +337,21 @@ async def validate_community(data: dict[str, Any]) -> dict[str, Any]:
         "valid": len(errors) == 0,
         "errors": errors,
         "fields_checked": [
-            "model_id", "quantization", "hardware", "benchmark_version",
-            "task", "date", "source", "tok_per_sec", "peak_memory_gb",
+            "model_id",
+            "quantization",
+            "hardware",
+            "benchmark_version",
+            "task",
+            "date",
+            "source",
+            "tok_per_sec",
+            "peak_memory_gb",
         ],
     }
 
 
 # ── Dynamic discovery ─────────────────────────────────────────────────────────
+
 
 @router.post("/discover")
 async def discover_models(req: DiscoverRequest) -> dict[str, Any]:
@@ -403,13 +415,15 @@ async def discover_models(req: DiscoverRequest) -> dict[str, Any]:
         elif model.source == "huggingface" and model.hf_repo:
             pull_command = f"huggingface-cli download {model.hf_repo} --local-dir ./models"
 
-        scored.append({
-            **fit.to_dict(),
-            "model_meta": model.to_dict(),
-            "already_installed": already_installed,
-            "pull_command": pull_command,
-            "source": model.source,
-        })
+        scored.append(
+            {
+                **fit.to_dict(),
+                "model_meta": model.to_dict(),
+                "already_installed": already_installed,
+                "pull_command": pull_command,
+                "source": model.source,
+            }
+        )
 
     scored.sort(key=lambda s: s["overall_score"], reverse=True)
 
@@ -417,11 +431,18 @@ async def discover_models(req: DiscoverRequest) -> dict[str, Any]:
         "hardware": {
             "os": hw.os_name,
             "cpu": hw.cpu_model,
+            "cpu_cores_physical": hw.cpu_cores_physical,
+            "cpu_cores_logical": hw.cpu_cores_logical,
+            "arch": hw.cpu_arch,
+            "avx2": hw.avx2,
+            "avx512": hw.avx512,
             "ram_gb": hw.ram_gb,
             "total_vram_gb": hw.total_vram_gb,
+            "total_vram_free_gb": hw.total_vram_free_gb,
             "gpus": [g.to_dict() for g in hw.gpus],
             "best_backend": hw.best_backend,
             "ollama_available": hw.ollama_available,
+            "in_container": hw.in_container,
         },
         "task": req.task,
         "total_candidates": len(scored),
@@ -499,6 +520,5 @@ async def pull_model(req: PullRequest) -> dict[str, Any]:
 
     raise HTTPException(
         400,
-        f"Unrecognised model_id prefix in '{model_id}'. "
-        "Must start with 'ollama:' or 'hf:'.",
+        f"Unrecognised model_id prefix in '{model_id}'. Must start with 'ollama:' or 'hf:'.",
     )

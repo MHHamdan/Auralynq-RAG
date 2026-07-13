@@ -1,20 +1,49 @@
 name: release
 
-# Publish versioned container images to GHCR on a version tag (e.g. v0.1.0).
-# Manual dispatch is also allowed for ad-hoc rebuilds of the current ref.
+# On a version tag (e.g. v0.1.0): publish versioned container images to GHCR
+# and build the Python package. Manual dispatch is allowed for ad-hoc rebuilds.
+#
+# NOTE: publishing the Python package to PyPI is intentionally NOT configured
+# here — that's an external deployment that should be a deliberate manual step
+# (see docs/release/release-checklist.md). This workflow only builds the
+# package and attaches it to the GitHub Release as an artifact.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # create GitHub Releases + attach assets
   packages: write   # required to push to ghcr.io
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
+  python-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          twine check dist/*
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/*
+      - name: Attach package to the GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
   images:
     runs-on: ubuntu-latest
     strategy:
@@ -30,7 +59,7 @@ jobs:
             dockerfile: containers/caddy.Dockerfile
             context: .
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Derive version + namespace
         id: meta

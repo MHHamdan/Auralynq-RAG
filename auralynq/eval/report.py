@@ -17,6 +17,7 @@ from auralynq.agent.runner import answer_question
 from auralynq.config import get_settings
 from auralynq.eval.asr_eval import evaluate_asr
 from auralynq.eval.datasets import load_asr_refs, load_golden
+from auralynq.eval.provenance import report_provenance
 from auralynq.eval.ragas_eval import evaluate as ragas_evaluate
 from auralynq.eval.retrieval_metrics import aggregate
 from auralynq.llm.factory import resolved_provider as llm_provider
@@ -44,8 +45,24 @@ def _ensure_index() -> None:
     build_index(corpus)
 
 
+def _dedup_preserve_order(sources: list[str]) -> list[str]:
+    """Collapse a chunk-level ranking to document granularity.
+
+    Relevance judgements are per document, so a gold document split across
+    several chunks must be credited once at its best (earliest) rank — otherwise
+    nDCG/precision are inflated (nDCG can exceed 1). Keeps first occurrence.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for s in sources:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
 def _ranked_sources(chunks) -> list[str]:
-    return [Path(c.chunk.source).name or c.chunk.source for c in chunks]
+    return _dedup_preserve_order([Path(c.chunk.source).name or c.chunk.source for c in chunks])
 
 
 def _retrieval_variants(golden, k: int) -> dict[str, Any]:
@@ -73,26 +90,49 @@ def _retrieval_variants(golden, k: int) -> dict[str, Any]:
     return out
 
 
-def _agentic(golden, k: int) -> dict[str, Any]:
+def _agentic(golden, k: int, judge=None) -> dict[str, Any]:
     cases, latencies, samples = [], [], []
+    cite_samples: list[dict] = []
+    cal_pairs: list[tuple[float, bool]] = []
+    faith_judged: list[float] = []
     from auralynq.agent import runner
+    from auralynq.eval.calibration import answer_correct, calibration_scores
+    from auralynq.eval.citation_eval import citation_scores
 
     runner._CACHE.clear()
     for item in golden:
         res = answer_question(item.question, final_k=k, use_cache=False)
         latencies.append(res.elapsed_ms)
-        ranked = [c.get("source", "") for c in res.citations]
+        ranked = _dedup_preserve_order([Path(c.get("source", "")).name for c in res.citations])
         cases.append((set(item.supporting), ranked))
+        contexts = res.contexts or [item.answer]
         samples.append(
             {
                 "question": item.question,
                 "answer": res.answer,
-                "contexts": res.contexts or [item.answer],
+                "contexts": contexts,
                 "ground_truth": item.answer,
             }
         )
+        cite_samples.append({"answer": res.answer, "citations": res.citations})
+        # correctness label: LLM-judge when available, else lexical.
+        if judge is not None:
+            verdict = judge.correct(item.question, res.answer, item.answer)
+            correct = answer_correct(res.answer, item.answer) if verdict is None else verdict
+            jf = judge.faithfulness(res.answer, contexts)
+            if jf is not None:
+                faith_judged.append(jf)
+        else:
+            correct = answer_correct(res.answer, item.answer)
+        cal_pairs.append((res.confidence, correct))
     scores = aggregate(cases, k=k)
     ragas = ragas_evaluate(samples)
+    citation = citation_scores(cite_samples, judge=judge)
+    calibration = calibration_scores(cal_pairs)
+    faithfulness = (
+        round(sum(faith_judged) / len(faith_judged), 4) if faith_judged else ragas.faithfulness
+    )
+    ragas_method = "llm_judge" if faith_judged else ragas.provider
     return {
         "retrieval": {
             "recall_at_k": scores.recall_at_k,
@@ -102,10 +142,27 @@ def _agentic(golden, k: int) -> dict[str, Any]:
             "latency_p50_ms": round(statistics.median(latencies), 2) if latencies else 0.0,
         },
         "ragas": {
-            "faithfulness": ragas.faithfulness,
+            "faithfulness": faithfulness,
             "answer_relevancy": ragas.answer_relevancy,
             "context_precision": ragas.context_precision,
             "provider": ragas.provider,
+            "faithfulness_method": ragas_method,
+        },
+        # Trust metrics (ADR: citation attribution + confidence calibration).
+        "citation": {
+            "citation_precision": citation.citation_precision,
+            "attribution_rate": citation.attribution_rate,
+            "unsupported_claim_rate": citation.unsupported_claim_rate,
+            "avg_citations": citation.avg_citations,
+            "method": citation.method,
+        },
+        "calibration": {
+            "ece": calibration.ece,
+            "mce": calibration.mce,
+            "brier": calibration.brier,
+            "accuracy": calibration.accuracy,
+            "avg_confidence": calibration.avg_confidence,
+            "bins": calibration.bins,
         },
     }
 
@@ -154,7 +211,9 @@ def _drift_check(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_eval(smoke: bool = False, write_report: bool = False) -> dict[str, Any]:
+def run_eval(
+    smoke: bool = False, write_report: bool = False, judge: bool = False
+) -> dict[str, Any]:
     s = get_settings()
     s.ensure_dirs()
     _ensure_index()
@@ -162,6 +221,13 @@ def run_eval(smoke: bool = False, write_report: bool = False) -> dict[str, Any]:
     if smoke:
         golden = golden[:3]
     k = s.retrieval.final_k
+
+    judge_obj = None
+    if judge:
+        from auralynq.eval.judge import LLMJudge
+        from auralynq.llm.factory import get_llm
+
+        judge_obj = LLMJudge(get_llm())
 
     report: dict[str, Any] = {
         "version": 1,
@@ -171,12 +237,19 @@ def run_eval(smoke: bool = False, write_report: bool = False) -> dict[str, Any]:
             "k": k,
             "n_golden": len(golden),
             "smoke": smoke,
+            "judge": judge_obj.name if judge_obj else "lexical",
         },
         "retrieval": _retrieval_variants(golden, k),
-        "agentic": _agentic(golden, k),
+        "agentic": _agentic(golden, k, judge=judge_obj),
         "asr": _asr(),
     }
     report["drift"] = _drift_check(report)
+    from auralynq.eval.gate import eval_gate
+
+    report["gate"] = eval_gate(report)
+    report["provenance"] = report_provenance(
+        dataset_version=f"golden_qa.json n={len(golden)} (smoke={smoke})"
+    )
 
     if write_report:
         out = s.reports_dir / "eval_report.json"

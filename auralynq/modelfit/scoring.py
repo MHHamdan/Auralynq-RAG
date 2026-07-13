@@ -38,6 +38,7 @@ def _label(score: float) -> ScoreLabel:
 @dataclass
 class BenchmarkSnapshot:
     """Optional measured benchmark results. When absent, estimates are used."""
+
     avg_tok_per_sec: float | None = None
     p50_latency_ms: float | None = None
     p95_latency_ms: float | None = None
@@ -101,6 +102,7 @@ class ModelFitScore:
 
 
 # ── Sub-score calculators ─────────────────────────────────────────────────────
+
 
 def _hardware_fit_score(
     resource: ResourceEstimate,
@@ -261,7 +263,9 @@ def _deployment_fit_score(model: ModelMetadata, hw: HardwareProfile) -> float:
     if model.license.lower() in ("apache-2.0", "mit", "apache 2.0"):
         score += 10.0
     elif model.license.lower() in (
-        "llama 3.1 community", "llama 3.2 community", "llama 3.3 community"
+        "llama 3.1 community",
+        "llama 3.2 community",
+        "llama 3.3 community",
     ):
         score += 5.0
 
@@ -295,10 +299,12 @@ def _lookup_community_benchmark(
     """
     try:
         from auralynq.modelfit.community import load_community_results
+
         results = load_community_results(verified_only=True)
         # Match on model_id and quantization; pick best tok/s among verified results
         matches = [
-            r for r in results
+            r
+            for r in results
             if r.model_id == model_id
             and r.quantization == quantization
             and r.tok_per_sec is not None
@@ -353,6 +359,7 @@ def score_model(
             available_vram_gb=hw.total_vram_gb,
             available_ram_gb=hw.ram_gb,
             context_tokens=context_tokens,
+            available_vram_free_gb=hw.total_vram_free_gb,
         )
         hw_score = _hardware_fit_score(resource, hw)
     else:
@@ -373,9 +380,7 @@ def score_model(
 
     estimate_used = benchmark is None or not speed_measured
     if estimate_used:
-        warnings.append(
-            "Speed score uses estimates. Run a benchmark for measured tok/s."
-        )
+        warnings.append("Speed score uses estimates. Run a benchmark for measured tok/s.")
     if benchmark and not benchmark.is_measured:
         warnings.append(
             "Benchmark data is self-reported / community-contributed — treat as approximate."

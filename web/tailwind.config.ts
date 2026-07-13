@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
 
 /* Surface + text + status tokens are theme-driven CSS variables (see
    app/globals.css :root / [data-theme]). Everything is an `R G B` triplet so
@@ -87,6 +88,6 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [tailwindcssAnimate],
 };
 export default config;

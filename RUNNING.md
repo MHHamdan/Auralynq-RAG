@@ -4,6 +4,13 @@ Two ways to run: **containers (Podman)** for a full production-shaped stack, or
 **local CLI/dev** at $0. Below covers both, plus deploying to a **different
 machine**. Podman only — no Docker, no sudo required.
 
+> New to the project? The step-by-step public guides are in
+> [`docs/getting-started/`](docs/getting-started/): [no-Podman](docs/getting-started/no-podman.md) ·
+> [Podman](docs/getting-started/podman.md) · [server](docs/getting-started/server.md) ·
+> [Hugging Face Space](docs/getting-started/huggingface-space.md) (planned) ·
+> [troubleshooting](docs/getting-started/troubleshooting.md). This file is the
+> deploy-runbook reference; those guides are the onboarding path.
+
 ---
 
 ## TL;DR (this server)
@@ -222,6 +229,29 @@ auralynq ask "How does PathRAG prune relational paths?"
 auralynq serve             # FastAPI on :8000
 auralynq-mcp               # MCP server over stdio (Claude Desktop, IDEs)
 ```
+
+Or run the API and web UI as two explicit dev processes (no `auralynq serve`
+wrapper, useful when iterating on the frontend):
+
+```bash
+python -m uvicorn auralynq.serving.app:app --host 0.0.0.0 --port 8000
+
+cd web
+NEXT_PUBLIC_API_BASE=http://localhost:8000/api npm run dev -- --hostname 0.0.0.0 --port 3000
+```
+
+**Data persistence in this mode** lives under `./data/` in the repo checkout
+(corpus, vector index, page cache) — separate from the Podman-mode named
+volumes in §1/§2. Clear it via the guarded API flow rather than deleting
+folders by hand:
+
+```bash
+curl -X POST http://localhost:8000/corpus/clear/preview
+curl -X POST http://localhost:8000/corpus/clear/confirm \
+  -H 'content-type: application/json' -d '{"phrase": "<phrase from preview>"}'
+```
+
+Full walkthrough: [docs/getting-started/no-podman.md](docs/getting-started/no-podman.md).
 
 ---
 

@@ -1,8 +1,10 @@
 """Central registry for all RAG strategies."""
+
 from __future__ import annotations
 
 from typing import Any
 
+from auralynq.rag.strategies.agentic import AgenticLoopStrategy
 from auralynq.rag.strategies.auralynq_rag import AuralynqRAGStrategy
 from auralynq.rag.strategies.base import RAGStrategy, StrategyResult
 from auralynq.rag.strategies.graph import GraphRAGStrategy
@@ -21,6 +23,7 @@ from auralynq.rag.strategies.planned import (
 
 _ALL_STRATEGIES: list[RAGStrategy] = [
     AuralynqRAGStrategy(),
+    AgenticLoopStrategy(),
     HybridStrategy(),
     NaiveVectorStrategy(),
     KeywordBM25Strategy(),
@@ -44,9 +47,8 @@ def _attach_modelfit(result: StrategyResult) -> None:
         from auralynq.agent.runner import _build_modelfit_snapshot
         from auralynq.config.settings import get_settings
         from auralynq.llm.factory import resolved_provider
-        result.model_fit = _build_modelfit_snapshot(
-            resolved_provider(), get_settings().llm.model
-        )
+
+        result.model_fit = _build_modelfit_snapshot(resolved_provider(), get_settings().llm.model)
     except Exception:
         pass
 
@@ -62,23 +64,25 @@ class RAGStrategyRegistry:
         result = []
         for s in self._strategies.values():
             available, unavailable_reason = s.is_available()
-            result.append({
-                "id": s.id,
-                "name": s.name,
-                "description": s.description,
-                "status": s.status,
-                "required_features": s.required_features,
-                "supports_streaming": s.supports_streaming,
-                "supports_graph": s.supports_graph,
-                "supports_rerank": s.supports_rerank,
-                "supports_web": s.supports_web,
-                "supports_abstention": s.supports_abstention,
-                "expected_latency": s.expected_latency,
-                "best_for": s.best_for,
-                "limitations": s.limitations,
-                "available": available,
-                "unavailable_reason": unavailable_reason if not available else None,
-            })
+            result.append(
+                {
+                    "id": s.id,
+                    "name": s.name,
+                    "description": s.description,
+                    "status": s.status,
+                    "required_features": s.required_features,
+                    "supports_streaming": s.supports_streaming,
+                    "supports_graph": s.supports_graph,
+                    "supports_rerank": s.supports_rerank,
+                    "supports_web": s.supports_web,
+                    "supports_abstention": s.supports_abstention,
+                    "expected_latency": s.expected_latency,
+                    "best_for": s.best_for,
+                    "limitations": s.limitations,
+                    "available": available,
+                    "unavailable_reason": unavailable_reason if not available else None,
+                }
+            )
         return result
 
     def run(

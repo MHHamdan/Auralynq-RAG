@@ -61,6 +61,27 @@ def test_ingest_upload(client):
     assert r.json()["documents"] >= 1
 
 
+def test_ingest_rejects_unsupported_file_type(client):
+    r = client.post(
+        "/ingest", files={"file": ("payload.exe", b"MZ\x90\x00", "application/octet-stream")}
+    )
+    assert r.status_code == 415
+    assert r.json()["error"]["code"] == "unsupported_file_type"
+
+
+def test_ingest_disabled_when_allow_uploads_false(corpus_dir, monkeypatch):
+    monkeypatch.setenv("AURALYNQ_ALLOW_UPLOADS", "false")
+    from auralynq.config import reload_settings
+
+    reload_settings()
+    build_index(corpus_dir)
+    app = create_app()
+    c = TestClient(app)
+    r = c.post("/ingest", files={"file": ("note.md", b"# Hi", "text/markdown")})
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "uploads_disabled"
+
+
 def test_voice_endpoint(client, tmp_path):
     audio = io.BytesIO()
     with wave.open(audio, "wb") as wf:
@@ -107,3 +128,59 @@ def test_ready_endpoint_reports_index(client):
     assert r.status_code == 200
     assert r.json()["ready"] is True
     assert r.json()["vectors"] >= 1
+
+
+def _assert_error_envelope(body: dict, status_code: int, r) -> None:
+    assert set(body.keys()) == {"error"}
+    err = body["error"]
+    assert {"code", "message", "details", "trace_id"} <= set(err)
+    assert isinstance(err["code"], str) and err["code"]
+    assert isinstance(err["message"], str)
+    assert isinstance(err["details"], dict)
+    # trace_id matches the X-Request-ID response header for this same request
+    assert err["trace_id"] == r.headers.get("X-Request-ID", err["trace_id"])
+
+
+def test_error_envelope_on_auralynq_error(client):
+    # /corpus/clear/confirm with a wrong phrase raises AuralynqError("wrong_phrase", ...)
+    r = client.post("/corpus/clear/confirm", json={"phrase": "not the phrase"})
+    assert r.status_code == 400
+    _assert_error_envelope(r.json(), 400, r)
+    assert r.json()["error"]["code"] == "wrong_phrase"
+
+
+def test_error_envelope_on_404(client):
+    r = client.get("/this-route-does-not-exist")
+    assert r.status_code == 404
+    _assert_error_envelope(r.json(), 404, r)
+    assert r.json()["error"]["code"] == "http_error"
+
+
+def test_error_envelope_on_validation_error(client):
+    # `question` is required by QueryRequest — omitting it triggers a 422.
+    r = client.post("/query", json={})
+    assert r.status_code == 422
+    body = r.json()
+    _assert_error_envelope(body, 422, r)
+    assert body["error"]["code"] == "validation_error"
+    assert body["error"]["details"]["errors"]  # pydantic error list preserved
+
+
+def test_error_envelope_on_unhandled_exception(corpus_dir, monkeypatch):
+    build_index(corpus_dir)
+    from auralynq.rag import strategy_registry
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("synthetic failure for error-envelope test")
+
+    monkeypatch.setattr(strategy_registry.get_registry().__class__, "run", _boom)
+    # raise_server_exceptions=False so the 500 handler's JSON is returned to us
+    # instead of the exception being re-raised into the test (TestClient's
+    # debugging default).
+    app = create_app()
+    non_raising_client = TestClient(app, raise_server_exceptions=False)
+    r = non_raising_client.post("/query", json={"question": "hi"})
+    assert r.status_code == 500
+    body = r.json()
+    _assert_error_envelope(body, 500, r)
+    assert body["error"]["code"] == "internal_error"

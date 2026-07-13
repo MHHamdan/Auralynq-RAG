@@ -90,6 +90,16 @@ class Chunk(BaseModel):
     source: str = ""  # human-readable source path/name
     source_type: SourceType = SourceType.unknown
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Contextual Retrieval (Anthropic): an LLM-generated 1-2 sentence context that
+    # situates this chunk in its document. Prepended to `text` for embedding +
+    # sparse indexing only — never shown or cited (display/citation use `text`).
+    context: str = ""
+
+    def embed_text(self) -> str:
+        """Text used for dense + sparse indexing. When a situating context was
+        generated (Contextual Retrieval), it is prepended so retrieval keys on
+        document-level context; otherwise the raw chunk text."""
+        return f"{self.context}\n\n{self.text}" if self.context else self.text
 
     def locator(self) -> str:
         """Citation locator: timestamp/speaker for audio, else page/char span."""

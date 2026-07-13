@@ -28,9 +28,11 @@ from auralynq.pipeline import load_graph
 from auralynq.retrieval.hybrid.retriever import HybridRetriever
 from auralynq.retrieval.models import Filter
 from auralynq.retrieval.pathrag.retriever import PathRAGRetriever
+from auralynq.telemetry import get_logger
 from auralynq.telemetry.tracing import Trace
 from auralynq.utils import stable_id
 
+_log = get_logger("auralynq.agent.runner")
 _CACHE = SemanticCache()
 
 
@@ -211,9 +213,7 @@ def _build_modelfit_snapshot(provider: str, model_name: str) -> dict[str, Any] |
             "estimated_vram_gb": re.estimated_vram_gb if re else None,
             "hardware_warning": hw_warning,
             "hardware_warnings": [hw_warning] if hw_warning else [],
-            "measured_tok_per_sec": (
-                s.benchmark.avg_tok_per_sec if s.benchmark else None
-            ),
+            "measured_tok_per_sec": (s.benchmark.avg_tok_per_sec if s.benchmark else None),
             "estimate_used": s.estimate_used,
             "measured_available": measured_available,
             "recommendation_reason": recommendation_reason,
@@ -226,6 +226,11 @@ def _build_deps(trace: Trace, filt: Filter | None) -> AgentDeps:
     s = get_settings()
     graph = load_graph()
     hybrid = HybridRetriever()
+    wiki = None
+    if s.wiki.enabled:
+        from auralynq.wiki.retriever import WikiRetriever
+
+        wiki = WikiRetriever(s.wiki_dir)
     return AgentDeps(
         hybrid=hybrid,
         pathrag=PathRAGRetriever(graph, store=hybrid.store, embedder=hybrid.embedder),
@@ -234,10 +239,27 @@ def _build_deps(trace: Trace, filt: Filter | None) -> AgentDeps:
         trace=trace,
         settings=s,
         filt=filt,
+        wiki=wiki,
     )
 
 
-def _new_state(question: str, final_k: int | None, route_hint: str = "") -> AgentState:
+def _maybe_file_answer(question: str, state: AgentState, refused: bool) -> None:
+    """Compounding loop (Phase 3b): file a good answer back as a wiki page.
+    Gated + non-fatal — never affects the response on failure."""
+    s = get_settings()
+    if refused or not (s.wiki.enabled and s.wiki.file_answers):
+        return
+    try:
+        from auralynq.wiki.generator import file_answer
+
+        file_answer(question, state.answer, state.citations, state.confidence, settings=s)
+    except Exception as e:  # pragma: no cover - non-fatal by design
+        _log.warning("wiki.file_answer_failed", error=str(e))
+
+
+def _new_state(
+    question: str, final_k: int | None, route_hint: str = "", agentic: bool = False
+) -> AgentState:
     s = get_settings()
     return AgentState(
         question=question,
@@ -246,6 +268,7 @@ def _new_state(question: str, final_k: int | None, route_hint: str = "") -> Agen
         max_iters=s.agent.max_iters,
         latency_budget_ms=s.agent.latency_budget_ms,
         route_hint=route_hint,
+        agentic=agentic,
     )
 
 
@@ -255,9 +278,14 @@ def answer_question(
     filt: Filter | None = None,
     use_cache: bool | None = None,
     route_hint: str = "",
+    agentic: bool = False,
 ) -> AnswerResult:
     s = get_settings()
     use_cache = s.agent.semantic_cache if use_cache is None else use_cache
+    # The agentic loop produces a distinct answer for the same question; don't
+    # share the single-shot semantic cache across strategies.
+    if agentic:
+        use_cache = False
     trace = Trace(trace_id=stable_id(question))
 
     if use_cache:
@@ -269,7 +297,7 @@ def answer_question(
             )
 
     deps = _build_deps(trace, filt)
-    state = _new_state(question, final_k, route_hint=route_hint)
+    state = _new_state(question, final_k, route_hint=route_hint, agentic=agentic)
     state = run_agent(state, deps)
 
     from auralynq.providers import describe_providers
@@ -281,6 +309,7 @@ def answer_question(
     suggestions = suggested_questions(3, summary)
     refused = _is_refusal(state.answer, bool(state.contexts))
     trace_list = trace.to_list()
+    _maybe_file_answer(question, state, refused)
 
     result = AnswerResult(
         answer=state.answer,
@@ -310,6 +339,7 @@ def answer_question(
     # Attach ModelFit metadata — purely informational, never raises
     try:
         from auralynq.llm.factory import resolved_provider
+
         _prov = resolved_provider()
         _model = get_settings().llm.model
         result.model_fit = _build_modelfit_snapshot(_prov, _model)
@@ -333,31 +363,57 @@ def answer_question(
 
 
 def stream_answer_question(
-    question: str, final_k: int | None = None, filt: Filter | None = None
+    question: str, final_k: int | None = None, filt: Filter | None = None, agentic: bool = False
 ) -> Iterator[dict[str, Any]]:
-    """Yield SSE-style events: {'type': 'token'|'meta'|'final', ...}."""
+    """Yield SSE-style events: {'type': 'step'|'token'|'meta'|'final', ...}.
+
+    When ``agentic`` is set, the retrieval phase runs the multi-hop
+    decompose→retrieve→judge loop and emits ``step`` events live (so the UI can
+    show "planning → hop 1 → hop 2 → synthesizing") before the answer streams.
+    """
     trace = Trace(trace_id=stable_id(question))
     deps = _build_deps(trace, filt)
-    state = _new_state(question, final_k)
+    state = _new_state(question, final_k, agentic=agentic)
 
-    # Run retrieval + fusion + critic/rewrite loop (non-streamed).
     state = node_plan(state, deps)
-    while True:
-        state = node_route(state, deps)
-        state = node_retrieve(state, deps)
-        state = node_fuse(state, deps)
-        state = node_critic(state, deps)
+    if agentic:
+        # Multi-hop retrieval; step events flow straight to the client.
+        from auralynq.agent.agentic import agentic_steps
+
+        yield from agentic_steps(state, deps)
         state.elapsed_ms = trace.total_ms
-        if state.need_rewrite and not state.out_of_budget():
-            state = node_rewrite(state, deps)
-            continue
-        break
+    else:
+        # Default single-shot retrieval + fusion + critic/rewrite loop (non-streamed).
+        while True:
+            state = node_route(state, deps)
+            state = node_retrieve(state, deps)
+            state = node_fuse(state, deps)
+            state = node_critic(state, deps)
+            state.elapsed_ms = trace.total_ms
+            if state.need_rewrite and not state.out_of_budget():
+                state = node_rewrite(state, deps)
+                continue
+            break
 
     from auralynq.serving.corpus import corpus_summary, detect_entities, suggested_questions
 
     _summary = corpus_summary()
     _detected = detect_entities(question, _summary)
     _suggestions = suggested_questions(3, _summary)
+
+    # Retrieved source candidates — emitted before generation so the UI can show
+    # real source cards while the answer streams (progressive evidence). These are
+    # candidates; the `final` event carries the actually-cited subset. `marker`
+    # aligns with the eventual citation index so cards are number-matched early.
+    _source_candidates = [
+        {
+            **c.chunk.citation(),
+            "marker": i,
+            "score": round(float(c.score or 0.0), 4),
+            "method": c.method or "unknown",
+        }
+        for i, c in enumerate(state.contexts[:8], start=1)
+    ]
 
     yield {
         "type": "meta",
@@ -368,6 +424,7 @@ def stream_answer_question(
         "path_evidence": [e.model_dump() for e in state.path_evidence],
         "detected_entities": _detected,
         "evidence_coverage": state.coverage,
+        "sources": _source_candidates,
     }
 
     contexts = _contexts_for_llm(state)
@@ -400,10 +457,12 @@ def stream_answer_question(
 
     refused = _is_refusal(state.answer, bool(state.contexts))
     trace_list = trace.to_list()
+    _maybe_file_answer(question, state, refused)
 
     _model_fit = None
     try:
         from auralynq.llm.factory import resolved_provider
+
         _model_fit = _build_modelfit_snapshot(resolved_provider(), get_settings().llm.model)
     except Exception:
         pass

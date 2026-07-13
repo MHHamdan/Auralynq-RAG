@@ -38,18 +38,18 @@ from auralynq.vectorstore.base import VectorStore
 DECAY = 0.8  # per-hop resource decay
 
 # Paper §4.1 (Eq. 2): score(p) = lam*flow_score(p) + (1-lam)*ppr(term(p))
-_PPR_TELEPORT = 0.15   # teleportation probability (restart prob.) — alpha in the paper.
-                       # NetworkX pagerank(alpha=...) takes the *damping* factor,
-                       # so we pass alpha=1-_PPR_TELEPORT = 0.85 to nx.pagerank.
-_PPR_FLOW_W = 0.4      # λ   — weight on bottleneck flow score
-_PPR_AUTH_W = 0.6      # 1-λ — weight on PPR terminal-node authority
+_PPR_TELEPORT = 0.15  # teleportation probability (restart prob.) — alpha in the paper.
+# NetworkX pagerank(alpha=...) takes the *damping* factor,
+# so we pass alpha=1-_PPR_TELEPORT = 0.85 to nx.pagerank.
+_PPR_FLOW_W = 0.4  # λ   — weight on bottleneck flow score
+_PPR_AUTH_W = 0.6  # 1-λ — weight on PPR terminal-node authority
 
 
 @dataclass
 class _Path:
     nodes: list[str]
     edges: list[dict]
-    flow: float         # bottleneck flow: min_{e ∈ p} r(e)  (Eq. 2, flow_score)
+    flow: float  # bottleneck flow: min_{e ∈ p} r(e)  (Eq. 2, flow_score)
     reliability: float  # mean edge reliability (auxiliary signal, not in score blend)
     ppr_score: float = 0.0  # terminal-node PPR authority; set by _apply_ppr
 
@@ -189,7 +189,7 @@ class PathRAGRetriever(Retriever):
             # because the contraction ratio of power iteration is (1 - teleport) < 1.
             scores = nx.pagerank(
                 g,
-                alpha=1.0 - _PPR_TELEPORT,   # damping = 0.85
+                alpha=1.0 - _PPR_TELEPORT,  # damping = 0.85
                 personalization=personalisation,
                 max_iter=50,
                 tol=1e-6,

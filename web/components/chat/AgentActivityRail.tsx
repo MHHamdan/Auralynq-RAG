@@ -1,4 +1,9 @@
 "use client";
+import {
+  Circle, ArrowRight, Search, Zap, Library, ScanSearch, ArrowUpRight, Key,
+  Share2, ArrowUpDown, CheckCircle2, PenLine, Link2, Check, Ban, X, Inbox, Info,
+  Bot, CornerDownLeft, type LucideIcon,
+} from "lucide-react";
 import { TraceStep } from "@/lib/api";
 
 export type AgentPhase =
@@ -63,25 +68,25 @@ const PHASE_LABELS: Record<AgentPhase, string> = {
   system_route: "System route",
 };
 
-const PHASE_ICONS: Record<AgentPhase, string> = {
-  idle: "○",
-  query_received: "→",
-  intent_classified: "🔍",
-  algorithm_selected: "⚡",
-  corpus_check: "📚",
-  retrieval_started: "🔎",
-  vector_hits: "↗",
-  keyword_hits: "🔑",
-  graph_expansion: "🕸",
-  reranking: "↕",
-  evidence_check: "✓",
-  generating: "✍",
-  citation_validation: "📎",
-  done: "✓",
-  abstained: "⊘",
-  error: "✕",
-  corpus_empty: "□",
-  system_route: "ℹ",
+const PHASE_ICONS: Record<AgentPhase, LucideIcon> = {
+  idle: Circle,
+  query_received: ArrowRight,
+  intent_classified: Search,
+  algorithm_selected: Zap,
+  corpus_check: Library,
+  retrieval_started: ScanSearch,
+  vector_hits: ArrowUpRight,
+  keyword_hits: Key,
+  graph_expansion: Share2,
+  reranking: ArrowUpDown,
+  evidence_check: CheckCircle2,
+  generating: PenLine,
+  citation_validation: Link2,
+  done: Check,
+  abstained: Ban,
+  error: X,
+  corpus_empty: Inbox,
+  system_route: Info,
 };
 
 const RISK_CLS: Record<string, string> = {
@@ -117,17 +122,17 @@ function AlgorithmBadge({ algorithm }: { algorithm?: string }) {
 }
 
 function AgentStepBadge({ phase, active }: { phase: AgentPhase; active: boolean }) {
-  const icon = PHASE_ICONS[phase];
+  const Icon = PHASE_ICONS[phase];
   const label = PHASE_LABELS[phase];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
         active
           ? "border-brand/50 bg-brand/10 text-brand"
           : "border-edge bg-panel2 text-fg3"
       }`}
     >
-      <span aria-hidden className={active ? "animate-pulse-soft" : ""}>{icon}</span>
+      <Icon aria-hidden className={`h-3 w-3 ${active ? "animate-pulse-soft" : ""}`} />
       {label}
     </span>
   );
@@ -238,13 +243,13 @@ export function AgentActivityRail({
           {/* metrics row */}
           <div className="flex flex-wrap gap-1.5 text-[11px]">
             {vectorHits != null && vectorHits > 0 && (
-              <span className="tag">↗ {vectorHits} vectors</span>
+              <span className="tag"><ArrowUpRight className="h-3 w-3" aria-hidden /> {vectorHits} vectors</span>
             )}
             {keywordHits != null && keywordHits > 0 && (
-              <span className="tag">🔑 {keywordHits} keywords</span>
+              <span className="tag"><Key className="h-3 w-3" aria-hidden /> {keywordHits} keywords</span>
             )}
             {graphHits != null && graphHits > 0 && (
-              <span className="tag">🕸 {graphHits} graph</span>
+              <span className="tag"><Share2 className="h-3 w-3" aria-hidden /> {graphHits} graph</span>
             )}
             {coverage != null && (
               <span className={`tag ${coverage >= 0.6 ? "text-ok" : coverage >= 0.3 ? "text-warn" : "text-bad"}`}>
@@ -256,7 +261,7 @@ export function AgentActivityRail({
                 conf · {confidence.toFixed(2)}
               </span>
             )}
-            {provider && <span className="tag">🤖 {provider}</span>}
+            {provider && <span className="tag"><Bot className="h-3 w-3" aria-hidden /> {provider}</span>}
             {latencyMs != null && isDone && (
               <span className="tag">{latencyMs.toFixed(0)}ms</span>
             )}
@@ -265,8 +270,8 @@ export function AgentActivityRail({
 
           {/* fallback / warnings */}
           {fallback && (
-            <p className="text-[11px] text-warn">
-              ↩ Fell back to {fallback.replace(/_/g, " ")}
+            <p className="inline-flex items-center gap-1 text-[11px] text-warn">
+              <CornerDownLeft className="h-3 w-3" aria-hidden /> Fell back to {fallback.replace(/_/g, " ")}
             </p>
           )}
           {warnings && warnings.length > 0 && (
@@ -289,8 +294,8 @@ export function AgentActivityRail({
 
           {/* abstained note */}
           {phase === "abstained" && (
-            <p className="text-[11px] text-warn">
-              ⊘ Insufficient evidence — Auralynq abstained rather than hallucinate.
+            <p className="inline-flex items-center gap-1 text-[11px] text-warn">
+              <Ban className="h-3 w-3 shrink-0" aria-hidden /> Insufficient evidence — Auralynq abstained rather than hallucinate.
             </p>
           )}
 

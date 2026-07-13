@@ -18,8 +18,13 @@ VerifiedStatus = Literal["self_reported", "verified_local", "official_benchmark"
 _COMMUNITY_DIR = Path("data/modelfit/community_results")
 
 _REQUIRED_FIELDS = {
-    "model_id", "quantization", "hardware", "benchmark_version",
-    "task", "date", "source",
+    "model_id",
+    "quantization",
+    "hardware",
+    "benchmark_version",
+    "task",
+    "date",
+    "source",
 }
 _HARDWARE_REQUIRED = {"cpu_model", "ram_gb"}
 

@@ -1,4 +1,5 @@
 """Hybrid dense+sparse retrieval strategy."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -9,7 +10,9 @@ from auralynq.rag.strategies.base import RAGStrategy, StrategyResult
 class HybridStrategy(RAGStrategy):
     id = "hybrid"
     name = "Hybrid Dense + Sparse"
-    description = "Combines vector (dense) and BM25 (sparse) retrieval using Reciprocal Rank Fusion."
+    description = (
+        "Combines vector (dense) and BM25 (sparse) retrieval using Reciprocal Rank Fusion."
+    )
     status = "available"
     required_features = []
     supports_streaming = True
@@ -21,7 +24,14 @@ class HybridStrategy(RAGStrategy):
     best_for = "Mixed queries with both semantic and keyword components"
     limitations = "No graph expansion; no reranking"
 
-    def run(self, query: str, final_k: int = 6, use_cache: bool = True, route_hint: str = "", **kwargs: Any) -> StrategyResult:
+    def run(
+        self,
+        query: str,
+        final_k: int = 6,
+        use_cache: bool = True,
+        route_hint: str = "",
+        **kwargs: Any,
+    ) -> StrategyResult:
         from auralynq.agent.runner import answer_question
 
         res = answer_question(query, final_k=final_k, use_cache=use_cache, route_hint="fast")
@@ -74,7 +84,14 @@ class HybridRerankStrategy(RAGStrategy):
         except Exception:
             return False, "Could not determine reranker availability."
 
-    def run(self, query: str, final_k: int = 6, use_cache: bool = True, route_hint: str = "", **kwargs: Any) -> StrategyResult:
+    def run(
+        self,
+        query: str,
+        final_k: int = 6,
+        use_cache: bool = True,
+        route_hint: str = "",
+        **kwargs: Any,
+    ) -> StrategyResult:
         from auralynq.agent.runner import answer_question
 
         res = answer_question(query, final_k=final_k, use_cache=use_cache, route_hint="fast")

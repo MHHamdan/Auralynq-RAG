@@ -98,6 +98,13 @@ def run_agent(
     state: AgentState, deps: AgentDeps, *, use_langgraph: bool | None = None
 ) -> AgentState:
     t0 = time.perf_counter()
+    # Agentic multi-hop executor (decompose → retrieve → judge sufficiency loop).
+    if state.agentic:
+        from auralynq.agent.agentic import run_agentic
+
+        out = run_agentic(state, deps)
+        out.elapsed_ms = (time.perf_counter() - t0) * 1000
+        return out
     if use_langgraph is None:
         use_langgraph = importlib.util.find_spec("langgraph") is not None
     if use_langgraph:

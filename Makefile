@@ -123,6 +123,21 @@ mcp: ## Start the auralynq-mcp server (stdio)
 demo: ## Reproducible end-to-end demo (ingest -> index -> ask, text + voice)
 	$(PY) scripts/demo.py
 
+# --------------------------------------------------------- demo corpus -----
+.PHONY: demo-data
+demo-data: ## Copy the safe, license-clear public demo corpus into data/corpus/
+	mkdir -p data/corpus
+	cp -r examples/demo_corpus/docs/. data/corpus/
+	@echo "✓ demo corpus copied to data/corpus/ (see examples/demo_corpus/README.md)"
+
+.PHONY: demo-index
+demo-index: demo-data ## Index the public demo corpus (vector index + knowledge graph)
+	$(PY) -m auralynq.cli index --input data/corpus
+
+.PHONY: demo-query
+demo-query: ## Ask every question in examples/demo_corpus/questions.json
+	$(PY) scripts/demo_query.py
+
 # --------------------------------------------------------------- quality ----
 .PHONY: test
 test: ## Run the test suite
@@ -152,14 +167,38 @@ typecheck: ## mypy type check
 name-audit: ## Verify consistent Auralynq naming across the repo
 	$(PY) scripts/name_audit.py
 
+.PHONY: check-docs
+check-docs: ## Verify doc links, referenced make targets, and env.example vars
+	$(PY) scripts/check_docs.py
+
 # ----------------------------------------------------------- eval/bench -----
 .PHONY: eval
 eval: ## Run evaluation harness, write reports/
 	$(PY) -m auralynq.cli eval --report
 
+.PHONY: eval-gate
+eval-gate: ## Run the trust gate (faithfulness/citation/calibration) — exits non-zero on regression
+	$(PY) -m auralynq.cli eval --report --gate
+
 .PHONY: bench
 bench: ## Benchmark Qdrant recall/latency/memory trade-offs
 	$(PY) -m auralynq.cli bench --report
+
+.PHONY: bench-rag
+bench-rag: ## RAG-quality benchmark (groundedness/citation/abstention); needs Ollama + MODEL
+	$(PY) scripts/bench_rag.py --model $${MODEL:-ollama:llama3.2:3b}
+
+.PHONY: bench-modelfit
+bench-modelfit: ## Snapshot ModelFit Index rankings for this machine's hardware
+	$(PY) scripts/bench_modelfit.py --task $${TASK:-rag}
+
+.PHONY: bench-visual-grounding
+bench-visual-grounding: ## Visual grounding span/segment/page/unavailable rates over the golden set
+	$(PY) scripts/bench_visual_grounding.py
+
+.PHONY: export-paper-tables
+export-paper-tables: ## Render reports/*.json into reports/paper_tables.md
+	$(PY) scripts/export_paper_tables.py
 
 # --------------------------------------------------------------- misc -------
 .PHONY: clean

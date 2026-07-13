@@ -33,7 +33,7 @@ def test_health_and_metrics_are_public_even_when_secured(secured_client):
 def test_protected_endpoint_requires_token(secured_client):
     r = secured_client.post("/query", json={"question": "hi"})
     assert r.status_code == 401
-    assert r.json()["error"] == "unauthorized"
+    assert r.json()["error"]["code"] == "unauthorized"
     assert r.headers.get("WWW-Authenticate") == "Bearer"
 
 

@@ -1,7 +1,12 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiscoverEntry, DiscoverHardware, DiscoverResult } from "@/lib/modelfit";
-import { discoverModels, pullModel } from "@/lib/modelfit";
+import { discoverModels } from "@/lib/modelfit";
+import { statusSummary, deploymentMode } from "@/lib/api";
+import { SystemReport } from "@/components/modelfit/SystemReport";
+import { PullConfirmModal } from "@/components/modelfit/PullConfirmModal";
+import { VerdictPill } from "@/components/modelfit/VerdictPill";
+import { MemoryPlanner } from "@/components/modelfit/MemoryPlanner";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +29,16 @@ const SOURCE_BADGE: Record<string, string> = {
   huggingface: "bg-indigo-900/60 text-indigo-300",
   local:       "bg-zinc-700/80 text-zinc-300",
 };
+
+// Group raw quant labels (q4_k_m, q8_0, f16 …) into friendly bands (Jan's
+// Small/Balanced/Large) so users pick a fidelity, not a cryptic code.
+const QUANT_BANDS = ["Small", "Balanced", "Large"] as const;
+type QuantBand = (typeof QUANT_BANDS)[number];
+function quantBand(q: string): QuantBand {
+  const n = Number(q.toLowerCase().match(/(?:iq|q)(\d+)/)?.[1]);
+  if (!Number.isNaN(n)) return n <= 3 ? "Small" : n <= 5 ? "Balanced" : "Large";
+  return "Large"; // f16 / bf16 / fp16 / f32 — full precision
+}
 
 const TASK_OPTIONS = [
   { id: "rag",           label: "RAG" },
@@ -83,33 +98,16 @@ function PullCommand({ cmd }: { cmd: string }) {
 
 // ── Expanded row detail panel ─────────────────────────────────────────────────
 
-type PullState = "idle" | "pulling" | "done" | "error";
-
 function ExpandedPanel({
   entry,
-  onPulled,
+  onRequestPull,
 }: {
   entry: DiscoverEntry;
-  onPulled: (modelId: string) => void;
+  onRequestPull: (entry: DiscoverEntry) => void;
 }) {
-  const [pullState, setPullState] = useState<PullState>("idle");
-  const [pullError, setPullError] = useState<string | null>(null);
   const sc = scoreColor(entry.overall_score);
   const re = entry.resource_estimate;
   const isOllama = entry.source === "ollama";
-
-  async function doPull() {
-    setPullState("pulling");
-    setPullError(null);
-    try {
-      await pullModel(entry.model_id);
-      setPullState("done");
-      onPulled(entry.model_id);
-    } catch (e) {
-      setPullState("error");
-      setPullError(String(e).replace(/^Error:\s*/, ""));
-    }
-  }
 
   const bars = [
     { label: "Hardware fit", value: entry.hardware_fit },
@@ -179,6 +177,53 @@ function ExpandedPanel({
         </div>
       </div>
 
+      {/* Live memory planner — drag context, watch VRAM + verdict update */}
+      {entry.model_meta.parameter_count_b != null && (
+        <MemoryPlanner
+          modelId={entry.model_id}
+          paramsB={entry.model_meta.parameter_count_b}
+          quantization={entry.best_quantization}
+          initial={re}
+        />
+      )}
+
+      {/* Quantization options — grouped by fidelity, best one flagged */}
+      {entry.model_meta.available_quantizations.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            Quantization options
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {QUANT_BANDS.map((band) => {
+              const qs = entry.model_meta.available_quantizations.filter((q) => quantBand(q) === band);
+              if (!qs.length) return null;
+              return (
+                <div key={band} className="min-w-[104px] flex-1 rounded-lg border border-zinc-800 bg-zinc-950/40 p-2">
+                  <p className="mb-1 text-[10px] font-medium text-zinc-400">{band}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {qs.map((q) => {
+                      const rec = q === entry.best_quantization;
+                      return (
+                        <span
+                          key={q}
+                          className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
+                            rec ? "bg-sky-900/50 text-sky-200 ring-1 ring-sky-600/50" : "bg-zinc-800 text-zinc-400"
+                          }`}
+                        >
+                          {q}
+                          {rec && " ★"}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-zinc-600">★ Recommended for your hardware</p>
+        </div>
+      )}
+
       {/* Pull section */}
       {entry.pull_command && (
         <div className="space-y-2">
@@ -187,39 +232,13 @@ function ExpandedPanel({
           </p>
           <PullCommand cmd={entry.pull_command} />
 
-          {isOllama && !entry.already_installed && (
-            <div className="flex items-center gap-3">
-              {pullState === "idle" && (
-                <button
-                  onClick={doPull}
-                  className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-sm text-white font-medium transition-colors"
-                >
-                  <span>↓</span> Pull now
-                </button>
-              )}
-              {pullState === "pulling" && (
-                <div className="flex items-center gap-2 text-sm text-zinc-400">
-                  <span className="animate-spin">⟳</span>
-                  <span>Pulling… this may take several minutes (Ollama handles progress)</span>
-                </div>
-              )}
-              {pullState === "done" && (
-                <div className="flex items-center gap-2 text-sm text-emerald-400">
-                  <span>✓</span> Pull complete — model is installed
-                </div>
-              )}
-              {pullState === "error" && (
-                <div className="space-y-1">
-                  <p className="text-sm text-red-400">Pull failed: {pullError}</p>
-                  <button
-                    onClick={doPull}
-                    className="text-xs text-zinc-400 hover:text-zinc-200 underline"
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
-            </div>
+          {!entry.already_installed && (
+            <button
+              onClick={() => onRequestPull(entry)}
+              className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-600 text-sm text-white font-medium transition-colors"
+            >
+              <span>{isOllama ? "↓" : "⎘"}</span> {isOllama ? "Pull now" : "Download command"}
+            </button>
           )}
         </div>
       )}
@@ -248,23 +267,18 @@ function ExpandedPanel({
 function ModelRow({
   entry,
   rank,
-  onPulled,
+  onRequestPull,
 }: {
   entry: DiscoverEntry;
   rank: number;
-  onPulled: (modelId: string) => void;
+  onRequestPull: (entry: DiscoverEntry) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [installed, setInstalled] = useState(entry.already_installed);
+  const installed = entry.already_installed;
   const sc = scoreColor(entry.overall_score);
   const re = entry.resource_estimate;
   const displayName = (entry.model_meta.display_name || entry.model_id)
     .replace(/^(ollama:|hf:|local:)/, "");
-
-  function handlePulled(id: string) {
-    setInstalled(true);
-    onPulled(id);
-  }
 
   return (
     <div
@@ -311,12 +325,17 @@ function ModelRow({
           </div>
         </div>
 
-        {/* VRAM pill */}
+        {/* Will-it-run verdict — led prominently (our differentiator) */}
         {re && (
-          <div className="hidden sm:block shrink-0">
-            <span className={`text-xs px-2 py-0.5 rounded font-mono ${FIT_PILL[re.fit_level] ?? "bg-zinc-800 text-zinc-400"}`}>
-              {re.estimated_vram_gb} GB
-            </span>
+          <div className="hidden shrink-0 flex-col items-end gap-0.5 sm:flex">
+            {re.verdict ? (
+              <VerdictPill verdict={re.verdict} />
+            ) : (
+              <span className={`rounded px-2 py-0.5 font-mono text-xs ${FIT_PILL[re.fit_level] ?? "bg-zinc-800 text-zinc-400"}`}>
+                {re.fit_level.replace("_", " ")}
+              </span>
+            )}
+            <span className="font-mono text-[10px] text-zinc-500">~{re.estimated_vram_gb} GB</span>
           </div>
         )}
 
@@ -341,9 +360,7 @@ function ModelRow({
       </button>
 
       {/* Expanded detail */}
-      {expanded && (
-        <ExpandedPanel entry={{ ...entry, already_installed: installed }} onPulled={handlePulled} />
-      )}
+      {expanded && <ExpandedPanel entry={entry} onRequestPull={onRequestPull} />}
     </div>
   );
 }
@@ -487,6 +504,15 @@ export function DiscoverTab() {
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState<string>("—");
   const [showCopy, setShowCopy] = useState(false);
+  const [pullTarget, setPullTarget] = useState<DiscoverEntry | null>(null);
+  // Hosted demo (HF Space): the probe reads the server, not the visitor's device.
+  const [hosted, setHosted] = useState(false);
+
+  useEffect(() => {
+    statusSummary()
+      .then((s) => setHosted(deploymentMode(s).hfSpace))
+      .catch(() => {});
+  }, []);
 
   // tick elapsed display every 5s
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -541,11 +567,22 @@ export function DiscoverTab() {
         </h2>
         <p className="text-xs text-zinc-500">
           Probes your hardware, queries live Ollama registry + HuggingFace, and ranks
-          every available model against your machine. Pull with one click.
+          every available model against your machine. Review the report, then pull with one click.
         </p>
       </div>
 
-      {/* Hardware strip */}
+      {/* System report hero card + agree-to-pull */}
+      {result && (
+        <SystemReport
+          result={result}
+          onPull={(entry) => setPullTarget(entry)}
+          onRefresh={() => discover(true)}
+          loading={loading}
+          hosted={hosted}
+        />
+      )}
+
+      {/* Compact hardware strip (kept for the ranked list below) */}
       {result && <HardwareStrip hw={result.hardware} />}
 
       {/* Controls */}
@@ -658,13 +695,23 @@ export function DiscoverTab() {
               key={entry.model_id}
               entry={entry}
               rank={i + 1}
-              onPulled={handlePulled}
+              onRequestPull={(e) => setPullTarget(e)}
             />
           ))}
           {result.recommendations.length === 0 && (
             <p className="text-sm text-zinc-500">No models found for this combination of task and hardware.</p>
           )}
         </div>
+      )}
+
+      {/* Agree-to-pull confirmation */}
+      {pullTarget && result && (
+        <PullConfirmModal
+          entry={pullTarget}
+          hardware={result.hardware}
+          onClose={() => setPullTarget(null)}
+          onPulled={handlePulled}
+        />
       )}
 
       {/* Copy results modal */}

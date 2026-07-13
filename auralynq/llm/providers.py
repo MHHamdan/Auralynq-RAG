@@ -11,6 +11,7 @@ Cloud providers (require keys + network):
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import httpx
 
@@ -104,8 +105,11 @@ class SLMLlm(LLM):  # pragma: no cover - requires llama-cpp-python install
         return msgs
 
     def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
-        resp = self._llm.create_chat_completion(
-            messages=self._messages(prompt, system),
+        # llama-cpp-python's create_chat_completion has strict TypedDict message
+        # types and a union return; our plain-dict messages and indexing are
+        # correct at runtime, so we treat the response as Any.
+        resp: Any = self._llm.create_chat_completion(
+            messages=self._messages(prompt, system),  # type: ignore[arg-type]
             temperature=temperature if temperature is not None else 0.1,
             max_tokens=max_tokens or 1024,
             stream=False,
@@ -113,12 +117,13 @@ class SLMLlm(LLM):  # pragma: no cover - requires llama-cpp-python install
         return (resp["choices"][0]["message"]["content"] or "").strip()
 
     def stream(self, prompt, *, system=None, temperature=None, max_tokens=None) -> Iterator[str]:
-        for chunk in self._llm.create_chat_completion(
-            messages=self._messages(prompt, system),
+        stream_resp: Any = self._llm.create_chat_completion(
+            messages=self._messages(prompt, system),  # type: ignore[arg-type]
             temperature=temperature if temperature is not None else 0.1,
             max_tokens=max_tokens or 1024,
             stream=True,
-        ):
+        )
+        for chunk in stream_resp:
             delta = chunk["choices"][0]["delta"].get("content", "")
             if delta:
                 yield delta
@@ -127,10 +132,12 @@ class SLMLlm(LLM):  # pragma: no cover - requires llama-cpp-python install
 class OpenAILLM(LLM):  # pragma: no cover - paid path
     name = "openai"
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, base_url: str | None = None) -> None:
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key)
+        self._client = (
+            OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+        )
         self.model = model
 
     def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
@@ -158,6 +165,23 @@ class OpenAILLM(LLM):  # pragma: no cover - paid path
             delta = chunk.choices[0].delta.content  # type: ignore[union-attr]
             if delta:
                 yield delta
+
+
+class HuggingFaceLLM(OpenAILLM):  # pragma: no cover - paid path
+    """Powerful hosted models via Hugging Face **Inference Providers**.
+
+    HF exposes an OpenAI-compatible router, so we reuse the OpenAI client with a
+    different ``base_url`` and the HF token as the key. Model ids are HF repo ids,
+    e.g. ``meta-llama/Llama-3.3-70B-Instruct``. Most large models require a paid /
+    PRO account. Optionally pin a specific backend with ``model:provider`` (e.g.
+    ``deepseek-ai/DeepSeek-V3:together``); bare ids let HF pick.
+    """
+
+    name = "huggingface"
+    ROUTER_URL = "https://router.huggingface.co/v1"
+
+    def __init__(self, api_key: str, model: str) -> None:
+        super().__init__(api_key=api_key, model=model, base_url=self.ROUTER_URL)
 
 
 class AnthropicLLM(LLM):  # pragma: no cover - paid path

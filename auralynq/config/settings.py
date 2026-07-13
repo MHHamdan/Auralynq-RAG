@@ -24,8 +24,8 @@ Provider = Literal["auto"]
 
 class EmbeddingSettings(BaseSettings):
     provider: Literal["auto", "ollama", "bge", "hash", "openai"] = "auto"
-    model: str = "BAAI/bge-m3"            # used when provider=bge
-    ollama_model: str = "nomic-embed-text" # used when provider=ollama
+    model: str = "BAAI/bge-m3"  # used when provider=bge
+    ollama_model: str = "nomic-embed-text"  # used when provider=ollama
     dim: int = 768
     device: Literal["auto", "cpu", "cuda"] = "auto"
     batch_size: int = 16
@@ -54,11 +54,18 @@ class RetrievalSettings(BaseSettings):
     mmr_lambda: float = 0.6
     dense_weight: float = 0.6
     sparse_weight: float = 0.4
+    # Contextual Retrieval (Anthropic): at ingest, an LLM writes a 1-2 sentence
+    # context situating each chunk in its document, prepended before embedding +
+    # sparse indexing. Off by default — it costs one LLM call per chunk and needs
+    # a real model (extractive fallback produces poor context).
+    contextual_enabled: bool = False
+    contextual_max_doc_chars: int = 8000  # doc window fed to the LLM per chunk
+    contextual_max_context_chars: int = 400  # cap on the generated context
 
 
 class LLMSettings(BaseSettings):
     provider: Literal[
-        "auto", "ollama", "slm", "openai", "anthropic", "cohere", "extractive"
+        "auto", "ollama", "slm", "openai", "anthropic", "cohere", "huggingface", "extractive"
     ] = "auto"
     model: str = "llama3.2:3b"
     base_url: str = "http://localhost:11434"
@@ -80,6 +87,10 @@ class AgentSettings(BaseSettings):
     latency_budget_ms: int = 15_000
     semantic_cache: bool = True
     cache_threshold: float = 0.93
+    # Agentic loop (the `agentic` strategy): decompose into sub-questions, retrieve
+    # per hop with LLM-judged sufficiency + LLM follow-up queries (multi-hop).
+    agentic_max_hops: int = 4
+    agentic_max_subquestions: int = 4
 
 
 class VoiceSettings(BaseSettings):
@@ -116,6 +127,10 @@ class TelemetrySettings(BaseSettings):
     pii_filter: bool = True
 
 
+class ModelFitSettings(BaseSettings):
+    enabled: bool = True
+
+
 class VisualGroundingSettings(BaseSettings):
     enabled: bool = True
     # Render and cache PDF page images for source view overlay
@@ -129,6 +144,71 @@ class VisualGroundingSettings(BaseSettings):
     visual_retrieval_provider: Literal["none", "colpali", "local_vlm"] = "none"
     # Grounding metadata schema version — bump when schema changes requiring reindex
     metadata_version: int = 1
+
+
+class WikiSettings(BaseSettings):
+    """Compounding Wiki layer (Phase 1) — persistent LLM-synthesized entity pages
+    built from the knowledge graph at ingest. Off by default; purely additive."""
+
+    enabled: bool = False
+    # Synthesize/refresh pages automatically at the end of each ingest.
+    auto_synthesize: bool = True
+    # Only build a page for entities mentioned at least this many times (noise gate).
+    min_mentions: int = 2
+    # Flag factual contradictions between a page's prior claims and a new
+    # synthesis at ingest (LLM-based; advisory — never auto-deletes).
+    detect_contradictions: bool = True
+    # File high-confidence answers back as wiki pages so explorations compound.
+    file_answers: bool = True
+    min_answer_confidence: float = 0.55
+    # Cap pages generated per ingest (cost/latency guard); highest-mention first.
+    max_entities: int = 150
+    # Token budget per synthesized page.
+    max_page_tokens: int = 1024
+    # Character budget of source-chunk evidence fed into one page's synthesis.
+    max_context_chars: int = 6000
+
+
+class WatchSettings(BaseSettings):
+    """Watch Folder — auto-reindex local directories on change. Off by default.
+
+    The worker polls each configured directory; new and modified files are
+    ingested incrementally (content-hash idempotent), and — when
+    ``delete_missing`` is on — a document whose source file has disappeared is
+    removed from the index and knowledge graph. Files are watched in place (they
+    are never moved, unlike the ``inbox`` queue worker)."""
+
+    enabled: bool = False
+    #: Directories to watch. Relative paths resolve against ``data_dir``. When
+    #: empty (and enabled), defaults to ``<data_dir>/watch``. Set via env as a
+    #: JSON array, e.g. AURALYNQ_WATCH__DIRS='["/mnt/docs","reports"]'.
+    dirs: list[str] = []
+    #: Minimum seconds between folder scans (the worker never scans faster).
+    poll_seconds: float = 10.0
+    recursive: bool = True
+    #: Remove a document from the index when its source file disappears.
+    delete_missing: bool = True
+
+
+class WebIngestSettings(BaseSettings):
+    """Web URL ingestion — scrape + index a page. SSRF-guarded by default."""
+
+    enabled: bool = True
+    timeout_s: float = 15.0
+    max_bytes: int = 5_000_000
+    # SSRF guard: refuse private/loopback/link-local/metadata hosts. Only set True
+    # for trusted internal use (e.g. scraping an intranet you control).
+    allow_private_hosts: bool = False
+
+
+class ConnectorSettings(BaseSettings):
+    """Cloud connector credentials — single-token / service-account (no OAuth app).
+    Set via Secrets: AURALYNQ_CONNECTORS__NOTION_TOKEN, __SLACK_BOT_TOKEN,
+    __GDRIVE_CREDENTIALS_JSON. Empty = that connector is not configured."""
+
+    notion_token: str = ""
+    slack_bot_token: str = ""
+    gdrive_credentials_json: str = ""
 
 
 class Settings(BaseSettings):
@@ -163,11 +243,24 @@ class Settings(BaseSettings):
     serve: ServeSettings = Field(default_factory=ServeSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     visual: VisualGroundingSettings = Field(default_factory=VisualGroundingSettings)
+    modelfit: ModelFitSettings = Field(default_factory=ModelFitSettings)
+    wiki: WikiSettings = Field(default_factory=WikiSettings)
+    watch: WatchSettings = Field(default_factory=WatchSettings)
+    web: WebIngestSettings = Field(default_factory=WebIngestSettings)
+    connectors: ConnectorSettings = Field(default_factory=ConnectorSettings)
 
     # When true, blocks all outbound calls to external LLM/embedding/telemetry
     # providers regardless of which API keys are set. Guarantees zero data
     # egress for strict air-gapped deployments. Env: AURALYNQ_AIR_GAPPED=true
     air_gapped: bool = False
+
+    # Hugging Face Space / public-demo posture (see
+    # docs/getting-started/huggingface-space.md). Purely informational except
+    # for allow_uploads, which the /ingest endpoint enforces.
+    hf_space: bool = False
+    demo_mode: bool = False
+    public_demo: bool = False
+    allow_uploads: bool = True
 
     # Well-known secrets (not prefixed). Empty string == "not configured".
     huggingface_token: str = Field(default="", alias="HUGGINGFACE_TOKEN")
@@ -207,6 +300,17 @@ class Settings(BaseSettings):
     @property
     def page_cache_dir(self) -> Path:
         return self.data_dir / self.visual.page_cache_subdir
+
+    @property
+    def wiki_dir(self) -> Path:
+        return self.storage_dir / "wiki_pages"
+
+    @property
+    def watch_dirs(self) -> list[Path]:
+        """Resolved Watch Folder directories. Relative entries resolve against
+        ``data_dir``; defaults to ``<data_dir>/watch`` when none configured."""
+        raw = [Path(d) for d in self.watch.dirs] if self.watch.dirs else [self.data_dir / "watch"]
+        return [d if d.is_absolute() else (self.data_dir / d) for d in raw]
 
     def ensure_dirs(self) -> None:
         for p in (self.data_dir, self.reports_dir, self.index_dir, self.storage_dir):

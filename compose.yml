@@ -83,7 +83,10 @@ services:
     volumes:
       - auralynq-phoenix:/data
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:6006')\" || exit 1"]
+      # The Phoenix image is distroless (no /bin/sh), so a CMD-SHELL test can
+      # never execute and the service shows perpetually "unhealthy" even while
+      # serving fine. Use the exec form with the image's own python interpreter.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:6006').status == 200 else 1)"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -98,10 +101,13 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["uvicorn", "auralynq.serving.app:app", "--host", "0.0.0.0", "--port", "8000"]
-    # Expose host Ollama to containers on Docker Desktop (Windows/Mac) where
-    # host.containers.internal isn't automatic. Podman ignores extra_hosts safely.
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
+    # Host services (e.g. Ollama on :11434) are reachable at
+    # host.containers.internal: rootless Podman injects this into every
+    # container's /etc/hosts automatically (slirp4netns/pasta/netavark → the
+    # host gateway, 10.0.2.2). We deliberately do NOT declare it via
+    # `extra_hosts: "host.containers.internal:host-gateway"` — that magic value
+    # requires podman >= 4.1 and HARD-ERRORS on 3.x ("invalid IP address in
+    # add-host: host-gateway"), which is what broke `make start`.
     # Internal: loopback publish for host tooling; reachable in-cluster as api:8000.
     ports:
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_API_PORT:-8000}:8000"
@@ -122,11 +128,17 @@ services:
       - AURALYNQ_DATA_DIR=/app/data
       - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
       - AURALYNQ_SERVE__CORS_ORIGINS=${AURALYNQ_SERVE__CORS_ORIGINS:-["http://localhost:3000"]}
+      # Compounding Wiki (off by default): synthesize durable entity pages at ingest.
+      - AURALYNQ_WIKI__ENABLED=${AURALYNQ_WIKI__ENABLED:-false}
+      # Watch Folder (off by default): auto-reindex files dropped in the bind below.
+      - AURALYNQ_WATCH__ENABLED=${AURALYNQ_WATCH__ENABLED:-false}
     volumes:
       # Podman-managed named volumes initialize with the image's (non-root) owner,
       # so the non-root runtime user can write without host-ownership clashes.
       - auralynq-data:/app/data
       - auralynq-reports:/app/reports
+      # Host folder auto-reindexed when AURALYNQ_WATCH__ENABLED=true.
+      - ${AURALYNQ_WATCH_HOST:-./data/watch}:/app/data/watch:z
     depends_on:
       - qdrant
       - phoenix
@@ -146,8 +158,6 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["python", "-m", "auralynq.mcp_server.server", "--transport", "streamable-http"]
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
     ports:
       - "${AURALYNQ_BIND_INTERNAL:-127.0.0.1}:${AURALYNQ_MCP_PORT:-8765}:8765"
     environment:
@@ -187,8 +197,6 @@ services:
     restart: unless-stopped
     security_opt: ["no-new-privileges"]
     command: ["python", "-m", "auralynq.serving.worker"]
-    extra_hosts:
-      - "host.containers.internal:host-gateway"
     environment:
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -200,8 +208,11 @@ services:
       - AURALYNQ_LLM__MODEL=${AURALYNQ_LLM__MODEL:-llama3.1:8b}
       - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
       - AURALYNQ_DATA_DIR=/app/data
+      - AURALYNQ_WIKI__ENABLED=${AURALYNQ_WIKI__ENABLED:-false}
+      - AURALYNQ_WATCH__ENABLED=${AURALYNQ_WATCH__ENABLED:-false}
     volumes:
       - auralynq-data:/app/data
+      - ${AURALYNQ_WATCH_HOST:-./data/watch}:/app/data/watch:z
     depends_on:
       - qdrant
     healthcheck:

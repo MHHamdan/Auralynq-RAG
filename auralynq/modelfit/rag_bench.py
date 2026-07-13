@@ -100,11 +100,7 @@ def _citation_coverage_score(citations: list[dict[str, Any]], contexts: list[str
     if not contexts:
         return 0.0
 
-    context_sources = {
-        c.split("\n")[0][:80].lower()
-        for c in contexts
-        if c
-    }
+    context_sources = {c.split("\n")[0][:80].lower() for c in contexts if c}
     covered = 0
     for cit in citations:
         src = str(cit.get("source", "")).lower()[:80]
@@ -137,6 +133,7 @@ async def run_rag_benchmark(
     # Check Ollama availability
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get("http://localhost:11434/api/tags")
             if r.status_code != 200:
@@ -155,6 +152,7 @@ async def run_rag_benchmark(
 
     try:
         from auralynq.retrieval.hybrid.retriever import HybridRetriever
+
         retriever = HybridRetriever()
     except Exception as e:
         warnings.append(f"Could not init retriever for RAG benchmark: {e}")
@@ -170,13 +168,12 @@ async def run_rag_benchmark(
                     rr = retriever.retrieve(prompt, k=5)
                     contexts = [sc.chunk.text for sc in rr.chunks]
                     citations = [
-                        {"source": sc.chunk.citation().get("source", "")}
-                        for sc in rr.chunks
+                        {"source": sc.chunk.citation().get("source", "")} for sc in rr.chunks
                     ]
                 except Exception:
                     pass
 
-            ctx_block = "\n\n".join(f"[{i+1}] {c[:400]}" for i, c in enumerate(contexts))
+            ctx_block = "\n\n".join(f"[{i + 1}] {c[:400]}" for i, c in enumerate(contexts))
             system_prompt = (
                 "You are a helpful assistant. Answer using only the provided context. "
                 "If the context does not contain enough information, say so clearly."
