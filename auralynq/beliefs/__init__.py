@@ -13,6 +13,14 @@ when" and render a belief-revision timeline that self-corrects rather than
 silently overwrites. Backs contradiction alerts and the timeline UI.
 """
 
+from auralynq.beliefs.alerts import Alert, AlertStore, get_alert_store
 from auralynq.beliefs.store import BeliefStore, Claim, get_belief_store
 
-__all__ = ["BeliefStore", "Claim", "get_belief_store"]
+__all__ = [
+    "Alert",
+    "AlertStore",
+    "BeliefStore",
+    "Claim",
+    "get_alert_store",
+    "get_belief_store",
+]

@@ -163,6 +163,20 @@ def _synthesize_one(
                     count=len(contradictions),
                     items=contradictions,
                 )
+                # Proactively surface the contradiction as a queryable alert
+                # ("this contradicts a prior belief"). Advisory + non-fatal:
+                # detection already happened; alerting must never break ingest.
+                try:
+                    from auralynq.beliefs.alerts import get_alert_store
+
+                    # Tie the alert store to the same storage context the wiki is
+                    # using (store.dir == <storage_dir>/wiki_pages), so it honours
+                    # a caller-supplied Settings rather than the global one.
+                    src = ", ".join(sorted(new_sources))
+                    alerts_path = store.dir.parent / "alerts.jsonl"
+                    get_alert_store(alerts_path).emit_contradictions(contradictions, source=src)
+                except Exception as alert_exc:  # pragma: no cover - non-fatal
+                    _log.warning("wiki.alert_emit_failed", entity=key, error=str(alert_exc))
                 _log.info("wiki.contradiction_flagged", entity=key, n=len(contradictions))
     store.write_page(
         key,
