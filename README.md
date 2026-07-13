@@ -8,17 +8,20 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org)
 [![Podman](https://img.shields.io/badge/runtime-Podman-892CA0.svg)](https://podman.io)
+[![Live demo](https://img.shields.io/badge/🤗_live_demo-Hugging_Face-yellow.svg)](https://mhamdan-auralynq-rag.hf.space)
 
 A **local-first, voice-native, agentic RAG platform** with hybrid vector retrieval,
-PPR-augmented PathRAG graph reasoning, 13 pluggable RAG strategies, visual source
-grounding with exact span-level bounding boxes, and a full-screen document inspection
-workspace. Grounded answers with citations you can visually verify against the original
-PDF. A **Compounding Wiki** turns ingest into a persistent, cited knowledge base that
-accumulates — synthesizing durable entity pages and flagging cross-source
-contradictions instead of re-deriving everything each query. Runs at **$0** on a
-laptop; upgrades to GPU models via env flags.
+PPR-augmented PathRAG graph reasoning, an **agentic multi-hop reasoning loop** (Self-RAG),
+14 pluggable RAG strategies, and visual source grounding with exact span-level bounding
+boxes. Grounded answers with citations you can visually verify against the original PDF.
+A **Compounding Wiki** turns ingest into a persistent, cited knowledge base that
+accumulates — synthesizing durable entity pages and flagging cross-source contradictions
+instead of re-deriving everything each query. Ingests files, **web URLs**, and
+**Notion / Slack / Drive** connectors; a **trust-eval harness** measures citation
+attribution and confidence calibration (not just claims them). Runs at **$0** on a
+laptop; upgrades to GPU / hosted models (Llama-3.3-70B via HF Inference Providers) via env flags.
 
-[Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Troubleshooting](docs/getting-started/troubleshooting.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Compounding Wiki](#-compounding-wiki) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
+[Live demo](https://mhamdan-auralynq-rag.hf.space) · [Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Compounding Wiki](#-compounding-wiki) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
 
 </div>
 
@@ -30,9 +33,26 @@ laptop; upgrades to GPU models via env flags.
 retrieval-grounded, span-cited answers with visual verification: click any citation
 and a full-screen workspace opens showing the original PDF page, exact bounding-box
 overlays, extracted text blocks, and claim-level support status. The inference loop
-runs 13 pluggable RAG strategies, exposes a live retrieval trace, and produces
-calibrated four-signal confidence scores. Designed for reproducibility — every
-algorithmic decision is documented, configurable, and benchmarkable.
+runs 14 pluggable RAG strategies — including an agentic multi-hop loop that streams
+its reasoning — exposes a live retrieval trace, and produces calibrated four-signal
+confidence scores. Designed for reproducibility — every algorithmic decision is
+documented, configurable, and benchmarkable.
+
+---
+
+## ✨ Capabilities at a glance
+
+| Area | What Auralynq does |
+|---|---|
+| **Retrieval** | Hybrid dense+sparse (RRF) · cross-encoder rerank · MMR · PPR-augmented PathRAG graph reasoning · 14 runtime-switchable strategies |
+| **Agentic reasoning** | Multi-hop retrieve→reason loop (Self-RAG): decompose → judge sufficiency → re-retrieve → synthesize, with the reasoning trace **streamed live** |
+| **Grounding** | Span-level visual citations — exact bounding boxes on the original PDF page, verified against the pixels |
+| **Compounding Wiki** | Durable cited entity pages synthesized at ingest; cross-source **contradiction flags** (invalidate-not-delete); answers file back |
+| **Trust & eval** | Citation attribution + confidence **calibration (ECE)** + LLM-as-judge + a regression gate — measured, not asserted |
+| **Ingestion** | Files · audio · **Web URL** (SSRF-safe) · **Notion / Slack / Drive** connectors · **Watch Folder** auto-reindex · Contextual Retrieval |
+| **Models** | Local Ollama · bge-m3 embeddings · **HF Inference Providers** (Llama-3.3-70B) · BYO OpenAI/Anthropic/Cohere · hardware-aware ModelFit |
+| **Voice** | Whisper ASR + diarization + TTS, with deterministic offline fallbacks |
+| **Ops** | Local-first at **$0** · rootless Podman · single-container HF Space · observable trace on every query · 460 tests @ 81.5% coverage |
 
 ---
 
@@ -47,9 +67,11 @@ The figures below cover each phase independently.
 
 ### Fig 1 — Ingest Pipeline
 
-When a document is uploaded, Auralynq extracts layout blocks with bounding boxes,
-chunks and embeds the text, builds a knowledge graph, renders page images, and
-stores visual grounding metadata — all in one pass.
+Sources arrive from files, audio, **web URLs**, **cloud connectors** or a
+**watched folder**. Auralynq extracts layout blocks with bounding boxes, chunks
+the text (optionally adding an LLM-written **contextual prefix** per chunk),
+embeds it, builds a knowledge graph, synthesizes the **Compounding Wiki**,
+renders page images, and stores visual-grounding metadata — all in one pass.
 
 ```mermaid
 flowchart LR
@@ -58,25 +80,31 @@ flowchart LR
     classDef store fill:#065f46,color:#fff,stroke:#047857
     classDef meta fill:#92400e,color:#fff,stroke:#78350f
 
-    subgraph FILES["Input Files"]
+    subgraph FILES["Sources"]
         D["PDF · DOCX\nHTML · MD · TXT"]:::src
-        A["WAV · MP3\nM4A"]:::src
+        A["WAV · MP3 · M4A"]:::src
+        U["Web URL\nSSRF-safe scrape"]:::src
+        C["Connectors\nNotion · Slack · Drive"]:::src
+        W["Watch Folder\nauto-reindex"]:::src
     end
 
     subgraph PARSE["Parse & Extract"]
-        PL["pdfplumber\nlayout blocks\n+ bbox per region"]:::proc
-        IMG["pdf2image\n144 DPI PNG\nper page"]:::proc
+        PL["pdfplumber\nlayout blocks + bbox"]:::proc
+        IMG["pdf2image\n144 DPI PNG / page"]:::proc
         ASR["ASR + diarization\nwith timestamps"]:::proc
+        EX["main-content\nextraction"]:::proc
     end
 
     subgraph CHUNK["Chunk & Enrich"]
-        CH["Chunks + SourceSpan\n+ VG metadata"]:::proc
-        EMB["bge-m3\nEmbeddings"]:::proc
+        CH["Chunks + SourceSpan\n+ VG + provenance"]:::proc
+        CTX["Contextual Retrieval\nLLM chunk context (opt.)"]:::proc
+        EMB["bge-m3\ndense + sparse"]:::proc
     end
 
     subgraph STORES["Persistent Stores"]
         QD[("Qdrant\ndense + sparse")]:::store
         KG[("Knowledge Graph\nentities / relations")]:::store
+        WK[("Compounding Wiki\ncited entity pages")]:::store
         PC[("Page Cache\npage_NNNN.png")]:::store
         DM[("doc_meta.json\ndims · n_pages")]:::meta
     end
@@ -84,22 +112,29 @@ flowchart LR
     D --> PL
     D --> IMG
     A --> ASR
+    U --> EX
+    C --> EX
+    W --> PL
     PL --> CH
     ASR --> CH
-    CH --> EMB --> QD
-    CH --> KG
+    EX --> CH
+    CH --> CTX --> EMB --> QD
+    CH --> KG --> WK
     IMG --> PC
     CH --> DM
 ```
 
 ---
 
-### Fig 2 — Auralynq-RAG Agentic Loop
+### Fig 2 — Auralynq-RAG Query Loop (default strategy)
 
 Each query enters an adaptive loop: classify intent, route to the right
-retriever(s), evaluate evidence quality, rewrite if needed (≤ 3 retries),
-synthesize with streaming, self-check confidence, validate citations, resolve
-visual grounding, and emit an SSE response.
+retriever(s) — including the **Compounding Wiki** — evaluate evidence quality
+with a dual-signal critic, rewrite if needed (≤ 3 retries), synthesize with
+streaming, self-check confidence, validate citations, resolve visual grounding,
+and emit an SSE response. This is the default `auralynq_rag` strategy; the
+**Agentic Loop** strategy (Fig 2b) swaps the single-shot critic for LLM-judged
+multi-hop reasoning.
 
 ```mermaid
 flowchart TD
@@ -116,6 +151,7 @@ flowchart TD
 
     HY["Hybrid Retriever\ndense + sparse · RRF\ncross-encoder rerank · MMR dedup"]:::retr
     PR["PathRAG + PPR\npath expansion · flow pruning\n0.4 · flow + 0.6 · ppr"]:::retr
+    WK["Compounding Wiki\ncited entity pages"]:::retr
 
     FU["Context Fusion\nMMR · lost-in-middle ordering"]:::critic
     CR{{"Dual-Signal\nEvidence Critic"}}:::critic
@@ -131,11 +167,45 @@ flowchart TD
     RT -->|fast / hybrid| HY
     RT -->|relational| PR
     RT -->|uncertain| HY & PR
+    RT -.->|consult| WK
     HY --> FU
     PR --> FU
+    WK -.-> FU
     FU --> CR
     CR -->|"lex < 60% AND sem < 0.5"| RW --> RT
     CR -->|evidence ok| SY --> SC --> CV --> VGR --> ST
+```
+
+---
+
+### Fig 2b — Agentic Multi-Hop Loop
+
+The **Agentic Loop** strategy (Self-RAG / IRCoT) goes beyond single-shot
+retrieval: it decomposes the question into sub-questions, retrieves per hop while
+**accumulating** evidence (so a fact found in hop 1 informs hop 2), asks the LLM
+to **judge sufficiency** and propose follow-up queries, then fuses the pool once
+and synthesizes. Every phase streams live as `step` events, so the UI shows the
+reasoning as it happens: *planning → hop 1 → hop 2 → synthesizing*.
+
+```mermaid
+flowchart TD
+    classDef input fill:#1d4ed8,color:#fff,stroke:#1e40af
+    classDef plan fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef retr fill:#0e7490,color:#fff,stroke:#0c5a70
+    classDef judge fill:#92400e,color:#fff,stroke:#78350f
+    classDef synth fill:#065f46,color:#fff,stroke:#047857
+
+    Q(["Query"]):::input
+    DEC["Decompose\nLLM sub-questions"]:::plan
+    HOP["Retrieve hop\nroute + hybrid / PathRAG\naccumulate evidence"]:::retr
+    JUDGE{{"Sufficiency judge\nLLM: enough? / follow-up"}}:::judge
+    FU["Fuse pool\nMMR · rerank (once)"]:::synth
+    SY["Synthesize\nstreaming + self-check\ncitation validation"]:::synth
+    ST(["SSE\nstep · token · final\nlive reasoning trace"]):::synth
+
+    Q --> DEC --> HOP --> JUDGE
+    JUDGE -->|"insufficient → follow-up query"| HOP
+    JUDGE -->|"sufficient / budget"| FU --> SY --> ST
 ```
 
 ---
@@ -1078,17 +1148,25 @@ Claude Desktop config:
 
 ## Roadmap
 
-- [x] **Auralynq ModelFit Index** — hardware-aware model selection, scoring, CLI, REST API, frontend page, ModelFitChip in chat, RAG quality benchmark metrics
-- [x] **Compounding Wiki** — synthesize durable cited entity pages at ingest, consult them at query time, flag cross-source contradictions (invalidate-not-delete), file answers back, `/wiki/*` endpoints + inspector tab, entity canonicalization
-- [ ] Page thumbnail rail in Source Workspace (requires `/thumbnail` endpoint)
-- [ ] Layout block store written at ingest for cheaper page-level queries
-- [ ] ColPali visual retrieval (image-to-image semantic search)
-- [ ] Streaming partial ASR in the WebSocket loop
-- [ ] Graph-DB backend for the KG (larger scale)
-- [ ] Multi-tenant collections + per-user auth
-- [ ] LightRAG / RAPTOR strategy implementations
-- [ ] Langfuse + OTLP dashboards out of the box
-- [ ] ModelFit community index web UI (submit + browse verified benchmark results)
+**Shipped**
+
+- [x] **Auralynq ModelFit Index** — hardware-aware model selection, scoring, CLI, REST API, frontend page, ModelFitChip in chat; client-side device detection
+- [x] **Compounding Wiki** — durable cited entity pages at ingest, consulted at query time, cross-source contradiction flags (invalidate-not-delete), answers filed back, `/wiki/*` endpoints + inspector tab
+- [x] **Agentic multi-hop loop** — Self-RAG/IRCoT: decompose → judge sufficiency → re-retrieve → synthesize, streamed live in the chat
+- [x] **Contextual Retrieval** — LLM chunk-situating context prepended before embedding + sparse indexing
+- [x] **Trust-eval harness** — citation attribution, confidence calibration (ECE), LLM-as-judge, regression gate (`auralynq eval --gate`)
+- [x] **Ingestion** — SSRF-safe Web URL scraping; Notion / Slack / Drive connectors (token / service-account, cursor sync); auto-reindexing Watch Folder
+- [x] **HF Inference Providers** — Llama-3.3-70B and other hosted models with no local GPU
+
+**Next**
+
+- [ ] ColPali / late-interaction visual retrieval (image-to-image, drives span grounding)
+- [ ] GraphRAG-style community summaries + global/local router
+- [ ] Proactive contradiction alerts on connector/watch sync
+- [ ] Bi-temporal belief-revision timeline on the Compounding Wiki
+- [ ] Expose Auralynq as an MCP server + long-term memory tier
+- [ ] SelfCheckGPT self-consistency wired into the abstention gate
+- [ ] Streaming partial ASR in the WebSocket loop · Graph-DB KG backend · multi-tenant auth
 
 ---
 
