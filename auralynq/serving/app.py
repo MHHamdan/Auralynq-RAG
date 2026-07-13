@@ -84,6 +84,8 @@ from auralynq.serving.schemas import (
     RAGStrategiesResponse,
     StatusResponse,
     SuggestionsResponse,
+    VisualHit,
+    VisualSearchResponse,
     VoiceResponse,
     WatchStatusResponse,
     WatchSyncResponse,
@@ -603,6 +605,34 @@ def create_app() -> FastAPI:
             for c in raw
         ]
         return CommunitiesResponse(enabled=True, count=len(items), communities=items)
+
+    # ------------------------------------------ ColPali visual search (01) ---
+    @app.get("/visual/search", response_model=VisualSearchResponse)
+    async def visual_search_ep(q: str, k: int = 6) -> VisualSearchResponse:
+        """Late-interaction visual retrieval: rank page images by MaxSim against
+        the query; each hit carries a patch bbox localizing the answer region."""
+        s = get_settings()
+        if not s.visual.visual_retrieval_enabled:
+            return VisualSearchResponse(enabled=False, query=q)
+        from auralynq.retrieval.visual import VisualRetriever
+
+        res = VisualRetriever(settings=s).retrieve(q, k)
+        hits = []
+        for sc in res.chunks:
+            vg = sc.chunk.metadata.get("visual_grounding", {}) or {}
+            hits.append(
+                VisualHit(
+                    doc_id=sc.chunk.doc_id,
+                    page=sc.chunk.span.page,
+                    score=round(sc.score, 4),
+                    source=sc.chunk.source or sc.chunk.doc_id,
+                    normalized_bbox=vg.get("normalized_bbox", []),
+                    text=sc.chunk.text[:280],
+                )
+            )
+        return VisualSearchResponse(
+            enabled=True, query=q, embedder=str(res.metadata.get("embedder", "")), hits=hits
+        )
 
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)

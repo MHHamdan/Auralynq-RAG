@@ -65,6 +65,7 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
     wiki_pages = 0
     belief_claims = 0
     n_communities = 0
+    visual_pages = 0
     if kg_chunks:
         kg = build_from_chunks(kg_chunks)
         kg.save(graph_path())
@@ -97,6 +98,15 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
                 n_communities = len(communities)
             except Exception as e:  # pragma: no cover - non-fatal by design
                 _log.warning("graphrag.build_failed", error=str(e))
+        # ColPali visual index — embed cached page images for late-interaction
+        # retrieval. Additive and gated; never blocks indexing on failure.
+        if s.visual.visual_retrieval_enabled:
+            try:
+                from auralynq.retrieval.visual import build_visual_index
+
+                visual_pages = build_visual_index(settings=s)
+            except Exception as e:  # pragma: no cover - non-fatal by design
+                _log.warning("visual.index_failed", error=str(e))
     else:
         kg = load_graph()  # nothing to index and nothing stored; keep existing
 
@@ -118,6 +128,8 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
         stats["belief_claims"] = belief_claims
     if s.graphrag.enabled:
         stats["communities"] = n_communities
+    if s.visual.visual_retrieval_enabled:
+        stats["visual_pages"] = visual_pages
     return stats
 
 
