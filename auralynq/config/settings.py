@@ -91,6 +91,12 @@ class AgentSettings(BaseSettings):
     # per hop with LLM-judged sufficiency + LLM follow-up queries (multi-hop).
     agentic_max_hops: int = 4
     agentic_max_subquestions: int = 4
+    # Self-consistency (SelfCheckGPT): resample the answer and measure stability
+    # as a hallucination signal. Off by default — each query costs N extra LLM
+    # calls. Advisory only (surfaced as the s_consistency confidence signal).
+    self_consistency_enabled: bool = False
+    self_consistency_samples: int = 5
+    self_consistency_temperature: float = 0.7
 
 
 class VoiceSettings(BaseSettings):
@@ -142,6 +148,13 @@ class VisualGroundingSettings(BaseSettings):
     # Enable experimental ColPali-style visual retrieval
     visual_retrieval_enabled: bool = False
     visual_retrieval_provider: Literal["none", "colpali", "local_vlm"] = "none"
+    # ColPali late-interaction tuning. The GPU model is used when the `colpali`
+    # extra is installed and provider="colpali"; otherwise a deterministic,
+    # offline hash patch-embedder keeps the path functional + $0 (lower quality).
+    visual_model: str = "vidore/colpali-v1.3"
+    visual_device: Literal["auto", "cpu", "cuda"] = "auto"
+    visual_patch_grid: int = 16  # NxN patch grid (offline fallback + query tokens)
+    visual_rerank_k: int = 20  # candidate pages scored per visual query
     # Grounding metadata schema version — bump when schema changes requiring reindex
     metadata_version: int = 1
 
@@ -167,6 +180,41 @@ class WikiSettings(BaseSettings):
     max_page_tokens: int = 1024
     # Character budget of source-chunk evidence fed into one page's synthesis.
     max_context_chars: int = 6000
+
+
+class BeliefSettings(BaseSettings):
+    """Bi-temporal belief store — records how facts (claims) evolve across
+    valid-time (when the fact holds in the world) and ingest-time (when the
+    system learned it), so knowledge compounds and self-corrects.
+
+    Off by default; purely additive. Backs proactive contradiction alerts and
+    the belief-revision timeline."""
+
+    enabled: bool = False
+    # Filename, under ``storage_dir``, for the sqlite claim store.
+    db_filename: str = "beliefs.db"
+    # Confidence assigned to claims recorded without an explicit score.
+    default_confidence: float = 1.0
+
+
+class GraphRAGSettings(BaseSettings):
+    """GraphRAG community summaries — corpus-wide "sensemaking" over the KG.
+
+    Detect entity communities (networkx, no new dep) and LLM-summarize each into
+    a theme, enabling global synthesis beyond PathRAG's local search. Off by
+    default; purely additive."""
+
+    enabled: bool = False
+    # Build/refresh community summaries automatically at the end of each ingest.
+    auto_build: bool = True
+    # Community detection algorithm over the (weighted, undirected) KG projection.
+    algo: Literal["louvain", "greedy"] = "louvain"
+    # Ignore communities smaller than this (noise gate).
+    min_community_size: int = 3
+    # Cap communities summarized per build (cost guard), largest first.
+    max_communities: int = 50
+    # Token budget per community summary.
+    max_summary_tokens: int = 256
 
 
 class WatchSettings(BaseSettings):
@@ -245,6 +293,8 @@ class Settings(BaseSettings):
     visual: VisualGroundingSettings = Field(default_factory=VisualGroundingSettings)
     modelfit: ModelFitSettings = Field(default_factory=ModelFitSettings)
     wiki: WikiSettings = Field(default_factory=WikiSettings)
+    beliefs: BeliefSettings = Field(default_factory=BeliefSettings)
+    graphrag: GraphRAGSettings = Field(default_factory=GraphRAGSettings)
     watch: WatchSettings = Field(default_factory=WatchSettings)
     web: WebIngestSettings = Field(default_factory=WebIngestSettings)
     connectors: ConnectorSettings = Field(default_factory=ConnectorSettings)
@@ -304,6 +354,18 @@ class Settings(BaseSettings):
     @property
     def wiki_dir(self) -> Path:
         return self.storage_dir / "wiki_pages"
+
+    @property
+    def beliefs_db(self) -> Path:
+        return self.storage_dir / self.beliefs.db_filename
+
+    @property
+    def communities_path(self) -> Path:
+        return self.index_dir / "communities.json"
+
+    @property
+    def visual_index_dir(self) -> Path:
+        return self.index_dir / "visual"
 
     @property
     def watch_dirs(self) -> list[Path]:

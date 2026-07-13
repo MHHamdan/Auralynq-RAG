@@ -20,6 +20,7 @@ from auralynq.agent.nodes import (
     node_rewrite,
     node_route,
     node_self_check,
+    node_self_consistency,
     node_synthesize,
     node_validate_citations,
 )
@@ -45,6 +46,7 @@ def run_native(state: AgentState, deps: AgentDeps) -> AgentState:
         break
     state = node_synthesize(state, deps)
     state = node_self_check(state, deps)
+    state = node_self_consistency(state, deps)
     state = node_validate_citations(state, deps)
     _update_elapsed(state, deps)
     return state
@@ -70,6 +72,7 @@ def run_langgraph(state: AgentState, deps: AgentDeps) -> AgentState:  # pragma: 
         ("rewrite", node_rewrite),
         ("synthesize", node_synthesize),
         ("self_check", node_self_check),
+        ("self_consistency", node_self_consistency),
         ("validate", node_validate_citations),
     ]:
         sg.add_node(name, wrap(fn))
@@ -86,7 +89,8 @@ def run_langgraph(state: AgentState, deps: AgentDeps) -> AgentState:  # pragma: 
     sg.add_conditional_edges("critic", branch, {"rewrite": "rewrite", "synthesize": "synthesize"})
     sg.add_edge("rewrite", "route")
     sg.add_edge("synthesize", "self_check")
-    sg.add_edge("self_check", "validate")
+    sg.add_edge("self_check", "self_consistency")
+    sg.add_edge("self_consistency", "validate")
     sg.add_edge("validate", END)
 
     compiled = sg.compile()

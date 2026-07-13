@@ -194,6 +194,82 @@ class WikiLintResponse(BaseModel):
     orphan_pages: list[str] = Field(default_factory=list)
 
 
+class AlertItem(BaseModel):
+    id: str
+    entity: str
+    old_claim: str
+    new_claim: str
+    why: str = ""
+    source: str = ""
+    flagged_at: str = ""
+    read: bool = False
+
+
+class AlertsResponse(BaseModel):
+    alerts: list[AlertItem] = Field(default_factory=list)
+    unread_count: int = 0
+
+
+class AlertReadRequest(BaseModel):
+    ids: list[str] | None = None  # None → mark all read
+
+
+class AlertReadResponse(BaseModel):
+    marked: int = 0
+
+
+class BeliefClaimItem(BaseModel):
+    claim_id: str
+    entity: str
+    predicate: str
+    object: str
+    source: str = ""
+    doc_id: str = ""
+    valid_from: str = ""
+    valid_to: str | None = None
+    ingest_time: str = ""
+    superseded_by: str | None = None
+    confidence: float = 1.0
+    current: bool = False
+
+
+class BeliefTimelineResponse(BaseModel):
+    entity: str
+    claims: list[BeliefClaimItem] = Field(default_factory=list)
+    current_count: int = 0
+
+
+class CommunityItem(BaseModel):
+    id: int
+    level: int = 0
+    entities: list[str] = Field(default_factory=list)
+    size: int = 0
+    summary: str = ""
+    sources: list[str] = Field(default_factory=list)
+
+
+class CommunitiesResponse(BaseModel):
+    enabled: bool = False
+    count: int = 0
+    communities: list[CommunityItem] = Field(default_factory=list)
+
+
+class VisualHit(BaseModel):
+    doc_id: str
+    page: int | None = None
+    score: float = 0.0
+    source: str = ""
+    normalized_bbox: list[float] = Field(default_factory=list)
+    text: str = ""
+
+
+class VisualSearchResponse(BaseModel):
+    enabled: bool = False
+    query: str = ""
+    embedder: str = ""
+    hits: list[VisualHit] = Field(default_factory=list)
+
+
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     corpus_indexed: bool = False

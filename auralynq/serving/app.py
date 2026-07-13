@@ -48,6 +48,14 @@ from auralynq.serving.errors import (
 )
 from auralynq.serving.ratelimit import RateLimitMiddleware
 from auralynq.serving.schemas import (
+    AlertItem,
+    AlertReadRequest,
+    AlertReadResponse,
+    AlertsResponse,
+    BeliefClaimItem,
+    BeliefTimelineResponse,
+    CommunitiesResponse,
+    CommunityItem,
     ConnectorsStatusResponse,
     ConnectorStatus,
     ConnectorSyncResponse,
@@ -76,6 +84,8 @@ from auralynq.serving.schemas import (
     RAGStrategiesResponse,
     StatusResponse,
     SuggestionsResponse,
+    VisualHit,
+    VisualSearchResponse,
     VoiceResponse,
     WatchStatusResponse,
     WatchSyncResponse,
@@ -532,6 +542,97 @@ def create_app() -> FastAPI:
 
         report = WikiStore(s.wiki_dir).lint()
         return WikiLintResponse(enabled=True, **report)
+
+    # ------------------------------------------- contradiction alerts (03) ---
+    @app.get("/alerts", response_model=AlertsResponse)
+    async def alerts_ep(unread_only: bool = False) -> AlertsResponse:
+        """Proactive contradiction alerts raised when a synced document overturns
+        a prior belief. Newest first."""
+        from auralynq.beliefs.alerts import get_alert_store
+
+        store = get_alert_store()
+        items = [AlertItem(**a.as_dict()) for a in store.list_alerts(unread_only=unread_only)]
+        return AlertsResponse(alerts=items, unread_count=store.unread_count())
+
+    @app.post("/alerts/read", response_model=AlertReadResponse)
+    async def alerts_read_ep(req: AlertReadRequest) -> AlertReadResponse:
+        """Mark the given alert ids read (or all when ``ids`` is omitted)."""
+        from auralynq.beliefs.alerts import get_alert_store
+
+        marked = get_alert_store().mark_read(req.ids)
+        return AlertReadResponse(marked=marked)
+
+    # --------------------------------------- bi-temporal belief timeline (04) ---
+    @app.get("/beliefs/{entity}/timeline", response_model=BeliefTimelineResponse)
+    async def belief_timeline_ep(entity: str) -> BeliefTimelineResponse:
+        """How a fact about ``entity`` evolved — every recorded claim with its
+        valid-time and ingest-time, oldest first."""
+        from auralynq.beliefs import get_belief_store
+
+        hist = get_belief_store().history(entity)
+        items = [
+            BeliefClaimItem(
+                **c.as_dict(),
+                current=(c.valid_to is None and c.superseded_by is None),
+            )
+            for c in hist
+        ]
+        return BeliefTimelineResponse(
+            entity=entity,
+            claims=items,
+            current_count=sum(1 for i in items if i.current),
+        )
+
+    # ------------------------------------------ GraphRAG communities (02) ---
+    @app.get("/graphrag/communities", response_model=CommunitiesResponse)
+    async def graphrag_communities_ep() -> CommunitiesResponse:
+        """Corpus-wide community summaries (themes) built from the KG."""
+        s = get_settings()
+        if not s.graphrag.enabled:
+            return CommunitiesResponse(enabled=False)
+        from auralynq.retrieval.graphrag import load_communities
+
+        raw = load_communities(s.communities_path)
+        items = [
+            CommunityItem(
+                id=c.get("id", 0),
+                level=c.get("level", 0),
+                entities=c.get("entities", []),
+                size=c.get("size", 0),
+                summary=c.get("summary", ""),
+                sources=c.get("sources", []),
+            )
+            for c in raw
+        ]
+        return CommunitiesResponse(enabled=True, count=len(items), communities=items)
+
+    # ------------------------------------------ ColPali visual search (01) ---
+    @app.get("/visual/search", response_model=VisualSearchResponse)
+    async def visual_search_ep(q: str, k: int = 6) -> VisualSearchResponse:
+        """Late-interaction visual retrieval: rank page images by MaxSim against
+        the query; each hit carries a patch bbox localizing the answer region."""
+        s = get_settings()
+        if not s.visual.visual_retrieval_enabled:
+            return VisualSearchResponse(enabled=False, query=q)
+        from auralynq.retrieval.visual import VisualRetriever
+
+        res = VisualRetriever(settings=s).retrieve(q, k)
+        hits = []
+        for sc in res.chunks:
+            vg = sc.chunk.metadata.get("visual_grounding", {}) or {}
+            hits.append(
+                VisualHit(
+                    doc_id=sc.chunk.doc_id,
+                    page=sc.chunk.span.page,
+                    score=round(sc.score, 4),
+                    source=sc.chunk.source or sc.chunk.doc_id,
+                    normalized_bbox=vg.get("normalized_bbox", []),
+                    text=sc.chunk.text[:280],
+                )
+            )
+        return VisualSearchResponse(
+            enabled=True, query=q, embedder=str(res.metadata.get("embedder", "")), hits=hits
+        )
 
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)
