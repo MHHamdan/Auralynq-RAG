@@ -96,7 +96,10 @@ def _ragas_real(samples: list[dict]) -> RagasScores:  # pragma: no cover - heavy
         ]
     )
     res = ragas_evaluate(ds, metrics=[faithfulness, answer_relevancy, context_precision])
-    df = res.to_pandas()
+    # Newer ragas annotates evaluate() as EvaluationResult | Executor; at runtime
+    # it is always an EvaluationResult here. (warn_unused_ignores=false keeps this
+    # safe on ragas versions that return EvaluationResult directly.)
+    df = res.to_pandas()  # type: ignore[union-attr]
     return RagasScores(
         faithfulness=round(float(df["faithfulness"].mean()), 4),
         answer_relevancy=round(float(df["answer_relevancy"].mean()), 4),
