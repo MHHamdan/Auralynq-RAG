@@ -64,6 +64,7 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
     kg_chunks = store.all_chunks() or all_chunks
     wiki_pages = 0
     belief_claims = 0
+    n_communities = 0
     if kg_chunks:
         kg = build_from_chunks(kg_chunks)
         kg.save(graph_path())
@@ -86,6 +87,16 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
                 belief_claims = populate_beliefs(kg, kg_chunks, get_belief_store(s.beliefs_db))
             except Exception as e:  # pragma: no cover - non-fatal by design
                 _log.warning("beliefs.populate_failed", error=str(e))
+        # GraphRAG community summaries — corpus-wide sensemaking over the KG.
+        # Additive and gated; never blocks indexing on failure.
+        if s.graphrag.enabled and s.graphrag.auto_build:
+            try:
+                from auralynq.retrieval.graphrag import build_communities
+
+                communities = build_communities(kg, settings=s)
+                n_communities = len(communities)
+            except Exception as e:  # pragma: no cover - non-fatal by design
+                _log.warning("graphrag.build_failed", error=str(e))
     else:
         kg = load_graph()  # nothing to index and nothing stored; keep existing
 
@@ -105,6 +116,8 @@ def index_documents(documents: list[Document]) -> dict[str, Any]:
         stats["wiki_pages"] = wiki_pages
     if s.beliefs.enabled:
         stats["belief_claims"] = belief_claims
+    if s.graphrag.enabled:
+        stats["communities"] = n_communities
     return stats
 
 
