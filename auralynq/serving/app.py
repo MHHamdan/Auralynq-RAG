@@ -48,6 +48,10 @@ from auralynq.serving.errors import (
 )
 from auralynq.serving.ratelimit import RateLimitMiddleware
 from auralynq.serving.schemas import (
+    AlertItem,
+    AlertReadRequest,
+    AlertReadResponse,
+    AlertsResponse,
     ConnectorsStatusResponse,
     ConnectorStatus,
     ConnectorSyncResponse,
@@ -532,6 +536,25 @@ def create_app() -> FastAPI:
 
         report = WikiStore(s.wiki_dir).lint()
         return WikiLintResponse(enabled=True, **report)
+
+    # ------------------------------------------- contradiction alerts (03) ---
+    @app.get("/alerts", response_model=AlertsResponse)
+    async def alerts_ep(unread_only: bool = False) -> AlertsResponse:
+        """Proactive contradiction alerts raised when a synced document overturns
+        a prior belief. Newest first."""
+        from auralynq.beliefs.alerts import get_alert_store
+
+        store = get_alert_store()
+        items = [AlertItem(**a.as_dict()) for a in store.list_alerts(unread_only=unread_only)]
+        return AlertsResponse(alerts=items, unread_count=store.unread_count())
+
+    @app.post("/alerts/read", response_model=AlertReadResponse)
+    async def alerts_read_ep(req: AlertReadRequest) -> AlertReadResponse:
+        """Mark the given alert ids read (or all when ``ids`` is omitted)."""
+        from auralynq.beliefs.alerts import get_alert_store
+
+        marked = get_alert_store().mark_read(req.ids)
+        return AlertReadResponse(marked=marked)
 
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)
