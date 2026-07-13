@@ -18,6 +18,8 @@ DEFAULT_THRESHOLDS: dict[str, tuple[str, float]] = {
     "attribution_rate": (">=", 0.5),
     "unsupported_claim_rate": ("<=", 0.5),
     "ece": ("<=", 0.2),
+    # Self-consistency hallucination ceiling (only gated when the signal is on).
+    "hallucination_rate": ("<=", 0.5),
 }
 
 
@@ -47,6 +49,9 @@ def extract_metrics(report: dict[str, Any]) -> dict[str, float]:
     cal = ag.get("calibration", {})
     if "ece" in cal:
         out["ece"] = cal["ece"]
+    cons = ag.get("consistency", {})
+    if cons.get("hallucination_rate") is not None:
+        out["hallucination_rate"] = cons["hallucination_rate"]
     return out
 
 
