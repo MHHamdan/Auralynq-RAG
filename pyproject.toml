@@ -70,7 +70,7 @@ telemetry = [
 slm = ["llama-cpp-python>=0.3", "huggingface_hub>=0.23"]
 mcp = ["mcp>=1.0"]
 dev = [
-  "ruff>=0.5",
+  "ruff>=0.15.18,<0.16",
   "mypy>=1.10",
   "pytest>=8.2",
   "pytest-cov>=5.0",

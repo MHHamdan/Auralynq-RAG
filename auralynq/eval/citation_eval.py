@@ -21,8 +21,30 @@ from dataclasses import asdict, dataclass
 
 from auralynq.utils import tokenize
 
-_STOP = {"the", "a", "an", "is", "are", "was", "were", "of", "to", "in", "on",
-         "and", "or", "that", "this", "it", "as", "for", "with", "by", "at", "be"}
+_STOP = {
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "of",
+    "to",
+    "in",
+    "on",
+    "and",
+    "or",
+    "that",
+    "this",
+    "it",
+    "as",
+    "for",
+    "with",
+    "by",
+    "at",
+    "be",
+}
 
 # A cited chunk counts as "used" if it shares at least this fraction of the
 # answer's content tokens; a claim is "supported" if this fraction of *its*
@@ -79,7 +101,7 @@ def citation_scores(samples: list[dict], *, judge=None) -> CitationScores:
         joined_evidence = "\n".join((c.get("text") or "") for c in cites)
 
         # precision: each cited chunk should actually back the answer
-        for c, ct in zip(cites, cite_tokens):
+        for c, ct in zip(cites, cite_tokens, strict=False):
             prec_den += 1
             lexical_ok = bool(ct) and _overlap(ans_tokens, ct) >= CITATION_USED_TAU
             if judge is not None:
@@ -113,7 +135,9 @@ def citation_scores(samples: list[dict], *, judge=None) -> CitationScores:
     )
 
 
-def _claim_supported(sent: str, sent_tokens: set[str], joined_evidence: str, cite_tokens, judge) -> bool:
+def _claim_supported(
+    sent: str, sent_tokens: set[str], joined_evidence: str, cite_tokens, judge
+) -> bool:
     lexical = any(_overlap(sent_tokens, ct) >= CLAIM_SUPPORT_TAU for ct in cite_tokens)
     if judge is None:
         return lexical

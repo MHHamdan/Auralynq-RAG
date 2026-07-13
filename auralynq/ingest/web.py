@@ -72,7 +72,7 @@ def _host_is_public(host: str, *, allow_private: bool) -> bool:
     for info in infos:
         ip = info[4][0]
         try:
-            addr = ipaddress.ip_address(ip.split("%")[0])  # strip zone id
+            addr = ipaddress.ip_address(str(ip).split("%")[0])  # strip zone id
         except ValueError:
             return False
         if (
@@ -93,7 +93,9 @@ def _host_is_public(host: str, *, allow_private: bool) -> bool:
 def _validate_url(url: str, *, allow_private: bool) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        raise WebFetchError(f"Only http(s) URLs are supported (got {parsed.scheme or 'no scheme'}).")
+        raise WebFetchError(
+            f"Only http(s) URLs are supported (got {parsed.scheme or 'no scheme'})."
+        )
     host = parsed.hostname
     if not host:
         raise WebFetchError("URL has no host.")
@@ -137,7 +139,7 @@ def _extract_bs4(html: str) -> tuple[str, str | None, str | None]:
     title = None
     og = soup.find("meta", property="og:title")
     if og and og.get("content"):
-        title = og["content"].strip()
+        title = str(og["content"]).strip()
     if not title and soup.title and soup.title.string:
         title = soup.title.string.strip()
     if not title:
@@ -146,12 +148,16 @@ def _extract_bs4(html: str) -> tuple[str, str | None, str | None]:
             title = h1.get_text(strip=True)
 
     byline = None
-    author = soup.find("meta", attrs={"name": "author"}) or soup.find("meta", property="article:author")
+    author = soup.find("meta", attrs={"name": "author"}) or soup.find(
+        "meta", property="article:author"
+    )
     if author and author.get("content"):
-        byline = author["content"].strip()
+        byline = str(author["content"]).strip()
 
     # strip non-content chrome
-    for tag in soup(["script", "style", "noscript", "nav", "header", "footer", "aside", "form", "iframe", "svg"]):
+    for tag in soup(
+        ["script", "style", "noscript", "nav", "header", "footer", "aside", "form", "iframe", "svg"]
+    ):
         tag.decompose()
 
     # prefer semantic main content; else the densest block
@@ -216,7 +222,9 @@ def fetch_url(
             resp.raise_for_status()
             ctype = resp.headers.get("content-type", "")
             if "html" not in ctype and "xml" not in ctype and not ctype.startswith("text/"):
-                raise WebFetchError(f"Unsupported content type '{ctype or 'unknown'}' — expected HTML.")
+                raise WebFetchError(
+                    f"Unsupported content type '{ctype or 'unknown'}' — expected HTML."
+                )
             raw = resp.content[: max_bytes + 1]
             if len(raw) > max_bytes:
                 raise WebFetchError(f"Page exceeds the {max_bytes // 1_000_000} MB limit.")

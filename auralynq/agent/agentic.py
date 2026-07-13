@@ -122,7 +122,9 @@ def agentic_steps(state: AgentState, deps: AgentDeps):
     max_hops = max(1, s.agent.agentic_max_hops)
 
     with deps.trace.span("agentic_decompose") as sp:
-        sub_questions = _decompose(deps.llm, state.original_question, s.agent.agentic_max_subquestions)
+        sub_questions = _decompose(
+            deps.llm, state.original_question, s.agent.agentic_max_subquestions
+        )
         state.sub_questions = sub_questions
         sp.attributes.update(n_sub=len(sub_questions), sub_questions=sub_questions)
     yield {
@@ -163,23 +165,30 @@ def agentic_steps(state: AgentState, deps: AgentDeps):
         # to keep going (Self-RAG sufficiency) and propose the next query.
         if not queue and state.hops < max_hops and not state.out_of_budget():
             followup = _judge_sufficiency(deps.llm, state.original_question, state)
-            sufficient = not (followup and followup.strip().lower() not in seen)
-            if not sufficient:
+            if followup and followup.strip().lower() not in seen:
                 queue.append(followup)
                 state.notes.append(f"hop {state.hops}: follow-up → {followup}")
+                sufficient, detail = False, f"follow-up: {followup}"
+            else:
+                sufficient, detail = True, "sufficient"
             yield {
                 "type": "step",
                 "phase": "check",
                 "label": "Assessing evidence",
                 "sufficient": sufficient,
-                "detail": "sufficient" if sufficient else f"follow-up: {followup}",
+                "detail": detail,
             }
 
     # Fuse the full accumulated pool once; the caller synthesizes the answer.
     state.question = state.original_question
     state = node_fuse(state, deps)
     yield {"type": "step", "phase": "synthesize", "label": "Synthesizing answer"}
-    _log.info("agentic.loop", hops=state.hops, sub_questions=len(sub_questions), contexts=len(state.contexts))
+    _log.info(
+        "agentic.loop",
+        hops=state.hops,
+        sub_questions=len(sub_questions),
+        contexts=len(state.contexts),
+    )
 
 
 def run_agentic(state: AgentState, deps: AgentDeps) -> AgentState:

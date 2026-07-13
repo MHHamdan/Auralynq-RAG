@@ -24,10 +24,24 @@ class _FakeLLM:
 
 def _doc(n_chunks=3):
     chunks = [
-        Chunk(id=Chunk.make_id("d1", i), doc_id="d1", text=f"Sentence number {i} about Ericsson patents.", ordinal=i, source="e.pdf", source_type=SourceType.html)
+        Chunk(
+            id=Chunk.make_id("d1", i),
+            doc_id="d1",
+            text=f"Sentence number {i} about Ericsson patents.",
+            ordinal=i,
+            source="e.pdf",
+            source_type=SourceType.html,
+        )
         for i in range(n_chunks)
     ]
-    return Document(id="d1", source="e.pdf", source_type=SourceType.html, title="Ericsson", content_hash="h", chunks=chunks)
+    return Document(
+        id="d1",
+        source="e.pdf",
+        source_type=SourceType.html,
+        title="Ericsson",
+        content_hash="h",
+        chunks=chunks,
+    )
 
 
 def test_embed_text_prepends_context_only_when_present():

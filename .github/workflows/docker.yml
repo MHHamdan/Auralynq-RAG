@@ -27,7 +27,7 @@ jobs:
   build-hf-space:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build single-container HF Space image (no push)
@@ -54,7 +54,7 @@ jobs:
   build-api:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - name: Build API image (no push)

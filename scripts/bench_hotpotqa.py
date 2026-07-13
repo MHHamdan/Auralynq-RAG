@@ -13,8 +13,6 @@ real (Ollama LLM + bge/ollama embeddings) — nothing hand-written.
 from __future__ import annotations
 
 import json
-import statistics
-from pathlib import Path
 
 from auralynq.config import get_settings
 from auralynq.eval.datasets import GoldenItem
@@ -47,7 +45,10 @@ def main(limit: int | None = None) -> None:
     corpus = s.data_dir / "corpus_hf"
     _log.info("bench_hotpotqa.indexing", corpus=str(corpus))
     stats = build_index(corpus, rebuild=True)
-    _log.info("bench_hotpotqa.indexed", **{k: stats[k] for k in ("chunks_indexed", "documents") if k in stats})
+    _log.info(
+        "bench_hotpotqa.indexed",
+        **{k: stats[k] for k in ("chunks_indexed", "documents") if k in stats},
+    )
 
     golden = _load_hf_golden()
     if limit:

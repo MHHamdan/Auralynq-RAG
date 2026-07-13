@@ -56,7 +56,9 @@ def test_citation_scores_use_judge():
     good = {"text": "Ericsson filed FRAND patents with standards bodies", "source": "e.pdf"}
     spurious = {"text": "The weather was sunny all weekend", "source": "w.pdf"}
 
-    s = citation_scores([{"answer": "Ericsson filed FRAND patents.", "citations": [good, spurious]}], judge=j)
+    s = citation_scores(
+        [{"answer": "Ericsson filed FRAND patents.", "citations": [good, spurious]}], judge=j
+    )
     assert s.method == "llm_judge"
     assert s.citation_precision == 0.5  # good cited chunk backs the answer, spurious does not
     assert s.attribution_rate == 1.0  # the single claim is entailed by the good citation
@@ -65,7 +67,12 @@ def test_citation_scores_use_judge():
 def test_citation_judge_falls_back_to_lexical_when_undecided():
     # judge always undecided → falls back to the lexical scorer, not zero
     j = LLMJudge(_FnLLM(lambda p: "hmm"))
-    good = {"text": "Ericsson filed fair reasonable FRAND patent licensing terms", "source": "e.pdf"}
-    s = citation_scores([{"answer": "Ericsson filed FRAND patent licensing terms.", "citations": [good]}], judge=j)
+    good = {
+        "text": "Ericsson filed fair reasonable FRAND patent licensing terms",
+        "source": "e.pdf",
+    }
+    s = citation_scores(
+        [{"answer": "Ericsson filed FRAND patent licensing terms.", "citations": [good]}], judge=j
+    )
     assert s.method == "llm_judge"
     assert s.citation_precision == 1.0  # lexical fallback still credits the overlapping citation

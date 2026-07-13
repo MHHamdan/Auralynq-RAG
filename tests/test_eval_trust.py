@@ -7,7 +7,6 @@ from auralynq.eval.calibration import answer_correct, calibration_scores
 from auralynq.eval.citation_eval import citation_scores
 from auralynq.eval.gate import eval_gate
 
-
 # ── calibration ─────────────────────────────────────────────────────────────
 
 
@@ -37,7 +36,10 @@ def test_calibration_empty():
 
 def test_answer_correct():
     assert answer_correct("The capital is Paris.", "Paris") is True
-    assert answer_correct("Ericsson filed FRAND patent licensing terms", "FRAND patent licensing") is True
+    assert (
+        answer_correct("Ericsson filed FRAND patent licensing terms", "FRAND patent licensing")
+        is True
+    )
     assert answer_correct("The weather is sunny", "Paris") is False
     assert answer_correct("", "Paris") is False
 
@@ -46,8 +48,14 @@ def test_answer_correct():
 
 
 def test_citation_precision_penalizes_spurious():
-    good = {"text": "Ericsson filed fair reasonable FRAND patent licensing terms with standards bodies", "source": "ericsson.pdf"}
-    spurious = {"text": "The weather in Paris was sunny throughout the summer holidays", "source": "weather.pdf"}
+    good = {
+        "text": "Ericsson filed fair reasonable FRAND patent licensing terms with standards bodies",
+        "source": "ericsson.pdf",
+    }
+    spurious = {
+        "text": "The weather in Paris was sunny throughout the summer holidays",
+        "source": "weather.pdf",
+    }
     answer = "Ericsson filed FRAND patent licensing terms."
 
     both = citation_scores([{"answer": answer, "citations": [good, spurious]}])
@@ -60,7 +68,9 @@ def test_citation_precision_penalizes_spurious():
 
 def test_attribution_and_unsupported_rate():
     # one supported claim + one unsupported claim
-    cites = [{"text": "Ericsson filed fair reasonable FRAND patent licensing terms", "source": "e.pdf"}]
+    cites = [
+        {"text": "Ericsson filed fair reasonable FRAND patent licensing terms", "source": "e.pdf"}
+    ]
     answer = "Ericsson filed FRAND patent licensing terms. The moon orbits earth every month."
     s = citation_scores([{"answer": answer, "citations": cites}])
     assert 0.0 < s.attribution_rate < 1.0  # first claim supported, second not
@@ -80,7 +90,11 @@ def _report(cit_prec, ece, faith=0.8, recall=0.8, attr=0.8, unsup=0.2):
         "agentic": {
             "retrieval": {"recall_at_k": recall},
             "ragas": {"faithfulness": faith},
-            "citation": {"citation_precision": cit_prec, "attribution_rate": attr, "unsupported_claim_rate": unsup},
+            "citation": {
+                "citation_precision": cit_prec,
+                "attribution_rate": attr,
+                "unsupported_claim_rate": unsup,
+            },
             "calibration": {"ece": ece},
         }
     }

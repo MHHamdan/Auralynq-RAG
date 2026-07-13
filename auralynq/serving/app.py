@@ -37,6 +37,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from auralynq import __version__
 from auralynq.config import get_settings
 from auralynq.providers import health_snapshot
+from auralynq.retrieval.models import Filter
 from auralynq.serving.auth import AuthMiddleware
 from auralynq.serving.errors import (
     AuralynqError,
@@ -45,33 +46,26 @@ from auralynq.serving.errors import (
     unhandled_error_handler,
     validation_error_handler,
 )
-from auralynq.retrieval.models import Filter
 from auralynq.serving.ratelimit import RateLimitMiddleware
 from auralynq.serving.schemas import (
-    CorpusClearConfirmRequest,
-    CorpusDocument,
-    CorpusDocumentsResponse,
     ConnectorsStatusResponse,
     ConnectorStatus,
     ConnectorSyncResponse,
-    IngestUrlRequest,
-    IngestUrlResponse,
-    WatchStatusResponse,
-    WatchSyncResponse,
-    WikiLintResponse,
-    WikiPageResponse,
-    WikiPageSummary,
-    WikiPagesResponse,
+    CorpusClearConfirmRequest,
     CorpusClearPreviewResponse,
     CorpusDeleteDocumentConfirmRequest,
     CorpusDeleteDocumentPreviewResponse,
     CorpusDeleteReportResponse,
+    CorpusDocument,
+    CorpusDocumentsResponse,
     CorpusSummaryResponse,
     DocumentGroundingStatusResponse,
     DocumentPagesResponse,
     EvalFeedbackRequest,
     HealthResponse,
     IngestResponse,
+    IngestUrlRequest,
+    IngestUrlResponse,
     ObservabilitySummaryResponse,
     PageInfo,
     PageLayoutBlock,
@@ -83,6 +77,12 @@ from auralynq.serving.schemas import (
     StatusResponse,
     SuggestionsResponse,
     VoiceResponse,
+    WatchStatusResponse,
+    WatchSyncResponse,
+    WikiLintResponse,
+    WikiPageResponse,
+    WikiPagesResponse,
+    WikiPageSummary,
 )
 from auralynq.telemetry import configure_logging, get_logger, init_telemetry
 
@@ -465,7 +465,9 @@ def create_app() -> FastAPI:
 
         conn = get_connector(name)
         if conn is None:
-            raise AuralynqError("unknown_connector", detail=f"No connector '{name}'.", status_code=404)
+            raise AuralynqError(
+                "unknown_connector", detail=f"No connector '{name}'.", status_code=404
+            )
         report = await asyncio.to_thread(sync_connector, conn)
         invalidate = report.get("added", 0) or report.get("updated", 0) or report.get("removed", 0)
         if invalidate:
@@ -477,9 +479,7 @@ def create_app() -> FastAPI:
 
     # ---------------------------------------------------- compounding wiki --
     @app.get("/wiki/entities", response_model=WikiPagesResponse)
-    async def wiki_entities_ep(
-        limit: int = 100, sort: str = "mentions"
-    ) -> WikiPagesResponse:
+    async def wiki_entities_ep(limit: int = 100, sort: str = "mentions") -> WikiPagesResponse:
         s = get_settings()
         if not s.wiki.enabled:
             return WikiPagesResponse(enabled=False, count=0, pages=[])

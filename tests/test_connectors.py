@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from auralynq.connectors.base import ConnectorDoc
 from auralynq.connectors.gdrive import GDriveConnector
 from auralynq.connectors.notion import NotionConnector
@@ -46,7 +44,9 @@ class _FakeNotion:
                             "id": "p1",
                             "last_edited_time": "2026-07-12T10:00:00.000Z",
                             "url": "https://notion.so/p1",
-                            "properties": {"Name": {"type": "title", "title": [{"plain_text": "Roadmap"}]}},
+                            "properties": {
+                                "Name": {"type": "title", "title": [{"plain_text": "Roadmap"}]}
+                            },
                         }
                     ],
                     "has_more": False,
@@ -59,8 +59,20 @@ class _FakeNotion:
             return _Resp(
                 {
                     "results": [
-                        {"id": "b1", "type": "heading_1", "heading_1": {"rich_text": [{"plain_text": "Q3 Goals"}]}, "has_children": False},
-                        {"id": "b2", "type": "paragraph", "paragraph": {"rich_text": [{"plain_text": "Ship connectors and web ingest."}]}, "has_children": False},
+                        {
+                            "id": "b1",
+                            "type": "heading_1",
+                            "heading_1": {"rich_text": [{"plain_text": "Q3 Goals"}]},
+                            "has_children": False,
+                        },
+                        {
+                            "id": "b2",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [{"plain_text": "Ship connectors and web ingest."}]
+                            },
+                            "has_children": False,
+                        },
                     ],
                     "has_more": False,
                 }
@@ -99,9 +111,23 @@ class _FakeSlack:
 
     def get(self, path, params=None):
         if path == "/conversations.list":
-            return _Resp({"ok": True, "channels": [{"id": "C1", "name": "eng"}], "response_metadata": {"next_cursor": ""}})
+            return _Resp(
+                {
+                    "ok": True,
+                    "channels": [{"id": "C1", "name": "eng"}],
+                    "response_metadata": {"next_cursor": ""},
+                }
+            )
         if path == "/conversations.history":
-            return _Resp({"ok": True, "messages": [{"ts": "200.0", "text": "second"}, {"ts": "100.0", "text": "first"}]})
+            return _Resp(
+                {
+                    "ok": True,
+                    "messages": [
+                        {"ts": "200.0", "text": "second"},
+                        {"ts": "100.0", "text": "first"},
+                    ],
+                }
+            )
         return _Resp({"ok": False, "error": "unknown_method"})
 
 
@@ -145,7 +171,17 @@ class _FakeDriveService:
     def execute(self):
         op, _ = self._op
         if op == "list":
-            return {"files": [{"id": "f1", "name": "Spec.gdoc", "mimeType": "application/vnd.google-apps.document", "modifiedTime": "2026-07-12T09:00:00Z", "webViewLink": "https://docs.google.com/f1"}]}
+            return {
+                "files": [
+                    {
+                        "id": "f1",
+                        "name": "Spec.gdoc",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "modifiedTime": "2026-07-12T09:00:00Z",
+                        "webViewLink": "https://docs.google.com/f1",
+                    }
+                ]
+            }
         if op == "token":
             return {"startPageToken": "tok-1"}
         if op == "export":
@@ -194,7 +230,14 @@ class _FakeConnector:
 
 
 def _doc(source, text, h):
-    return ConnectorDoc(id=source, source=source, title=source, text=text, content_hash=h, authored_at="2026-07-12T00:00:00Z")
+    return ConnectorDoc(
+        id=source,
+        source=source,
+        title=source,
+        text=text,
+        content_hash=h,
+        authored_at="2026-07-12T00:00:00Z",
+    )
 
 
 def test_sync_connector_indexes_and_is_incremental(monkeypatch):

@@ -147,7 +147,9 @@ def eval(
     smoke: bool = typer.Option(False, "--smoke", help="Tiny smoke eval for CI."),
     gate: bool = typer.Option(False, "--gate", help="Exit non-zero if the trust gate fails (CI)."),
     judge: bool = typer.Option(
-        False, "--judge", help="Use the configured LLM as an NLI judge for citation/faithfulness/correctness."
+        False,
+        "--judge",
+        help="Use the configured LLM as an NLI judge for citation/faithfulness/correctness.",
     ),
 ) -> None:
     """Run the evaluation harness — retrieval metrics, faithfulness, citation

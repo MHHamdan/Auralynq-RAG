@@ -48,10 +48,7 @@ def _save_state(state: dict[str, dict[str, float]]) -> None:
 
 
 def _is_supported(p: Path) -> bool:
-    return (
-        p.suffix.lower() in SUPPORTED_EXTENSIONS
-        and not p.name.endswith(".transcript.json")
-    )
+    return p.suffix.lower() in SUPPORTED_EXTENSIONS and not p.name.endswith(".transcript.json")
 
 
 def scan(dirs: list[Path], recursive: bool = True) -> dict[str, dict[str, float]]:
