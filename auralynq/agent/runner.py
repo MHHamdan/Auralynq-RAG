@@ -63,6 +63,19 @@ def _is_refusal(answer: str, has_contexts: bool) -> bool:
     return not has_contexts and not low.strip()
 
 
+def _low_consistency(state: AgentState, settings: Any) -> bool:
+    """Hallucination-gate: self-consistency is enabled and an otherwise-grounded
+    answer is unstable under resampling (below the floor). Only fires when the
+    signal was actually computed, so it never abstains on the default (off) path."""
+    a = settings.agent
+    return bool(
+        a.self_consistency_enabled
+        and state.contexts
+        and (state.answer or "").strip()
+        and state.consistency < a.self_consistency_min
+    )
+
+
 def _snippets(state: AgentState, limit: int = 3) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for c in state.contexts[:limit]:
@@ -79,12 +92,33 @@ def _snippets(state: AgentState, limit: int = 3) -> list[dict[str, Any]]:
 
 
 def _insufficiency(
-    state: AgentState, detected: list[str], suggestions: list[str]
+    state: AgentState,
+    detected: list[str],
+    suggestions: list[str],
+    low_consistency: bool = False,
 ) -> dict[str, Any]:
     """Structured, trustworthy explanation of *why* we abstained."""
     snippets = _snippets(state)
     in_corpus = bool(detected)
     n = len(state.contexts)
+    if low_consistency:
+        why = (
+            f"The answer was unstable under resampling (self-consistency "
+            f"{state.consistency:.2f}) — a hallucination signal — so Auralynq "
+            "abstained rather than present a low-confidence guess."
+        )
+        return {
+            "summary": (
+                "Auralynq could not give a confident answer: the response was "
+                "inconsistent across samples (possible hallucination)."
+            ),
+            "detected_entities": detected,
+            "route_attempted": state.route.value,
+            "retrieved_snippets": snippets,
+            "why_insufficient": why,
+            "suggested_questions": suggestions,
+            "suggest_ingest": False,
+        }
     if not state.contexts:
         why = (
             "Retrieval returned no passages above the relevance threshold for this "
@@ -308,8 +342,14 @@ def answer_question(
     summary = corpus_summary()
     detected = detect_entities(question, summary)
     suggestions = suggested_questions(3, summary)
-    refused = _is_refusal(state.answer, bool(state.contexts))
+    low_consistency = _low_consistency(state, deps.settings)
+    refused = _is_refusal(state.answer, bool(state.contexts)) or low_consistency
     trace_list = trace.to_list()
+    if low_consistency:
+        state.notes.append(
+            f"abstained: answer inconsistent under resampling "
+            f"(s_consistency={state.consistency:.2f})"
+        )
     _maybe_file_answer(question, state, refused)
 
     result = AnswerResult(
@@ -332,7 +372,7 @@ def answer_question(
         detected_entities=detected,
         suggested_questions=suggestions,
         insufficient_evidence_reason=(
-            _insufficiency(state, detected, suggestions) if refused else None
+            _insufficiency(state, detected, suggestions, low_consistency) if refused else None
         ),
         warnings=list(state.notes),
         provider_status=describe_providers(),
@@ -457,8 +497,14 @@ def stream_answer_question(
     )
     from auralynq.serving.observability import to_trace_steps
 
-    refused = _is_refusal(state.answer, bool(state.contexts))
+    _low_cons = _low_consistency(state, deps.settings)
+    refused = _is_refusal(state.answer, bool(state.contexts)) or _low_cons
     trace_list = trace.to_list()
+    if _low_cons:
+        state.notes.append(
+            f"abstained: answer inconsistent under resampling "
+            f"(s_consistency={state.consistency:.2f})"
+        )
     _maybe_file_answer(question, state, refused)
 
     _model_fit = None
@@ -484,7 +530,7 @@ def stream_answer_question(
         "suggested_questions": _suggestions,
         "warnings": list(state.notes),
         "insufficient_evidence_reason": (
-            _insufficiency(state, _detected, _suggestions) if refused else None
+            _insufficiency(state, _detected, _suggestions, _low_cons) if refused else None
         ),
         "model_fit": _model_fit,
     }
