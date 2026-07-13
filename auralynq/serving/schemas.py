@@ -254,6 +254,22 @@ class CommunitiesResponse(BaseModel):
     communities: list[CommunityItem] = Field(default_factory=list)
 
 
+class VisualHit(BaseModel):
+    doc_id: str
+    page: int | None = None
+    score: float = 0.0
+    source: str = ""
+    normalized_bbox: list[float] = Field(default_factory=list)
+    text: str = ""
+
+
+class VisualSearchResponse(BaseModel):
+    enabled: bool = False
+    query: str = ""
+    embedder: str = ""
+    hits: list[VisualHit] = Field(default_factory=list)
+
+
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     corpus_indexed: bool = False

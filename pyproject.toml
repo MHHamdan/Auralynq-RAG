@@ -69,6 +69,9 @@ telemetry = [
 # Install the CUDA build for GPU: pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 slm = ["llama-cpp-python>=0.3", "huggingface_hub>=0.23"]
 mcp = ["mcp>=1.0"]
+# ColPali late-interaction visual retrieval (GPU-favored). torch comes from the
+# `embeddings` extra; a deterministic offline hash fallback runs without this.
+colpali = ["colpali-engine>=0.3", "pillow>=10.0"]
 dev = [
   "ruff>=0.15.18,<0.16",
   "mypy>=1.10,<2.2",  # stability cap; type-check targets py3.12 (see [tool.mypy])
@@ -147,6 +150,7 @@ omit = [
   "*/__main__.py",
   "*/vectorstore/qdrant_store.py",
   "*/vectorstore/chroma_store.py",
+  "*/retrieval/visual/colpali_embedder.py",
   "*/llm/providers.py",
   "*/llm/slm.py",
   "*/serving/worker.py",

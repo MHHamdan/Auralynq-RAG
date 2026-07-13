@@ -148,6 +148,13 @@ class VisualGroundingSettings(BaseSettings):
     # Enable experimental ColPali-style visual retrieval
     visual_retrieval_enabled: bool = False
     visual_retrieval_provider: Literal["none", "colpali", "local_vlm"] = "none"
+    # ColPali late-interaction tuning. The GPU model is used when the `colpali`
+    # extra is installed and provider="colpali"; otherwise a deterministic,
+    # offline hash patch-embedder keeps the path functional + $0 (lower quality).
+    visual_model: str = "vidore/colpali-v1.3"
+    visual_device: Literal["auto", "cpu", "cuda"] = "auto"
+    visual_patch_grid: int = 16  # NxN patch grid (offline fallback + query tokens)
+    visual_rerank_k: int = 20  # candidate pages scored per visual query
     # Grounding metadata schema version — bump when schema changes requiring reindex
     metadata_version: int = 1
 
@@ -355,6 +362,10 @@ class Settings(BaseSettings):
     @property
     def communities_path(self) -> Path:
         return self.index_dir / "communities.json"
+
+    @property
+    def visual_index_dir(self) -> Path:
+        return self.index_dir / "visual"
 
     @property
     def watch_dirs(self) -> list[Path]:
