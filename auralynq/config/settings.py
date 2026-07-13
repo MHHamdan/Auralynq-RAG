@@ -91,6 +91,12 @@ class AgentSettings(BaseSettings):
     # per hop with LLM-judged sufficiency + LLM follow-up queries (multi-hop).
     agentic_max_hops: int = 4
     agentic_max_subquestions: int = 4
+    # Self-consistency (SelfCheckGPT): resample the answer and measure stability
+    # as a hallucination signal. Off by default — each query costs N extra LLM
+    # calls. Advisory only (surfaced as the s_consistency confidence signal).
+    self_consistency_enabled: bool = False
+    self_consistency_samples: int = 5
+    self_consistency_temperature: float = 0.7
 
 
 class VoiceSettings(BaseSettings):

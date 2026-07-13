@@ -317,6 +317,36 @@ def node_self_check(state: AgentState, deps: AgentDeps) -> AgentState:
     return state
 
 
+def node_self_consistency(state: AgentState, deps: AgentDeps) -> AgentState:
+    """Optional SelfCheckGPT-style hallucination signal (paper §4.3 extension).
+
+    Resamples the answer and records how stable it is as ``s_consistency`` in
+    ``confidence_signals``. Runs *after* ``node_self_check`` so it augments the
+    signal dict without being overwritten. Advisory-only here (does not change
+    the abstention decision); off by default (N extra LLM calls per query).
+    """
+    a = deps.settings.agent
+    if not a.self_consistency_enabled or not state.answer or not state.contexts:
+        return state
+    from auralynq.agent.self_consistency import consistency_score, sample_answers
+
+    with deps.trace.span("self_consistency") as sp:
+        contexts = _contexts_for_llm(state)
+        samples = sample_answers(
+            deps.llm,
+            state.original_question or state.question,
+            contexts,
+            a.self_consistency_samples,
+            temperature=a.self_consistency_temperature,
+            max_tokens=deps.settings.llm.max_tokens,
+        )
+        score = consistency_score(state.answer, samples)
+        state.consistency = score
+        state.confidence_signals["s_consistency"] = score
+        sp.attributes.update(samples=len(samples), consistency=score)
+    return state
+
+
 def _retrieval_score_quality(contexts: list) -> float:
     """Mean retrieval score normalised to [0,1].
 

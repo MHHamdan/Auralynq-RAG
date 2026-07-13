@@ -95,6 +95,7 @@ def _agentic(golden, k: int, judge=None) -> dict[str, Any]:
     cite_samples: list[dict] = []
     cal_pairs: list[tuple[float, bool]] = []
     faith_judged: list[float] = []
+    consistencies: list[float] = []
     from auralynq.agent import runner
     from auralynq.eval.calibration import answer_correct, calibration_scores
     from auralynq.eval.citation_eval import citation_scores
@@ -125,6 +126,9 @@ def _agentic(golden, k: int, judge=None) -> dict[str, Any]:
         else:
             correct = answer_correct(res.answer, item.answer)
         cal_pairs.append((res.confidence, correct))
+        cons = res.confidence_signals.get("s_consistency")
+        if cons is not None:
+            consistencies.append(cons)
     scores = aggregate(cases, k=k)
     ragas = ragas_evaluate(samples)
     citation = citation_scores(cite_samples, judge=judge)
@@ -163,6 +167,14 @@ def _agentic(golden, k: int, judge=None) -> dict[str, Any]:
             "accuracy": calibration.accuracy,
             "avg_confidence": calibration.avg_confidence,
             "bins": calibration.bins,
+        },
+        # SelfCheckGPT self-consistency (populated only when the agent's
+        # self_consistency signal is enabled). mean in [0,1]; lower = more
+        # answer drift under resampling = higher hallucination risk.
+        "consistency": {
+            "enabled": bool(consistencies),
+            "mean": round(sum(consistencies) / len(consistencies), 4) if consistencies else None,
+            "n": len(consistencies),
         },
     }
 
