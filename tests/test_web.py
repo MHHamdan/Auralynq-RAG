@@ -8,7 +8,6 @@ stack (hash embedder + memory store from conftest).
 from __future__ import annotations
 
 import pytest
-
 from auralynq.ingest.web import WebFetchError, WebPage, _extract_bs4, _validate_url
 
 

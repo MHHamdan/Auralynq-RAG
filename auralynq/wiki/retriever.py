@@ -20,9 +20,35 @@ from auralynq.wiki.store import WikiStore
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _MARKER_RE = re.compile(r"\[\d+\]")
 _STOP = {
-    "the", "a", "an", "of", "to", "in", "on", "for", "and", "or", "is", "are",
-    "was", "were", "what", "who", "where", "when", "why", "how", "does", "do",
-    "did", "with", "about", "tell", "me", "explain", "describe",
+    "the",
+    "a",
+    "an",
+    "of",
+    "to",
+    "in",
+    "on",
+    "for",
+    "and",
+    "or",
+    "is",
+    "are",
+    "was",
+    "were",
+    "what",
+    "who",
+    "where",
+    "when",
+    "why",
+    "how",
+    "does",
+    "do",
+    "did",
+    "with",
+    "about",
+    "tell",
+    "me",
+    "explain",
+    "describe",
 }
 
 
@@ -41,7 +67,7 @@ def _strip_frontmatter(md: str) -> str:
 class WikiRetriever:
     name = "wiki"
 
-    def __init__(self, wiki_dir) -> None:  # noqa: ANN001 - Path
+    def __init__(self, wiki_dir) -> None:
         self.store = WikiStore(wiki_dir)
 
     def retrieve(self, query: str, k: int = 2) -> RetrievalResult:
@@ -80,9 +106,7 @@ class WikiRetriever:
                 source_type=SourceType.text,
                 title=title,
             )
-            chunks.append(
-                ScoredChunk(chunk=chunk, score=round(score, 4), method="wiki", rank=rank)
-            )
+            chunks.append(ScoredChunk(chunk=chunk, score=round(score, 4), method="wiki", rank=rank))
         return RetrievalResult(
             query=query,
             method="wiki",

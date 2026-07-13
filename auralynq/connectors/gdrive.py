@@ -60,7 +60,11 @@ class GDriveConnector:
         from googleapiclient.discovery import build  # type: ignore[import-untyped]
 
         raw = self._creds_raw.strip()
-        info = json.loads(Path(raw).read_text()) if raw.endswith(".json") and Path(raw).exists() else json.loads(raw)
+        info = (
+            json.loads(Path(raw).read_text())
+            if raw.endswith(".json") and Path(raw).exists()
+            else json.loads(raw)
+        )
         creds = service_account.Credentials.from_service_account_info(info, scopes=_SCOPES)
         return build("drive", "v3", credentials=creds, cache_discovery=False)
 
@@ -93,7 +97,11 @@ class GDriveConnector:
             # Full backfill: enumerate readable files.
             resp = (
                 service.files()
-                .list(pageSize=min(self._max_files, 1000), fields=f"files({fields_file})", q="trashed=false")
+                .list(
+                    pageSize=min(self._max_files, 1000),
+                    fields=f"files({fields_file})",
+                    q="trashed=false",
+                )
                 .execute()
             )
             files = resp.get("files", [])

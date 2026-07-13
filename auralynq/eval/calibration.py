@@ -14,8 +14,30 @@ from dataclasses import asdict, dataclass
 
 from auralynq.utils import tokenize
 
-_STOP = {"the", "a", "an", "is", "are", "was", "were", "of", "to", "in", "on",
-         "and", "or", "that", "this", "it", "as", "for", "with", "by", "at", "be"}
+_STOP = {
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "was",
+    "were",
+    "of",
+    "to",
+    "in",
+    "on",
+    "and",
+    "or",
+    "that",
+    "this",
+    "it",
+    "as",
+    "for",
+    "with",
+    "by",
+    "at",
+    "be",
+}
 
 #: A prediction is "correct" if it covers this fraction of the ground-truth's
 #: content tokens (or contains the ground-truth string). Deterministic, offline.
@@ -68,13 +90,19 @@ def calibration_scores(pairs: list[tuple[float, bool]], *, n_bins: int = 10) -> 
         hi = (i + 1) / n_bins
         # last bin is closed on the right so confidence==1.0 lands somewhere
         in_bin = [
-            (c, y)
-            for c, y in pairs
-            if (c >= lo and c < hi) or (i == n_bins - 1 and c == 1.0)
+            (c, y) for c, y in pairs if (c >= lo and c < hi) or (i == n_bins - 1 and c == 1.0)
         ]
         cnt = len(in_bin)
         if cnt == 0:
-            bins.append({"lo": round(lo, 2), "hi": round(hi, 2), "count": 0, "accuracy": None, "confidence": None})
+            bins.append(
+                {
+                    "lo": round(lo, 2),
+                    "hi": round(hi, 2),
+                    "count": 0,
+                    "accuracy": None,
+                    "confidence": None,
+                }
+            )
             continue
         acc = sum(1 for _, y in in_bin if y) / cnt
         conf = sum(c for c, _ in in_bin) / cnt
@@ -82,7 +110,13 @@ def calibration_scores(pairs: list[tuple[float, bool]], *, n_bins: int = 10) -> 
         ece += (cnt / n) * gap
         mce = max(mce, gap)
         bins.append(
-            {"lo": round(lo, 2), "hi": round(hi, 2), "count": cnt, "accuracy": round(acc, 4), "confidence": round(conf, 4)}
+            {
+                "lo": round(lo, 2),
+                "hi": round(hi, 2),
+                "count": cnt,
+                "accuracy": round(acc, 4),
+                "confidence": round(conf, 4),
+            }
         )
 
     brier = sum((c - (1.0 if y else 0.0)) ** 2 for c, y in pairs) / n

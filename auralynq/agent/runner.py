@@ -28,9 +28,11 @@ from auralynq.pipeline import load_graph
 from auralynq.retrieval.hybrid.retriever import HybridRetriever
 from auralynq.retrieval.models import Filter
 from auralynq.retrieval.pathrag.retriever import PathRAGRetriever
+from auralynq.telemetry import get_logger
 from auralynq.telemetry.tracing import Trace
 from auralynq.utils import stable_id
 
+_log = get_logger("auralynq.agent.runner")
 _CACHE = SemanticCache()
 
 

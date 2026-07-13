@@ -130,9 +130,7 @@ def node_retrieve(state: AgentState, deps: AgentDeps) -> AgentState:
         with deps.trace.span("wiki_retriever") as sp:
             res = deps.wiki.retrieve(state.question, k=2)
             state.contexts.extend(res.chunks)
-            sp.attributes.update(
-                n=len(res.chunks), matched=res.metadata.get("pages_matched", 0)
-            )
+            sp.attributes.update(n=len(res.chunks), matched=res.metadata.get("pages_matched", 0))
     return state
 
 

@@ -22,10 +22,22 @@ class _StubLLM:
 
 def _chunks() -> list[Chunk]:
     return [
-        Chunk(id="c0", doc_id="d", ordinal=0, source="geo.txt", source_type=SourceType.text,
-              text="Paris is the capital of France. France is in Europe."),
-        Chunk(id="c1", doc_id="d", ordinal=1, source="geo2.txt", source_type=SourceType.text,
-              text="Paris is the capital of France and a large city."),
+        Chunk(
+            id="c0",
+            doc_id="d",
+            ordinal=0,
+            source="geo.txt",
+            source_type=SourceType.text,
+            text="Paris is the capital of France. France is in Europe.",
+        ),
+        Chunk(
+            id="c1",
+            doc_id="d",
+            ordinal=1,
+            source="geo2.txt",
+            source_type=SourceType.text,
+            text="Paris is the capital of France and a large city.",
+        ),
     ]
 
 
@@ -39,13 +51,16 @@ def test_slug_is_filesystem_safe_and_stable():
 def test_wiki_store_roundtrip(tmp_path):
     store = WikiStore(tmp_path / "wiki_pages")
     meta = store.write_page(
-        "paris", title="Paris", body="Capital of France [1].",
-        sources=["geo.txt", "geo2.txt"], mentions=3,
+        "paris",
+        title="Paris",
+        body="Capital of France [1].",
+        sources=["geo.txt", "geo2.txt"],
+        mentions=3,
     )
     assert meta.path == "entity_paris.md"
     page = store.read_page("paris")
     assert page is not None
-    assert "title: \"Paris\"" in page["markdown"]
+    assert 'title: "Paris"' in page["markdown"]
     assert "Capital of France [1]." in page["markdown"]
     assert page["mentions"] == 3
     listed = store.list_pages()
@@ -98,9 +113,13 @@ def test_wiki_retriever_matches_entity(tmp_path):
     from auralynq.wiki.retriever import WikiRetriever
 
     store = WikiStore(tmp_path / "w")
-    store.write_page("auralynq", title="Auralynq",
-                     body="## Summary\nAuralynq fuses dense and sparse vectors [1][2].",
-                     sources=["a.md"], mentions=3)
+    store.write_page(
+        "auralynq",
+        title="Auralynq",
+        body="## Summary\nAuralynq fuses dense and sparse vectors [1][2].",
+        sources=["a.md"],
+        mentions=3,
+    )
     store.write_page("france", title="France", body="Country in Europe [1].", mentions=2)
 
     res = WikiRetriever(tmp_path / "w").retrieve("Tell me about Auralynq", k=2)
@@ -165,9 +184,16 @@ def test_contradiction_flagged_on_page_update(tmp_path):
     synthesize_wiki(build_from_chunks(_chunks()), _chunks(), llm=llm, settings=s)  # first pass
     # Second pass adds a NEW source about Paris → contradiction check fires only
     # when new evidence appears (re-synthesizing the same sources must NOT flag).
-    extra = _chunks() + [
-        Chunk(id="c9", doc_id="d2", ordinal=0, source="new.txt", source_type=SourceType.text,
-              text="Paris is a major capital city in France."),
+    extra = [
+        *_chunks(),
+        Chunk(
+            id="c9",
+            doc_id="d2",
+            ordinal=0,
+            source="new.txt",
+            source_type=SourceType.text,
+            text="Paris is a major capital city in France.",
+        ),
     ]
     synthesize_wiki(build_from_chunks(extra), extra, llm=llm, settings=s)
 

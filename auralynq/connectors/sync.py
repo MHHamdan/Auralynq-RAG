@@ -143,8 +143,8 @@ def sync_connector(connector: Connector, *, force: bool = False) -> dict[str, An
             _delete_document_by_id,
         )
 
-        live_sources = {sid for sid in seen_hashes}  # sources we know about
-        existing = {sid for sid in ids}
+        live_sources = set(seen_hashes)  # sources we know about
+        existing = set(ids)
         vanished = {src for src in live_sources if _source_id(src) not in existing}
         if vanished:
             by_source = {d.get("source", ""): d for d in _all_indexed_documents()}

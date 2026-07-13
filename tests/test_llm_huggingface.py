@@ -12,7 +12,9 @@ def test_model_for_keeps_hf_repo_ids():
     # HF repo ids (org/model) are trusted verbatim even when they contain
     # ollama-ish substrings like "llama"/"qwen"/"deepseek".
     assert _model_for("huggingface", "Qwen/Qwen2.5-72B-Instruct") == "Qwen/Qwen2.5-72B-Instruct"
-    assert _model_for("huggingface", "deepseek-ai/DeepSeek-V3-0324") == "deepseek-ai/DeepSeek-V3-0324"
+    assert (
+        _model_for("huggingface", "deepseek-ai/DeepSeek-V3-0324") == "deepseek-ai/DeepSeek-V3-0324"
+    )
     # A bare ollama-style tag is not a valid HF id → fall back to the PRO default.
     assert _model_for("huggingface", "llama3.2:3b") == "meta-llama/Llama-3.3-70B-Instruct"
 

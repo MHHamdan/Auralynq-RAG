@@ -72,12 +72,38 @@ def _seed_two_hop_corpus():
     from auralynq.pipeline import index_documents
 
     docs = [
-        Document(id="d1", source="a.txt", source_type=SourceType.text, title="a", content_hash="h1",
-                 chunks=[Chunk(id=Chunk.make_id("d1", 0), doc_id="d1", ordinal=0, source="a.txt",
-                               text="Ericsson's main competitor in mobile network equipment is Nokia.")]),
-        Document(id="d2", source="b.txt", source_type=SourceType.text, title="b", content_hash="h2",
-                 chunks=[Chunk(id=Chunk.make_id("d2", 0), doc_id="d2", ordinal=0, source="b.txt",
-                               text="Nokia was founded by Fredrik Idestam in 1865 as a pulp mill company.")]),
+        Document(
+            id="d1",
+            source="a.txt",
+            source_type=SourceType.text,
+            title="a",
+            content_hash="h1",
+            chunks=[
+                Chunk(
+                    id=Chunk.make_id("d1", 0),
+                    doc_id="d1",
+                    ordinal=0,
+                    source="a.txt",
+                    text="Ericsson's main competitor in mobile network equipment is Nokia.",
+                )
+            ],
+        ),
+        Document(
+            id="d2",
+            source="b.txt",
+            source_type=SourceType.text,
+            title="b",
+            content_hash="h2",
+            chunks=[
+                Chunk(
+                    id=Chunk.make_id("d2", 0),
+                    doc_id="d2",
+                    ordinal=0,
+                    source="b.txt",
+                    text="Nokia was founded by Fredrik Idestam in 1865 as a pulp mill company.",
+                )
+            ],
+        ),
     ]
     index_documents(docs)
 
@@ -108,7 +134,9 @@ def test_multihop_decomposition_retrieves_both_docs(monkeypatch):
             ("PASSAGES:", "SUFFICIENT"),
         ]
     )
-    state = _run_state(monkeypatch, llm, "What did the founder of Ericsson's main competitor create?")
+    state = _run_state(
+        monkeypatch, llm, "What did the founder of Ericsson's main competitor create?"
+    )
     assert state.sub_questions == ["Ericsson main competitor", "who founded Nokia pulp mill"]
     assert state.hops >= 2
     assert state.answer.strip()
@@ -126,7 +154,9 @@ def test_followup_hop_from_sufficiency_judge(monkeypatch):
         return "who founded Nokia pulp mill" if calls["n"] == 1 else "SUFFICIENT"
 
     # single sub-question (echo) + a follow-up produced by the sufficiency judge
-    llm = _LLM([("Break the QUESTION", "Ericsson main competitor Nokia"), ("PASSAGES:", sufficiency)])
+    llm = _LLM(
+        [("Break the QUESTION", "Ericsson main competitor Nokia"), ("PASSAGES:", sufficiency)]
+    )
     state = _run_state(monkeypatch, llm, "Ericsson main competitor Nokia")
     assert state.hops >= 2  # original hop + one follow-up hop
     assert calls["n"] >= 1

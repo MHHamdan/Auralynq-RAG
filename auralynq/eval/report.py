@@ -211,7 +211,9 @@ def _drift_check(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_eval(smoke: bool = False, write_report: bool = False, judge: bool = False) -> dict[str, Any]:
+def run_eval(
+    smoke: bool = False, write_report: bool = False, judge: bool = False
+) -> dict[str, Any]:
     s = get_settings()
     s.ensure_dirs()
     _ensure_index()

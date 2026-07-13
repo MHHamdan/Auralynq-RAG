@@ -29,7 +29,9 @@ _API = "https://slack.com/api"
 class SlackConnector:
     name = "slack"
 
-    def __init__(self, token: str, *, max_channels: int = 50, per_channel: int = 200, rate_delay: float = 1.2) -> None:
+    def __init__(
+        self, token: str, *, max_channels: int = 50, per_channel: int = 200, rate_delay: float = 1.2
+    ) -> None:
         self._token = token or ""
         self._max_channels = max_channels
         self._per_channel = per_channel
@@ -47,7 +49,9 @@ class SlackConnector:
     def _client(self):
         import httpx
 
-        return httpx.Client(base_url=_API, timeout=20.0, headers={"Authorization": f"Bearer {self._token}"})
+        return httpx.Client(
+            base_url=_API, timeout=20.0, headers={"Authorization": f"Bearer {self._token}"}
+        )
 
     def _call(self, client, method: str, params: dict) -> dict:
         time.sleep(self._rate_delay)

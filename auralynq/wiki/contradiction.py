@@ -96,6 +96,11 @@ def detect_contradictions(
         new_c = str(it.get("new_claim", "")).strip()
         if old_c and new_c:
             contradictions.append(
-                Contradiction(entity=entity, old_claim=old_c, new_claim=new_c, why=str(it.get("why", "")).strip())
+                Contradiction(
+                    entity=entity,
+                    old_claim=old_c,
+                    new_claim=new_c,
+                    why=str(it.get("why", "")).strip(),
+                )
             )
     return contradictions

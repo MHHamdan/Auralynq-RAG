@@ -95,9 +95,7 @@ def _evidence(
             break
         used += len(text)
         loc = c.locator() if hasattr(c, "locator") else ""
-        contexts.append(
-            Context(marker=len(contexts) + 1, text=text, source=c.source, locator=loc)
-        )
+        contexts.append(Context(marker=len(contexts) + 1, text=text, source=c.source, locator=loc))
         if c.source:
             sources.add(c.source)
     return contexts, sorted(sources)
@@ -160,7 +158,9 @@ def _synthesize_one(
             contradictions = [c.to_dict() for c in found]
             if contradictions:
                 store.append_log(
-                    "contradiction", entity=key, count=len(contradictions),
+                    "contradiction",
+                    entity=key,
+                    count=len(contradictions),
                     items=contradictions,
                 )
                 _log.info("wiki.contradiction_flagged", entity=key, n=len(contradictions))
@@ -210,9 +210,7 @@ def synthesize_wiki(
         if _synthesize_one(kg, key, data, chunk_by_id, llm, store, w):
             written += 1
 
-    store.append_log(
-        "synthesize", entities_considered=len(ents), pages_written=written
-    )
+    store.append_log("synthesize", entities_considered=len(ents), pages_written=written)
     _log.info("wiki.synthesized", entities=len(ents), pages_written=written)
     return written
 

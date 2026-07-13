@@ -71,7 +71,9 @@ class NotionConnector:
         time.sleep(_RATE_DELAY)
         r = client.post(path, json=json)
         if r.status_code == 401:
-            raise ConnectorError("Notion token is invalid or the page isn't shared with the integration.")
+            raise ConnectorError(
+                "Notion token is invalid or the page isn't shared with the integration."
+            )
         if r.status_code == 429:
             raise ConnectorError("Notion rate limit hit — try again shortly.")
         r.raise_for_status()
@@ -81,7 +83,9 @@ class NotionConnector:
         time.sleep(_RATE_DELAY)
         r = client.get(path, params=params or {})
         if r.status_code == 401:
-            raise ConnectorError("Notion token is invalid or the page isn't shared with the integration.")
+            raise ConnectorError(
+                "Notion token is invalid or the page isn't shared with the integration."
+            )
         r.raise_for_status()
         return r.json()
 

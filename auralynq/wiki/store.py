@@ -178,8 +178,7 @@ class WikiStore:
         orphans = [
             pid
             for pid, meta in index.items()
-            if pid.lower() not in linked
-            and str(meta.get("title", pid)).lower() not in linked
+            if pid.lower() not in linked and str(meta.get("title", pid)).lower() not in linked
         ]
         return {
             "pages": len(index),

@@ -135,7 +135,9 @@ class OpenAILLM(LLM):  # pragma: no cover - paid path
     def __init__(self, api_key: str, model: str, base_url: str | None = None) -> None:
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key, **({"base_url": base_url} if base_url else {}))
+        self._client = (
+            OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+        )
         self.model = model
 
     def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
