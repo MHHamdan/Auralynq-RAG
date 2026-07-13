@@ -20,7 +20,7 @@ def indexed(corpus_dir):
     return corpus_dir
 
 
-def test_all_seven_tools_registered():
+def test_all_tools_registered():
     assert set(TOOLS) == {
         "ingest_documents",
         "search",
@@ -29,7 +29,36 @@ def test_all_seven_tools_registered():
         "talk_to_data",
         "run_eval",
         "get_trace",
+        "remember",
+        "recall",
     }
+
+
+def test_remember_and_recall():
+    from auralynq.mcp_server.tools import recall, remember
+
+    r = remember("Auralynq ships PathRAG graph retrieval", tags=["arch"], source="test")
+    assert r["stored"] is True and r["id"].startswith("mem_")
+    # idempotent per text
+    assert remember("Auralynq ships PathRAG graph retrieval")["id"] == r["id"]
+
+    out = recall("PathRAG")
+    assert out["memories"], "should recall the stored memory"
+    top = out["memories"][0]
+    assert "PathRAG" in top["text"] and top["score"] > 0
+
+
+def test_remember_empty_is_noop():
+    from auralynq.mcp_server.tools import remember
+
+    assert remember("   ")["stored"] is False
+
+
+def test_recall_no_match_is_empty():
+    from auralynq.mcp_server.tools import recall, remember
+
+    remember("The sky is blue")
+    assert recall("quantum chromodynamics")["memories"] == []
 
 
 def test_search_tool(indexed):

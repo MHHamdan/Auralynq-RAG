@@ -90,6 +90,67 @@ def get_trace(question: str) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------- memory tier ------
+# Turns Auralynq into an agent-memory backend: external agents `remember` durable
+# notes and `recall` them later. Backed by the compounding wiki (type="memory"),
+# so memories persist across sessions and live beside the rest of the knowledge.
+_MEMORY_TYPE = "memory"
+
+
+def remember(text: str, tags: list[str] | None = None, source: str = "agent") -> dict[str, Any]:
+    """Store a durable memory for later recall. Returns its id (idempotent per text)."""
+    from auralynq.config.settings import get_settings
+    from auralynq.utils import stable_id
+    from auralynq.wiki.store import WikiStore
+
+    text = (text or "").strip()
+    if not text:
+        return {"stored": False, "reason": "empty text"}
+    store = WikiStore(get_settings().wiki_dir)
+    mem_id = "mem_" + stable_id(text)[:12]
+    store.write_page(
+        mem_id,
+        title=text[:120],
+        body=text,
+        page_type=_MEMORY_TYPE,
+        sources=[source, *(tags or [])],
+    )
+    return {"stored": True, "id": mem_id}
+
+
+def recall(query: str, k: int = 5) -> dict[str, Any]:
+    """Recall stored memories most relevant to the query (content token overlap)."""
+    from auralynq.config.settings import get_settings
+    from auralynq.utils import tokenize
+    from auralynq.wiki.generator import _strip_frontmatter
+    from auralynq.wiki.store import WikiStore
+
+    store = WikiStore(get_settings().wiki_dir)
+    q = {t for t in tokenize(query or "") if len(t) > 2}
+    scored: list[tuple[float, str, str, list[str]]] = []
+    for meta in store.list_pages():
+        if meta.get("type") != _MEMORY_TYPE:
+            continue
+        page = store.read_page(str(meta["id"]))
+        body = _strip_frontmatter(page.get("markdown", "")) if page else ""
+        toks = {t for t in tokenize(body) if len(t) > 2}
+        overlap = len(q & toks)
+        if overlap == 0:
+            continue
+        score = overlap / max(len(q), 1)
+        scored.append(
+            (round(score, 3), str(meta["id"]), body.strip(), meta.get("sources", []) or [])
+        )
+    scored.sort(key=lambda s: s[0], reverse=True)
+    return {
+        "query": query,
+        "memories": [
+            {"id": mid, "text": body, "score": sc, "sources": srcs}
+            for sc, mid, body, srcs in scored[:k]
+        ],
+    }
+
+
 TOOLS = {
     "ingest_documents": ingest_documents,
     "search": search,
@@ -98,4 +159,6 @@ TOOLS = {
     "talk_to_data": talk_to_data,
     "run_eval": run_eval,
     "get_trace": get_trace,
+    "remember": remember,
+    "recall": recall,
 }
