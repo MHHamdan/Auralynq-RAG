@@ -71,7 +71,7 @@ slm = ["llama-cpp-python>=0.3", "huggingface_hub>=0.23"]
 mcp = ["mcp>=1.0"]
 dev = [
   "ruff>=0.15.18,<0.16",
-  "mypy>=1.10",
+  "mypy>=1.10,<2.2",  # stability cap; type-check targets py3.12 (see [tool.mypy])
   "pytest>=8.2",
   "pytest-cov>=5.0",
   "pytest-asyncio>=0.23",
@@ -114,7 +114,10 @@ ignore = ["B008", "C901", "RUF012", "UP042", "RUF001"]
 "auralynq/rag/strategies/planned.py" = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+# Target 3.12: numpy>=2.4 ships PEP 695 `type` statements in its stubs, which
+# mypy only accepts when both the target version and the interpreter running
+# mypy are 3.12+. CI runs the type-check step on the 3.12 matrix job only.
+python_version = "3.12"
 warn_unused_ignores = false
 warn_redundant_casts = true
 disallow_untyped_defs = false

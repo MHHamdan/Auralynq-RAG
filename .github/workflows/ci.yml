@@ -35,6 +35,9 @@ jobs:
           .venv/bin/ruff format --check auralynq tests scripts
 
       - name: Type check (mypy)
+        # Run once, on 3.12: mypy must run under a 3.12+ interpreter to parse the
+        # PEP 695 `type` statements numpy>=2.4 ships in its stubs.
+        if: matrix.python-version == '3.12'
         run: .venv/bin/mypy auralynq
 
       - name: Name audit
