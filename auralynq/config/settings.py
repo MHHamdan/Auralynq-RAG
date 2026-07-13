@@ -190,6 +190,26 @@ class BeliefSettings(BaseSettings):
     default_confidence: float = 1.0
 
 
+class GraphRAGSettings(BaseSettings):
+    """GraphRAG community summaries — corpus-wide "sensemaking" over the KG.
+
+    Detect entity communities (networkx, no new dep) and LLM-summarize each into
+    a theme, enabling global synthesis beyond PathRAG's local search. Off by
+    default; purely additive."""
+
+    enabled: bool = False
+    # Build/refresh community summaries automatically at the end of each ingest.
+    auto_build: bool = True
+    # Community detection algorithm over the (weighted, undirected) KG projection.
+    algo: Literal["louvain", "greedy"] = "louvain"
+    # Ignore communities smaller than this (noise gate).
+    min_community_size: int = 3
+    # Cap communities summarized per build (cost guard), largest first.
+    max_communities: int = 50
+    # Token budget per community summary.
+    max_summary_tokens: int = 256
+
+
 class WatchSettings(BaseSettings):
     """Watch Folder — auto-reindex local directories on change. Off by default.
 
@@ -267,6 +287,7 @@ class Settings(BaseSettings):
     modelfit: ModelFitSettings = Field(default_factory=ModelFitSettings)
     wiki: WikiSettings = Field(default_factory=WikiSettings)
     beliefs: BeliefSettings = Field(default_factory=BeliefSettings)
+    graphrag: GraphRAGSettings = Field(default_factory=GraphRAGSettings)
     watch: WatchSettings = Field(default_factory=WatchSettings)
     web: WebIngestSettings = Field(default_factory=WebIngestSettings)
     connectors: ConnectorSettings = Field(default_factory=ConnectorSettings)
@@ -330,6 +351,10 @@ class Settings(BaseSettings):
     @property
     def beliefs_db(self) -> Path:
         return self.storage_dir / self.beliefs.db_filename
+
+    @property
+    def communities_path(self) -> Path:
+        return self.index_dir / "communities.json"
 
     @property
     def watch_dirs(self) -> list[Path]:

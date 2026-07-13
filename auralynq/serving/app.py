@@ -54,6 +54,8 @@ from auralynq.serving.schemas import (
     AlertsResponse,
     BeliefClaimItem,
     BeliefTimelineResponse,
+    CommunitiesResponse,
+    CommunityItem,
     ConnectorsStatusResponse,
     ConnectorStatus,
     ConnectorSyncResponse,
@@ -578,6 +580,29 @@ def create_app() -> FastAPI:
             claims=items,
             current_count=sum(1 for i in items if i.current),
         )
+
+    # ------------------------------------------ GraphRAG communities (02) ---
+    @app.get("/graphrag/communities", response_model=CommunitiesResponse)
+    async def graphrag_communities_ep() -> CommunitiesResponse:
+        """Corpus-wide community summaries (themes) built from the KG."""
+        s = get_settings()
+        if not s.graphrag.enabled:
+            return CommunitiesResponse(enabled=False)
+        from auralynq.retrieval.graphrag import load_communities
+
+        raw = load_communities(s.communities_path)
+        items = [
+            CommunityItem(
+                id=c.get("id", 0),
+                level=c.get("level", 0),
+                entities=c.get("entities", []),
+                size=c.get("size", 0),
+                summary=c.get("summary", ""),
+                sources=c.get("sources", []),
+            )
+            for c in raw
+        ]
+        return CommunitiesResponse(enabled=True, count=len(items), communities=items)
 
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)
