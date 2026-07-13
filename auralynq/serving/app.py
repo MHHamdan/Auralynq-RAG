@@ -758,11 +758,17 @@ def create_app() -> FastAPI:
                         "Fell back to auralynq_rag."
                     )
 
-            if effective_id == "auralynq_rag":
-                # Full token-streaming path via the agentic runner. Optional
-                # source scoping: restrict retrieval to selected documents (#16).
+            if effective_id in ("auralynq_rag", "agentic"):
+                # Full token-streaming path via the agentic runner. The "agentic"
+                # strategy additionally streams multi-hop `step` events live.
+                # Optional source scoping to selected documents (#16).
                 _filt = Filter(doc_ids=req.doc_ids) if req.doc_ids else None
-                gen = stream_answer_question(req.question, final_k=req.final_k, filt=_filt)
+                gen = stream_answer_question(
+                    req.question,
+                    final_k=req.final_k,
+                    filt=_filt,
+                    agentic=(effective_id == "agentic"),
+                )
                 async for event in _aiter_sync(gen):
                     if await request.is_disconnected():
                         close = getattr(gen, "close", None)

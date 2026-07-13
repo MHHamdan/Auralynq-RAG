@@ -293,6 +293,34 @@ export default function Chat() {
               c[c.length - 1] = { ...c[c.length - 1], text: (c[c.length - 1].text ?? "") + (e.text ?? "") };
               return c;
             });
+          } else if (e.type === "step") {
+            // Agentic multi-hop progress — append to the streaming turn's trace.
+            setAgentActivity((prev) => ({
+              ...prev,
+              phase: e.phase === "synthesize" ? "generating" : "retrieval_started",
+            }));
+            setTurns((t) => {
+              if (t.length === 0 || t[t.length - 1]?.role !== "assistant") return t;
+              const c = [...t];
+              const last = c[c.length - 1];
+              c[c.length - 1] = {
+                ...last,
+                steps: [
+                  ...(last.steps ?? []),
+                  {
+                    phase: e.phase,
+                    label: e.label,
+                    detail: e.detail,
+                    hop: e.hop,
+                    query: e.query,
+                    retrieved: e.retrieved,
+                    sub_questions: e.sub_questions,
+                    sufficient: e.sufficient,
+                  },
+                ],
+              };
+              return c;
+            });
           } else if (e.type === "final") {
             setTrace(e.trace || []);
             setTraceSteps(e.trace_steps || []);
