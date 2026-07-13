@@ -9,7 +9,7 @@ Transport is selectable via ``AURALYNQ_MCP_TRANSPORT`` (or ``--transport``):
   * ``streamable-http`` — remote clients reach it over HTTP (microservice mode);
     bind/port come from ``AURALYNQ_MCP_HOST`` / ``AURALYNQ_MCP_PORT``.
   * ``sse`` — legacy HTTP+SSE transport, for older clients.
-This makes the same seven tools callable locally OR served to clients worldwide.
+This makes the same nine tools callable locally OR served to clients worldwide.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ from auralynq.mcp_server.tools import (
     get_trace,
     graph_path_query,
     ingest_documents,
+    recall,
+    remember,
     run_eval,
     search,
     talk_to_data,
@@ -34,7 +36,7 @@ _VALID_TRANSPORTS = ("stdio", "streamable-http", "sse")
 
 
 def build_server():
-    """Construct a FastMCP server with the seven Auralynq tools registered."""
+    """Construct a FastMCP server with the nine Auralynq tools registered."""
     from mcp.server.fastmcp import FastMCP
 
     host = os.getenv("AURALYNQ_MCP_HOST", "0.0.0.0")
@@ -52,6 +54,8 @@ def build_server():
     mcp.tool(name="talk_to_data", description="Agentic, cited answer to a question.")(talk_to_data)
     mcp.tool(name="run_eval", description="Run the evaluation harness.")(run_eval)
     mcp.tool(name="get_trace", description="Return the agent trace for a question.")(get_trace)
+    mcp.tool(name="remember", description="Store a durable memory for later recall.")(remember)
+    mcp.tool(name="recall", description="Recall stored memories relevant to a query.")(recall)
     return mcp
 
 
@@ -97,7 +101,7 @@ def main() -> None:
             "auralynq-mcp requires the MCP SDK. Install it with:\n  pip install 'auralynq[mcp]'\n"
         )
         raise SystemExit(1) from None
-    _log.info("mcp.start", tools=7, transport=transport)
+    _log.info("mcp.start", tools=9, transport=transport)
     if transport == "stdio":
         server.run(transport="stdio")
     else:

@@ -62,6 +62,8 @@ async def test_mcp_stdio_lists_and_calls_tools(corpus_dir):
         "talk_to_data",
         "run_eval",
         "get_trace",
+        "remember",
+        "recall",
     } <= names
     assert payload.get("answer")
     assert "route" in payload
