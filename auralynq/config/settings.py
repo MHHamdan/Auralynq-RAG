@@ -97,6 +97,10 @@ class AgentSettings(BaseSettings):
     self_consistency_enabled: bool = False
     self_consistency_samples: int = 5
     self_consistency_temperature: float = 0.7
+    # Abstain when an otherwise-grounded answer is unstable under resampling
+    # (consistency below this floor) — a hallucination signal. Only applied when
+    # self_consistency_enabled; advisory signal alone otherwise.
+    self_consistency_min: float = 0.35
 
 
 class VoiceSettings(BaseSettings):
