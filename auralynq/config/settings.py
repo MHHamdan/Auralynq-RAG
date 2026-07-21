@@ -159,6 +159,12 @@ class VisualGroundingSettings(BaseSettings):
     visual_device: Literal["auto", "cpu", "cuda"] = "auto"
     visual_patch_grid: int = 16  # NxN patch grid (offline fallback + query tokens)
     visual_rerank_k: int = 20  # candidate pages scored per visual query
+    # Hosted VLM (Vision-Language Model) for page-image Q&A via HF Inference
+    # Providers. Explicit opt-in, token-gated, air-gap-blocked (see llm/vlm.py).
+    vlm_enabled: bool = False
+    vlm_model: str = "Qwen/Qwen2.5-VL-72B-Instruct"
+    vlm_max_pages: int = 3  # cap page images sent to the VLM per question
+    vlm_max_tokens: int = 1024
     # Grounding metadata schema version — bump when schema changes requiring reindex
     metadata_version: int = 1
 
