@@ -84,7 +84,9 @@ from auralynq.serving.schemas import (
     RAGStrategiesResponse,
     StatusResponse,
     SuggestionsResponse,
+    VisualAskResponse,
     VisualHit,
+    VisualPageRef,
     VisualSearchResponse,
     VoiceResponse,
     WatchStatusResponse,
@@ -634,6 +636,32 @@ def create_app() -> FastAPI:
             enabled=True, query=q, embedder=str(res.metadata.get("embedder", "")), hits=hits
         )
 
+    @app.get("/visual/ask", response_model=VisualAskResponse)
+    async def visual_ask_ep(q: str, k: int = 6) -> VisualAskResponse:
+        """VLM page-image Q&A: retrieve the most relevant pages, then have a
+        hosted vision model answer over their rendered images with (Page N)
+        citations. Returns available=False when the VLM is off/air-gapped/
+        tokenless so the client can fall back to text-only."""
+        s = get_settings()
+        if not s.visual.visual_retrieval_enabled:
+            return VisualAskResponse(enabled=False, query=q)
+        from auralynq.retrieval.visual.vlm_qa import answer_visual_question
+
+        # Blocking VLM + image encoding → offload so the event loop stays free.
+        va = await asyncio.to_thread(answer_visual_question, q, k)
+        return VisualAskResponse(
+            enabled=True,
+            available=va.available,
+            query=q,
+            answer=va.answer,
+            model=va.model,
+            reason=va.reason,
+            pages=[
+                VisualPageRef(doc_id=p.doc_id, page=p.page, source=p.source)
+                for p in va.pages
+            ],
+        )
+
     # -------------------------------------------------- corpus management ---
     @app.get("/corpus/inventory", response_model=CorpusSummaryResponse)
     async def corpus_inventory_ep() -> CorpusSummaryResponse:
@@ -1127,7 +1155,9 @@ def create_app() -> FastAPI:
                     fh.write(chunk)
             from auralynq.voice.loop import run_voice_turn
 
-            res = run_voice_turn(audio_path=dest, speak=True)
+            # Offload the (blocking) ASR → LLM → TTS turn to a worker thread so a
+            # long voice turn never freezes the event loop for other requests.
+            res = await asyncio.to_thread(run_voice_turn, audio_path=dest, speak=True)
         finally:
             # Securely unlink the transient audio buffer regardless of outcome.
             dest.unlink(missing_ok=True)

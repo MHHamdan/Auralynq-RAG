@@ -270,6 +270,22 @@ class VisualSearchResponse(BaseModel):
     hits: list[VisualHit] = Field(default_factory=list)
 
 
+class VisualPageRef(BaseModel):
+    doc_id: str
+    page: int
+    source: str = ""
+
+
+class VisualAskResponse(BaseModel):
+    enabled: bool = False
+    available: bool = False  # False when VLM off/air-gapped/tokenless
+    query: str = ""
+    answer: str = ""
+    model: str = ""
+    reason: str = ""
+    pages: list[VisualPageRef] = Field(default_factory=list)
+
+
 class SuggestionsResponse(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
     corpus_indexed: bool = False
