@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 # Auralynq startup script
 # Usage: ./start.sh
-# Access: http://yourIP:3001
+# Access: http://localhost:3001
 #
-# Port assignments (conflict-free on this server):
+# Port assignments:
 #   8000 — Auralynq API  (FastAPI / uvicorn)
 #   3001 — Auralynq UI   (Next.js dev server)
-# Already running on this server (do not touch):
-#   3000 — InternalApp frontend
-#   8002 — InternalApp backend API
-#   5432 — PostgreSQL  |  6379 — Redis  |  8529 — ArangoDB
+# Note: the UI uses 3001 so it does not collide with anything already on 3000.
+#
+# For LAN/remote access, export your machine's address first:
+#   AURALYNQ_HOST=yourIP ./start.sh
 
 set -e
 REPO="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$REPO/logs"
 mkdir -p "$LOG_DIR"
+
+# Host used in the printed URLs below.
+HOST="${AURALYNQ_HOST:-localhost}"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 die()  { echo "✗  $*" >&2; exit 1; }
@@ -95,10 +98,10 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Auralynq is ready"
 echo ""
-echo "  Chat:          http://yourIP:3001"
-echo "  ModelFit:      http://yourIP:3001/modelfit"
-echo "  API docs:      http://yourIP:8000/docs"
-echo "  API health:    http://yourIP:8000/health"
+echo "  Chat:          http://${HOST}:3001"
+echo "  ModelFit:      http://${HOST}:3001/modelfit"
+echo "  API docs:      http://${HOST}:8000/docs"
+echo "  API health:    http://${HOST}:8000/health"
 echo ""
 echo "  Logs:          $LOG_DIR/"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
