@@ -656,10 +656,7 @@ def create_app() -> FastAPI:
             answer=va.answer,
             model=va.model,
             reason=va.reason,
-            pages=[
-                VisualPageRef(doc_id=p.doc_id, page=p.page, source=p.source)
-                for p in va.pages
-            ],
+            pages=[VisualPageRef(doc_id=p.doc_id, page=p.page, source=p.source) for p in va.pages],
         )
 
     # -------------------------------------------------- corpus management ---

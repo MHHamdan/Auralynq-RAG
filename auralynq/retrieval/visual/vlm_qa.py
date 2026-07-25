@@ -82,9 +82,7 @@ def answer_visual_question(
 
         vlm = get_vlm()
     if vlm is None:
-        return VisualAnswer(
-            answer="", available=False, reason="vlm_unavailable"
-        )
+        return VisualAnswer(answer="", available=False, reason="vlm_unavailable")
 
     if retriever is None:
         from auralynq.retrieval.visual import VisualRetriever
