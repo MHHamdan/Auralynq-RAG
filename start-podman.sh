@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Auralynq — Podman stack launcher for server 172.24.50.21
+# Auralynq — Podman stack launcher
 #
 # Usage: ./start-podman.sh [--build] [--no-cache]
 #   --build      Force rebuild of all 3 images before starting
 #   --no-cache   Combine with --build to ignore Docker layer cache
 #
-# Access: https://172.24.50.21:8443
+# Access: https://localhost:8443
 #   (self-signed cert baked at build time — "Accept Risk" in browser on first visit)
+#
+# For LAN/remote access, export your machine's address first:
+#   AURALYNQ_HOST=yourIP ./start-podman.sh --build
 # ============================================================================
 
 set -e
 REPO="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$REPO/.env.podman"
+
+# Host used in the printed URLs and the self-signed cert SAN.
+HOST="${AURALYNQ_HOST:-localhost}"
 
 DO_BUILD=0
 NO_CACHE=""
@@ -56,7 +62,7 @@ sleep 1
 
 # ── 3. Build images (api, web, caddy) ────────────────────────────────────────
 if [[ $DO_BUILD -eq 1 ]]; then
-  CERT_HOST="${AURALYNQ_CERT_HOST:-172.24.50.21}"
+  CERT_HOST="${AURALYNQ_CERT_HOST:-${AURALYNQ_HOST:-localhost}}"
   IMAGE_PREFIX="localhost/auralynq-"
   TAG="0.2.0"
 
@@ -114,16 +120,16 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Auralynq (Podman) is ready"
 echo ""
-echo "  Chat UI:     https://172.24.50.21:8443"
-echo "  ModelFit:    https://172.24.50.21:8443/modelfit"
-echo "  API health:  https://172.24.50.21:8443/api/health"
-echo "  API docs:    https://172.24.50.21:8443/api/docs"
+echo "  Chat UI:     https://${HOST}:8443"
+echo "  ModelFit:    https://${HOST}:8443/modelfit"
+echo "  API health:  https://${HOST}:8443/api/health"
+echo "  API docs:    https://${HOST}:8443/api/docs"
 echo ""
 echo "  ⚠ Self-signed cert: click 'Advanced → Accept Risk' in your browser"
 echo "    (Firefox) or 'Proceed anyway' (Chrome) on first visit."
 echo ""
 echo "  If documents need re-indexing (fresh Qdrant volume):"
-echo "    → Go to https://172.24.50.21:8443  and use the Upload / Ingest UI"
+echo "    → Go to https://${HOST}:8443  and use the Upload / Ingest UI"
 echo ""
 echo "  Logs:        podman-compose --env-file .env.podman logs -f"
 echo "  Stop:        podman-compose --env-file .env.podman down"

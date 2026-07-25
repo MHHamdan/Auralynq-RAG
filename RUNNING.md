@@ -18,7 +18,7 @@ machine**. Podman only — no Docker, no sudo required.
 The stack is normally already running. Otherwise:
 
 ```bash
-cd /home/mhamdan/Auralynq
+cd /path/to/Auralynq
 make stack-up      # start;  make stack-down to stop
 ```
 
@@ -203,7 +203,7 @@ podman start auralynq-api         # back to local
 ## 2. Full production stack on THIS machine (from source)
 
 ```bash
-cd /home/mhamdan/Auralynq
+cd /path/to/Auralynq
 make images          # build api/web/caddy locally (versioned + OCI labels)
 make stack-up        # start; make stack-down to stop; make stack-logs to tail
 ```

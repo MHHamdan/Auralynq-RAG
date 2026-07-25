@@ -42,11 +42,11 @@ t("no fallback configured -> single primary upstream (no buffering path)", () =>
 });
 
 t("fallback configured -> primary then fallback, trailing slashes trimmed", () => {
-  const u = resolveUpstreams("http://localhost:8000/", "https://172.24.50.21:8443/api//", true);
+  const u = resolveUpstreams("http://localhost:8000/", "https://203.0.113.10:8443/api//", true);
   assert.equal(u.length, 2);
   assert.deepEqual(u.map((x) => x.label), ["primary", "fallback"]);
   assert.equal(u[0].base, "http://localhost:8000");
-  assert.equal(u[1].base, "https://172.24.50.21:8443/api");
+  assert.equal(u[1].base, "https://203.0.113.10:8443/api");
   assert.equal(u[1].insecure, true, "self-signed fallback must skip TLS verification");
 });
 
