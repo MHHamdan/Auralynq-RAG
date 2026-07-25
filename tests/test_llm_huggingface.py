@@ -19,10 +19,29 @@ def test_model_for_keeps_hf_repo_ids():
     assert _model_for("huggingface", "llama3.2:3b") == "meta-llama/Llama-3.3-70B-Instruct"
 
 
-def test_hf_without_token_falls_back(monkeypatch):
+def test_hf_without_token_falls_back_to_local_generative(monkeypatch):
+    """No token → prefer a local generative model over quotation-only extractive."""
+    from auralynq.llm import factory
+
     monkeypatch.setenv("AURALYNQ_LLM__PROVIDER", "huggingface")
     monkeypatch.setenv("HUGGINGFACE_TOKEN", "")
     reload_settings()
+
+    monkeypatch.setattr(factory, "_ollama_reachable", lambda _url: True)
+    monkeypatch.setattr(factory, "_installed_ollama_models", lambda _url: ["llama3.2:3b"])
+    assert build_llm().name == "ollama"
+
+
+def test_hf_without_token_and_no_local_backend_falls_back_to_extractive(monkeypatch):
+    """With no local backend at all, the answer path still degrades, never 500s."""
+    from auralynq.llm import factory
+
+    monkeypatch.setenv("AURALYNQ_LLM__PROVIDER", "huggingface")
+    monkeypatch.setenv("HUGGINGFACE_TOKEN", "")
+    reload_settings()
+
+    monkeypatch.setattr(factory, "_ollama_reachable", lambda _url: False)
+    monkeypatch.setattr(factory, "_slm_available", lambda: False)
     assert build_llm().name == "extractive"
 
 
