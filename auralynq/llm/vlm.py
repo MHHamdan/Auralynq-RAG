@@ -70,9 +70,7 @@ class HuggingFaceVLM:  # pragma: no cover - paid path
         content: list[dict] = [{"type": "text", "text": question}]
         for i, p in enumerate(image_paths, start=1):
             content.append({"type": "text", "text": f"Page {i}:"})
-            content.append(
-                {"type": "image_url", "image_url": {"url": encode_image(p)}}
-            )
+            content.append({"type": "image_url", "image_url": {"url": encode_image(p)}})
         messages = [
             {"role": "system", "content": system or VISUAL_SYSTEM},
             {"role": "user", "content": content},
