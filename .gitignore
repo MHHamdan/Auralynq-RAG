@@ -2,10 +2,48 @@
 # Auralynq - Git ignore
 # =========================
 
-# Local project prompt / private planning
+# =============================================================================
+# LOCAL-ONLY — never publish
+# Prompts, private planning, AI-assistant context, and unpublished drafts.
+# Patterns are deliberately specific: a bare `*post*` would swallow real source
+# files such as web/postcss.config.js.
+# =============================================================================
+
+# Prompts / private planning
 prompt.md
 *.prompt.md
+prompts/
+.prompts/
+
+# AI coding-assistant context and session state.
+# .claude/ holds settings.local.json (permissions, local config) and any
+# session/transcript artifacts — assistant working state, not project source.
+.claude/
+CLAUDE.md
+CLAUDE.local.md
 CLAUDE.md.local
+.cursor/
+.cursorrules
+.aider*
+.continue/
+.windsurfrules
+
+# Assistant transcripts / conversation logs
+*transcript*.md
+*conversation*.md
+*chat-log*
+*session-log*
+scratchpad/
+.scratchpad/
+
+# Unpublished drafts — social posts, announcements, outreach
+linkedin*.md
+linkedin*.txt
+*linkedin-post*
+social-post*
+announcement-draft*
+*support-request*
+draft-*.md
 
 # Secrets and environment files
 .env
@@ -134,7 +172,6 @@ Thumbs.db
 *.tgz
 *.7z
 *.rar
-prompt.md
 
 # Runtime markers written by the local stack
 .qdrant-initialized
