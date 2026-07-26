@@ -13,6 +13,7 @@ import { ModelSearch } from "@/components/modelfit/ModelSearch";
 import { BenchmarkLab } from "@/components/modelfit/BenchmarkLab";
 import { ComparisonTable } from "@/components/modelfit/ComparisonTable";
 import { DiscoverTab } from "@/components/modelfit/DiscoverTab";
+import { ServingBackends } from "@/components/modelfit/ServingBackends";
 
 const TASK_TABS = [
   { id: "rag", label: "RAG" },
@@ -150,15 +151,10 @@ export default function ModelFitPage() {
                       <span className="font-mono">{hw.total_vram_gb} GB</span>
                     </li>
                   )}
-                  <li>
-                    Ollama:{" "}
-                    <span className={hw.ollama_available ? "text-emerald-400" : "text-zinc-500"}>
-                      {hw.ollama_available ? `available (${hw.ollama_version})` : "not detected"}
-                    </span>
-                  </li>
                 </ul>
               </div>
             )}
+            {hw && <ServingBackends />}
           </div>
         )}
 

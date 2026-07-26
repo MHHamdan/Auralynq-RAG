@@ -615,6 +615,62 @@ export async function fetchRAGStrategies(): Promise<{ strategies: RAGStrategyInf
   return r.json();
 }
 
+// --- LLM serving backends -------------------------------------------------
+
+export interface LLMBackendInfo {
+  id: "ollama" | "vllm" | "airllm";
+  name: string;
+  description: string;
+  status: "available" | "unavailable" | "experimental";
+  available: boolean;
+  speed_class: "very_fast" | "fast" | "very_slow";
+  requires_gpu: boolean;
+  supports_streaming: boolean;
+  detected_at: string | null;
+  version: string | null;
+  models: string[];
+  active_model: string | null;
+  unavailable_reason: string | null;
+  remediation: string | null;
+  warnings: string[];
+}
+
+export interface LLMBackendsResponse {
+  backends: LLMBackendInfo[];
+  /** What is configured — "auto" means the ladder resolves it per process. */
+  configured: string;
+  /** What actually serves answers right now. */
+  active: string;
+  auto_selected: boolean;
+}
+
+export async function fetchLLMBackends(recheck = false): Promise<LLMBackendsResponse> {
+  const r = await fetch(`${API_BASE}/llm/backends${recheck ? "?recheck=true" : ""}`, {
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(`backends failed: ${r.status}`);
+  return r.json();
+}
+
+export async function setLLMBackend(backend: string): Promise<{ backend: string; active: string }> {
+  const r = await fetch(`${API_BASE}/llm/backend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ backend }),
+  });
+  if (!r.ok) {
+    const body = await r.text().catch(() => "");
+    let msg = `Could not switch to ${backend}`;
+    try {
+      msg = JSON.parse(body)?.error?.message || JSON.parse(body)?.detail || msg;
+    } catch {
+      /* keep the generic message */
+    }
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
 // --- Eval -----------------------------------------------------------------
 
 export async function evalLast(): Promise<EvalMetrics | null> {

@@ -45,6 +45,7 @@ import { InspectorOverview, type RecentMeta } from "@/components/chat/InspectorO
 import { AgentActivityRail, type AgentActivity } from "@/components/chat/AgentActivityRail";
 import { SettingsPanel, useUISettings } from "@/components/chat/SettingsPanel";
 import { loadStoredStrategy } from "@/components/chat/AlgorithmSelector";
+import { loadStoredBackend } from "@/components/chat/BackendSelector";
 import { DemoBanner } from "@/components/DemoBanner";
 
 const FALLBACK_SUGGESTIONS = [
@@ -147,6 +148,7 @@ export default function Chat() {
   const [corpusRefreshKey, setCorpusRefreshKey] = useState(0);
   const [scopedDocIds, setScopedDocIds] = useState<string[] | null>(null);
   const [ragStrategy, setRagStrategy] = useState<string>("auralynq_rag");
+  const [llmBackend, setLlmBackend] = useState<string>("auto");
   const [showSettings, setShowSettings] = useState(false);
   const [agentActivity, setAgentActivity] = useState<AgentActivity>({ phase: "idle" });
   const [deployMode, setDeployMode] = useState<DeploymentMode | null>(null);
@@ -168,6 +170,7 @@ export default function Chat() {
   // Load persisted RAG strategy
   useEffect(() => {
     setRagStrategy(loadStoredStrategy());
+    setLlmBackend(loadStoredBackend());
   }, []);
 
   // Bootstrap: status, suggestions, persisted conversation
@@ -699,8 +702,12 @@ export default function Chat() {
             </div>
           </div>
 
-          {/* sticky composer */}
-          <div className="mx-auto w-full max-w-[var(--chat-max-width,900px)] px-2 pb-2">
+          {/* sticky composer — `relative z-20` so the composer's popovers (backend
+              and strategy selectors) paint above the conversation log. The
+              composer's `backdrop-blur` opens its own stacking context, so a
+              `z-50` inside it is scoped there and otherwise loses to the message
+              list, leaving the dropdowns visible but unclickable. */}
+          <div className="relative z-20 mx-auto w-full max-w-[var(--chat-max-width,900px)] px-2 pb-2">
             <Composer
               input={input}
               setInput={setInput}
@@ -712,6 +719,8 @@ export default function Chat() {
               onVoiceResult={onVoice}
               onUploadClick={openIngest}
               ragStrategy={ragStrategy}
+              llmBackend={llmBackend}
+              onLlmBackendChange={setLlmBackend}
               onRagStrategyChange={setRagStrategy}
             />
           </div>

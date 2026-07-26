@@ -2,6 +2,8 @@
  * Auralynq ModelFit Index — API client
  */
 
+import { consumeSSE } from "@/lib/sse";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export interface GPUInfo {
@@ -161,9 +163,25 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`API ${path} → ${res.status}: ${body}`);
+    throw new Error(extractApiError(body) ?? `API ${path} → ${res.status}: ${body}`);
   }
   return res.json();
+}
+
+/**
+ * Pull the human sentence out of the API's error envelope.
+ *
+ * Without this the UI printed the raw `{"error":{"code":"http_error",...}}` JSON
+ * at the user, which is how a missing binary surfaced as an unreadable blob.
+ */
+export function extractApiError(body: string): string | null {
+  try {
+    const parsed = JSON.parse(body);
+    const msg = parsed?.error?.message ?? parsed?.detail ?? parsed?.message;
+    return typeof msg === "string" && msg.trim() ? msg : null;
+  } catch {
+    return null;
+  }
 }
 
 // Hardware
@@ -319,6 +337,30 @@ export interface PullResult {
   model_id: string;
   message: string;
   local_path?: string;
+  /** Ollama pulls only — the background job to stream progress from. */
+  job_id?: string;
+  stream_url?: string;
+}
+
+export type PullPhase = "queued" | "manifest" | "downloading" | "verifying" | "success" | "error";
+
+export interface PullProgress {
+  job_id: string;
+  model_id: string;
+  tag: string;
+  phase: PullPhase;
+  status_text: string;
+  completed_bytes: number;
+  total_bytes: number;
+  percent: number;
+  speed_bps: number;
+  eta_s: number | null;
+  layers_done: number;
+  layers_total: number;
+  message: string;
+  error: string;
+  error_status: number | null;
+  elapsed_s: number;
 }
 
 export async function discoverModels(
@@ -338,4 +380,68 @@ export async function pullModel(modelId: string): Promise<PullResult> {
     method: "POST",
     body: JSON.stringify({ model_id: modelId, confirmed: true }),
   });
+}
+
+export async function fetchPullJob(jobId: string): Promise<PullProgress> {
+  return apiFetch(`/api/modelfit/pull/${jobId}`);
+}
+
+/**
+ * Stream a pull job's progress until it terminates.
+ *
+ * The download belongs to the job, not to this request — closing the stream (or
+ * the modal) does not cancel it, and re-subscribing resumes from current state.
+ */
+export async function streamPullProgress(
+  jobId: string,
+  onProgress: (p: PullProgress) => void,
+  signal?: AbortSignal,
+): Promise<PullProgress> {
+  const res = await fetch(`${API_BASE}/api/modelfit/pull/${jobId}/stream`, {
+    headers: { Accept: "text/event-stream" },
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    const body = await res.text().catch(() => "");
+    throw new Error(extractApiError(body) ?? `Could not follow pull ${jobId}.`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let last: PullProgress | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const { events, rest } = consumeSSE<PullProgress>(buffer);
+    buffer = rest;
+    for (const ev of events) {
+      last = ev;
+      onProgress(ev);
+      if (ev.phase === "success" || ev.phase === "error") {
+        void reader.cancel().catch(() => {});
+        return ev;
+      }
+    }
+  }
+
+  // Stream closed without a terminal frame — ask the job directly.
+  return last?.phase === "success" || last?.phase === "error" ? last : fetchPullJob(jobId);
+}
+
+export function formatBytes(bytes: number): string {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / 1024 ** i).toFixed(i >= 2 ? 1 : 0)} ${units[i]}`;
+}
+
+export function formatEta(seconds: number | null): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return "—";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return m < 60 ? `${m}m ${s}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
