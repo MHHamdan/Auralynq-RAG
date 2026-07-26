@@ -24,6 +24,7 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any, Literal
 
+from auralynq.modelfit.ollama_client import ollama_base_url
 from auralynq.telemetry import get_logger
 
 _log = get_logger("auralynq.modelfit.benchmark")
@@ -248,7 +249,7 @@ async def run_benchmark(
                 try:
                     async with client.stream(
                         "POST",
-                        "http://localhost:11434/api/generate",
+                        f"{ollama_base_url()}/api/generate",
                         json={
                             "model": tag,
                             "prompt": prompt,

@@ -10,8 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from auralynq.modelfit.model_metadata import ModelMetadata
-
-_OLLAMA_BASE = "http://localhost:11434"
+from auralynq.modelfit.ollama_client import ollama_base_url
 
 # Static knowledge about common Ollama model families
 _FAMILY_HINTS: dict[str, str] = {
@@ -170,7 +169,7 @@ async def list_installed_models() -> tuple[list[ModelMetadata], list[str]]:
         import httpx
 
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{_OLLAMA_BASE}/api/tags")
+            response = await client.get(f"{ollama_base_url()}/api/tags")
             if response.status_code != 200:
                 warnings.append(f"Ollama returned HTTP {response.status_code}.")
                 return models, warnings
@@ -196,8 +195,8 @@ async def get_model_details(tag: str) -> tuple[ModelMetadata | None, list[str]]:
 
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(
-                f"{_OLLAMA_BASE}/api/show",
-                json={"name": tag},
+                f"{ollama_base_url()}/api/show",
+                json={"model": tag},
             )
             if response.status_code != 200:
                 warnings.append(f"Model '{tag}' not found in local Ollama.")

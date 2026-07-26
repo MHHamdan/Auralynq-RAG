@@ -6,10 +6,13 @@ No models are downloaded automatically. No benchmarks run without confirmation.
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
+from sse_starlette.sse import EventSourceResponse
 
 from auralynq.modelfit.benchmark_runner import (
     get_run,
@@ -459,8 +462,9 @@ async def discover_models(req: DiscoverRequest) -> dict[str, Any]:
 async def pull_model(req: PullRequest) -> dict[str, Any]:
     """Pull a model from Ollama or download a GGUF from HuggingFace Hub.
 
-    Requires confirmed=true. For Ollama models: runs `ollama pull <tag>`.
-    For HF models: runs hf_hub_download into the local GGUF cache.
+    Requires confirmed=true. Ollama pulls are handed to a background job and
+    return immediately with a `job_id`; follow progress on
+    `GET /api/modelfit/pull/{job_id}/stream`.
     """
     if not req.confirmed:
         raise HTTPException(
@@ -474,13 +478,28 @@ async def pull_model(req: PullRequest) -> dict[str, Any]:
     # Ollama pull: model_id starts with "ollama:"
     if model_id.startswith("ollama:"):
         tag = model_id.removeprefix("ollama:")
-        from auralynq.modelfit.catalog_fetcher import pull_ollama_model
+        from auralynq.modelfit.ollama_client import get_version, ollama_base_url
+        from auralynq.modelfit.pull_jobs import start_pull
+
+        # Fail fast with a precise cause rather than after a doomed download.
+        if await get_version() is None:
+            raise HTTPException(
+                503,
+                f"Ollama is not reachable at {ollama_base_url()}. Start it with "
+                "`OLLAMA_HOST=0.0.0.0:11434 ollama serve`; if Auralynq runs in a "
+                "container, point AURALYNQ_LLM__BASE_URL at the host.",
+            )
 
         _log.info("modelfit.pull.ollama", tag=tag)
-        ok, msg = await pull_ollama_model(tag)
-        if not ok:
-            raise HTTPException(500, f"ollama pull failed: {msg}")
-        return {"status": "pulled", "model_id": model_id, "message": msg}
+        job = start_pull(model_id, tag)
+        return {
+            "status": "pulling",
+            "model_id": model_id,
+            "job_id": job.job_id,
+            "stream_url": f"/api/modelfit/pull/{job.job_id}/stream",
+            "message": f"Downloading {tag}…",
+            **job.snapshot(),
+        }
 
     # HuggingFace GGUF download: model_id starts with "hf:"
     if model_id.startswith("hf:"):
@@ -522,3 +541,48 @@ async def pull_model(req: PullRequest) -> dict[str, Any]:
         400,
         f"Unrecognised model_id prefix in '{model_id}'. Must start with 'ollama:' or 'hf:'.",
     )
+
+
+@router.get("/pull/{job_id}")
+async def get_pull_job(job_id: str) -> dict[str, Any]:
+    """Last-known state of a pull job (reconnect / no-SSE fallback)."""
+    from auralynq.modelfit.pull_jobs import get_job
+
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(404, f"Pull job '{job_id}' not found or expired.")
+    return job.snapshot()
+
+
+@router.get("/pull/{job_id}/stream")
+async def stream_pull_progress(job_id: str) -> EventSourceResponse:
+    """Server-sent progress for a running pull.
+
+    Safe to disconnect and re-attach — the download is owned by the job, not by
+    this request.
+    """
+    from auralynq.modelfit.pull_jobs import get_job, subscribe
+
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(404, f"Pull job '{job_id}' not found or expired.")
+
+    async def events() -> AsyncIterator[dict[str, str]]:
+        async for snap in subscribe(job):
+            yield {"event": "progress", "data": json.dumps(snap)}
+
+    return EventSourceResponse(events())
+
+
+@router.delete("/models/{tag:path}")
+async def delete_model(tag: str) -> dict[str, Any]:
+    """Remove an installed Ollama model to reclaim disk."""
+    from auralynq.modelfit.ollama_client import OllamaUnreachable, delete
+
+    try:
+        ok, msg = await delete(tag)
+    except OllamaUnreachable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if not ok:
+        raise HTTPException(404 if "not found" in msg.lower() else 500, msg)
+    return {"status": "deleted", "tag": tag, "message": msg}

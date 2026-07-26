@@ -17,12 +17,12 @@ from typing import Any
 import httpx
 
 from auralynq.modelfit.model_metadata import ModelMetadata
+from auralynq.modelfit.ollama_client import ollama_base_url
 from auralynq.telemetry import get_logger
 
 _log = get_logger("auralynq.modelfit.catalog_fetcher")
 
 _REGISTRY = "https://registry.ollama.ai/v2/library"
-_OLLAMA_LOCAL = "http://localhost:11434"
 _HF_API = "https://huggingface.co/api"
 
 # In-process cache: (result, fetched_at)
@@ -222,14 +222,15 @@ async def _ollama_installed(client: httpx.AsyncClient) -> dict[str, dict]:
     """Fetch installed Ollama models and their precise metadata via /api/show."""
     installed: dict[str, dict] = {}
     try:
-        r = await client.get(f"{_OLLAMA_LOCAL}/api/tags", timeout=3.0)
+        base = ollama_base_url()
+        r = await client.get(f"{base}/api/tags", timeout=3.0)
         if r.status_code != 200:
             return installed
         for m in r.json().get("models", []):
             tag = m.get("name", "")
             try:
                 r2 = await client.post(
-                    f"{_OLLAMA_LOCAL}/api/show",
+                    f"{base}/api/show",
                     json={"model": tag},
                     timeout=4.0,
                 )
@@ -498,25 +499,22 @@ def _infer_license(tags: list[str]) -> str:
 
 
 async def pull_ollama_model(tag: str) -> tuple[bool, str]:
-    """Run `ollama pull <tag>` as a subprocess. Returns (success, message)."""
-    import asyncio
+    """Pull a model via the Ollama HTTP API, draining the progress stream.
+
+    Blocking convenience wrapper for the CLI. The API layer uses
+    `ollama_client.stream_pull` directly so it can report live progress.
+    """
+    from auralynq.modelfit.ollama_client import OllamaUnreachable, stream_pull
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "ollama",
-            "pull",
-            tag,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
-        if proc.returncode == 0:
-            return True, f"Pulled {tag} successfully."
-        return False, (stderr.decode() or stdout.decode())[:400]
-    except TimeoutError:
-        return False, "ollama pull timed out after 10 minutes."
-    except Exception as exc:
+        async for frame in stream_pull(tag):
+            if frame.get("error"):
+                return False, str(frame["error"])[:400]
+        return True, f"Pulled {tag} successfully."
+    except OllamaUnreachable as exc:
         return False, str(exc)
+    except Exception as exc:
+        return False, str(exc)[:400]
 
 
 def pull_hf_gguf(repo_id: str, filename: str, hf_token: str = "") -> tuple[bool, str]:

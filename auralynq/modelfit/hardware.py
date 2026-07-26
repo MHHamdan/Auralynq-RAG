@@ -491,14 +491,14 @@ def _detect_gpus() -> tuple[list[GPUInfo], bool, str | None, bool, bool]:
 
 
 def _detect_ollama() -> tuple[bool, str | None]:
-    if not shutil.which("ollama"):
-        return False, None
-    try:
-        r = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=5)
-        version = r.stdout.strip() or r.stderr.strip() or "unknown"
-        return True, version
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False, None
+    """Probe the Ollama daemon over HTTP.
+
+    Deliberately not `shutil.which("ollama")`: the API runs in a container that
+    has no CLI, while the daemon lives on the host. Reachability is what matters.
+    """
+    from auralynq.modelfit.ollama_client import probe_version_sync
+
+    return probe_version_sync()
 
 
 def _detect_hf() -> tuple[bool, str | None]:
