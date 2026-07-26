@@ -36,7 +36,11 @@ CLAUDE.md.local
 scratchpad/
 .scratchpad/
 
-# Unpublished drafts — social posts, announcements, outreach
+# Unpublished drafts — social posts, announcements, outreach.
+# local-drafts/ is the scratch area for anything not meant for the repo; the
+# whole directory is ignored so attachments (images, PDFs) are covered too, not
+# just the filename patterns below.
+local-drafts/
 linkedin*.md
 linkedin*.txt
 *linkedin-post*
