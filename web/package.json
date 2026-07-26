@@ -2,9 +2,9 @@
   "name": "auralynq-web",
   "version": "0.2.0",
   "private": true,
-  "description": "Auralynq — Talk to Your Data. Web UI.",
+  "description": "Auralynq \u2014 Talk to Your Data. Web UI.",
   "engines": {
-    "node": ">=18.18"
+    "node": ">=20.9.0"
   },
   "scripts": {
     "dev": "next dev -p 3000",
@@ -28,25 +28,26 @@
     "cmdk": "^1.1.1",
     "highlight.js": "11.9.0",
     "lucide-react": "^0.460.0",
-    "next": "15.5.18",
+    "next": "15.5.22",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-markdown": "9.0.1",
     "rehype-highlight": "7.0.0",
     "remark-gfm": "4.0.0",
     "tailwindcss-animate": "^1.0.7",
-    "undici": "6.24.0"
+    "undici": "6.28.0"
   },
   "devDependencies": {
     "@types/node": "20.14.0",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "autoprefixer": "10.4.19",
-    "postcss": "8.5.10",
+    "postcss": "8.5.23",
     "tailwindcss": "3.4.6",
     "typescript": "5.5.3"
   },
   "overrides": {
-    "postcss": "8.5.10"
+    "postcss": "8.5.23",
+    "sharp": "^0.35.3"
   }
 }
