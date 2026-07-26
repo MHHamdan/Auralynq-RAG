@@ -7,6 +7,10 @@ Auto-resolution priority (local-first, zero-cost):
   4. openai   — if OPENAI_API_KEY set and SDK installed
   5. cohere   — if COHERE_API_KEY set and SDK installed
   6. extractive — citation-faithful quotation (always available, no generation)
+
+Hosted providers (huggingface/openai/anthropic/cohere) are never auto-selected and
+are wrapped so a request-time failure degrades down a chain: hosted → local Ollama
+→ local GGUF SLM → extractive. See :mod:`auralynq.llm.resilient`.
 """
 
 from __future__ import annotations
@@ -61,6 +65,10 @@ _PROVIDER_DEFAULT_MODEL = {
     "huggingface": "meta-llama/Llama-3.3-70B-Instruct",
 }
 _OLLAMA_MODEL_HINTS = ("llama", "qwen", "mistral", "gemma", "phi", "deepseek", ":")
+# Preferred local generation model when falling back from a hosted provider.
+_OLLAMA_DEFAULT_MODEL = "llama3.2:3b"
+# Embedding-only tags are never valid generation backups.
+_EMBED_HINTS = ("embed", "bge-m3")
 
 
 def _model_for(provider: str, configured: str) -> str:
@@ -76,6 +84,75 @@ def _model_for(provider: str, configured: str) -> str:
         _log.info("llm.model_defaulted", provider=provider, model=default, ignored=configured)
         return default
     return configured
+
+
+def _installed_ollama_models(base_url: str) -> list[str]:
+    try:  # pragma: no cover - network probe
+        resp = httpx.get(base_url.rstrip("/") + "/api/tags", timeout=1.0)
+        return [m["name"] for m in resp.json().get("models", []) if m.get("name")]
+    except Exception:
+        return []
+
+
+def _ollama_backup_model(configured: str, base_url: str) -> str | None:
+    """Pick a generation model that the Ollama daemon actually serves.
+
+    When the primary is a hosted provider, ``llm.model`` holds *that* provider's id
+    (e.g. ``meta-llama/Llama-3.3-70B-Instruct``), which Ollama would 404 on. Resolve
+    against the daemon's installed tags instead, preferring the configured model,
+    then the local default, then any installed non-embedding model.
+    """
+    installed = _installed_ollama_models(base_url)
+    if not installed:
+        # Daemon reachable but tag listing failed — trust the configured name only
+        # if it looks like an Ollama tag rather than a hosted repo path.
+        return configured if "/" not in configured else None
+
+    def _match(name: str) -> str | None:
+        return next((t for t in installed if t == name or t.split(":")[0] == name), None)
+
+    for candidate in (configured, _OLLAMA_DEFAULT_MODEL):
+        hit = _match(candidate)
+        if hit:
+            return hit
+    # Last resort: first installed model that isn't an embedding-only tag.
+    return next((t for t in installed if not any(e in t.lower() for e in _EMBED_HINTS)), None)
+
+
+def _local_backups() -> list:
+    """Backup factories for a hosted provider: local Ollama, then local GGUF SLM.
+
+    Lets a hosted primary (HF Inference Providers, OpenAI, Anthropic, Cohere)
+    degrade to a *generative* local model on a request-time failure — rate limit,
+    billing lapse, network blip — instead of dropping straight to quotation-only
+    extractive output. Probed lazily: an unreachable daemon costs nothing until a
+    failure actually occurs. Extractive remains the terminal link in ResilientLLM.
+    """
+    s = get_settings()
+    backups: list = []
+
+    if _ollama_reachable(s.llm.base_url):
+        model = _ollama_backup_model(s.llm.model, s.llm.base_url)
+        if model is not None:
+
+            def _ollama() -> LLM:
+                from auralynq.llm.providers import OllamaLLM
+
+                return OllamaLLM(model, s.llm.base_url)
+
+            backups.append(_ollama)
+
+    if _slm_available():
+
+        def _slm() -> LLM:
+            slm = _build_slm()
+            if slm is None:
+                raise RuntimeError("slm unavailable")
+            return slm
+
+        backups.append(_slm)
+
+    return backups
 
 
 def _build_slm() -> LLM | None:
@@ -158,21 +235,28 @@ def build_llm(provider: str | None = None) -> LLM:
             from auralynq.llm.providers import OpenAILLM
             from auralynq.llm.resilient import ResilientLLM
 
-            return ResilientLLM(OpenAILLM(s.openai_api_key, _model_for("openai", s.llm.model)))
+            return ResilientLLM(
+                OpenAILLM(s.openai_api_key, _model_for("openai", s.llm.model)),
+                backups=_local_backups(),
+            )
 
         if provider == "anthropic":
             from auralynq.llm.providers import AnthropicLLM
             from auralynq.llm.resilient import ResilientLLM
 
             return ResilientLLM(
-                AnthropicLLM(s.anthropic_api_key, _model_for("anthropic", s.llm.model))
+                AnthropicLLM(s.anthropic_api_key, _model_for("anthropic", s.llm.model)),
+                backups=_local_backups(),
             )
 
         if provider == "cohere":
             from auralynq.llm.providers import CohereLLM
             from auralynq.llm.resilient import ResilientLLM
 
-            return ResilientLLM(CohereLLM(s.cohere_api_key, _model_for("cohere", s.llm.model)))
+            return ResilientLLM(
+                CohereLLM(s.cohere_api_key, _model_for("cohere", s.llm.model)),
+                backups=_local_backups(),
+            )
 
         if provider == "huggingface":
             # Powerful hosted models via HF Inference Providers (OpenAI-compatible
@@ -182,10 +266,19 @@ def build_llm(provider: str | None = None) -> LLM:
             from auralynq.llm.resilient import ResilientLLM
 
             if not s.huggingface_token:
+                # No token: prefer a local generative model over quotation-only.
+                for make_backup in _local_backups():
+                    try:
+                        local = make_backup()
+                    except Exception:
+                        continue
+                    _log.warning("llm.huggingface_no_token", fallback=local.name)
+                    return ResilientLLM(local)
                 _log.warning("llm.huggingface_no_token", fallback="extractive")
                 return ExtractiveLLM()
             return ResilientLLM(
-                HuggingFaceLLM(s.huggingface_token, _model_for("huggingface", s.llm.model))
+                HuggingFaceLLM(s.huggingface_token, _model_for("huggingface", s.llm.model)),
+                backups=_local_backups(),
             )
 
     except Exception as exc:  # construction failure (e.g. missing sdk) → extractive

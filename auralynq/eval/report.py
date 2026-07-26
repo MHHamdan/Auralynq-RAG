@@ -97,8 +97,11 @@ def _agentic(golden, k: int, judge=None) -> dict[str, Any]:
     faith_judged: list[float] = []
     consistencies: list[float] = []
     from auralynq.agent import runner
+    from auralynq.config.settings import get_settings
     from auralynq.eval.calibration import answer_correct, calibration_scores
     from auralynq.eval.citation_eval import citation_scores
+
+    _cons_floor = get_settings().agent.self_consistency_min
 
     runner._CACHE.clear()
     for item in golden:
@@ -171,9 +174,16 @@ def _agentic(golden, k: int, judge=None) -> dict[str, Any]:
         # SelfCheckGPT self-consistency (populated only when the agent's
         # self_consistency signal is enabled). mean in [0,1]; lower = more
         # answer drift under resampling = higher hallucination risk.
+        # hallucination_rate = fraction of answers below the abstention floor.
         "consistency": {
             "enabled": bool(consistencies),
             "mean": round(sum(consistencies) / len(consistencies), 4) if consistencies else None,
+            "hallucination_rate": (
+                round(sum(1 for c in consistencies if c < _cons_floor) / len(consistencies), 4)
+                if consistencies
+                else None
+            ),
+            "threshold": _cons_floor,
             "n": len(consistencies),
         },
     }

@@ -8,35 +8,98 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org)
 [![Podman](https://img.shields.io/badge/runtime-Podman-892CA0.svg)](https://podman.io)
-[![Live demo](https://img.shields.io/badge/🤗_live_demo-Hugging_Face-yellow.svg)](https://mhamdan-auralynq-rag.hf.space)
+[![Tests](https://img.shields.io/badge/tests-515_passing-brightgreen.svg)](#-benchmarks)
+[![Coverage](https://img.shields.io/badge/coverage-83%25-brightgreen.svg)](#-benchmarks)
+[![Live demo](https://img.shields.io/badge/🤗_live_demo-Hugging_Face-yellow.svg)](https://huggingface.co/spaces/MHamdan/auralynq-rag)
 
-A **local-first, voice-native, agentic RAG platform** with hybrid vector retrieval,
-PPR-augmented PathRAG graph reasoning, an **agentic multi-hop reasoning loop** (Self-RAG),
-14 pluggable RAG strategies, and visual source grounding with exact span-level bounding
-boxes. Grounded answers with citations you can visually verify against the original PDF.
-A **Compounding Wiki** turns ingest into a persistent, cited knowledge base that
-accumulates — synthesizing durable entity pages and flagging cross-source contradictions
-instead of re-deriving everything each query. Ingests files, **web URLs**, and
-**Notion / Slack / Drive** connectors; a **trust-eval harness** measures citation
-attribution and confidence calibration (not just claims them). Runs at **$0** on a
-laptop; upgrades to GPU / hosted models (Llama-3.3-70B via HF Inference Providers) via env flags.
+**Ask questions about your own documents and get answers you can actually verify —
+every claim traced to an exact highlighted region on the original PDF page.**
 
-[Live demo](https://mhamdan-auralynq-rag.hf.space) · [Quickstart](#-quickstart) · [No-Podman guide](docs/getting-started/no-podman.md) · [Podman guide](docs/getting-started/podman.md) · [Server](docs/getting-started/server.md) · [Hugging Face Space](docs/getting-started/huggingface-space.md) · [Architecture](#-architecture) · [Auralynq-RAG](#-auralynq-rag-contribution) · [ModelFit Index](#-auralynq-modelfit-index) · [Compounding Wiki](#-compounding-wiki) · [Visual Grounding](#-visual-source-grounding) · [Benchmarks](#-benchmarks) · [Decisions](DECISIONS.md)
+Auralynq is a **local-first, voice-native, agentic RAG platform**. It runs at **$0**
+on a laptop with no GPU and no API keys, and scales up to GPU and hosted models
+through environment flags alone.
+
+[**▶ Try the live demo**](https://huggingface.co/spaces/MHamdan/auralynq-rag) ·
+[**⚡ Quickstart**](#-quickstart-60-seconds) ·
+[**🏗 Architecture**](#-architecture) ·
+[**📊 Benchmarks**](#-benchmarks)
 
 </div>
 
 ---
 
-## One-line pitch
+## Why Auralynq?
 
-**Auralynq** accepts text or voice queries against private documents and returns
-retrieval-grounded, span-cited answers with visual verification: click any citation
-and a full-screen workspace opens showing the original PDF page, exact bounding-box
-overlays, extracted text blocks, and claim-level support status. The inference loop
-runs 14 pluggable RAG strategies — including an agentic multi-hop loop that streams
-its reasoning — exposes a live retrieval trace, and produces calibrated four-signal
-confidence scores. Designed for reproducibility — every algorithmic decision is
-documented, configurable, and benchmarkable.
+Most RAG demos hand you a paragraph and a filename and ask you to trust it.
+Auralynq is built around the opposite premise — **that a grounded answer is only
+useful if you can check it**:
+
+- **🔍 Verify, don't trust.** Click any citation and a full-screen workspace opens on
+  the original PDF page with **exact bounding-box overlays** on the supporting text.
+  Grounding is verified against the rendered pixels, not just the chunk metadata.
+- **📐 Trust is measured, not claimed.** A built-in eval harness reports citation
+  attribution and **confidence calibration (ECE)** — so the confidence number means
+  something. Numbers come only from `make eval` / `make bench`.
+- **🧠 It reasons in the open.** An agentic multi-hop loop (Self-RAG) decomposes the
+  question, judges whether its evidence is sufficient, re-retrieves when it isn't,
+  and **streams that reasoning live** instead of hiding it.
+- **📚 Knowledge compounds.** Ingest builds a persistent cited knowledge base with
+  durable entity pages and **cross-source contradiction flags**, rather than
+  re-deriving everything on every query.
+- **🔌 Your hardware, your models.** Local Ollama by default; hosted models when you
+  want them; **every layer degrades gracefully** instead of failing (see
+  [Model providers](#-providers)).
+
+> **Honest scope:** this is a research-grade system built for reproducibility and
+> evaluation, not a hardened commercial product. Read [Limitations](#limitations)
+> before relying on it for anything critical.
+
+---
+
+## ⚡ Quickstart (60 seconds)
+
+No GPU, no containers, no paid API keys required.
+
+```bash
+git clone https://github.com/MHHamdan/Auralynq.git && cd Auralynq
+
+make setup     # light install — offline-capable, $0
+make data      # fetch a small license-clear sample corpus
+make index     # embed + index it
+make demo      # end-to-end grounded answer with citations
+
+auralynq ask "How does PathRAG prune relational paths?"
+```
+
+Then bring up the UI (two terminals):
+
+```bash
+python -m uvicorn auralynq.serving.app:app --port 8000                       # terminal 1
+cd web && NEXT_PUBLIC_API_BASE=http://localhost:8000/api npm run dev -- --port 3000   # terminal 2
+```
+
+Open **http://localhost:3000** · API docs at **http://localhost:8000/docs**
+
+Want the full production-shaped stack, a remote server, or Podman instead?
+See [Quickstart & deployment](#-quickstart) below.
+
+---
+
+## 📖 Contents
+
+| | |
+|---|---|
+| [✨ Capabilities](#-capabilities-at-a-glance) | What the system does, at a glance |
+| [🏗 Architecture](#-architecture) | Ingest, query loop, and agentic multi-hop diagrams |
+| [⚡ Core contributions](#-auralynq-rag-contribution) | PathRAG, evidence critic, calibrated confidence, routing |
+| [🔬 ModelFit Index](#-auralynq-modelfit-index) | Hardware-aware model selection |
+| [📚 Compounding Wiki](#-compounding-wiki) | Persistent cited knowledge + contradiction flags |
+| [🔬 Visual grounding](#-visual-source-grounding) | Span-level bounding-box citations |
+| [🖥 Frontend](#-frontend) | Chat workspace, inspector, strategy selector |
+| [🚀 Quickstart & deployment](#-quickstart) | Local, Podman, remote server, HF Space |
+| [🔌 Providers & fallback](#-providers) | Ollama, Hugging Face, BYO keys, graceful degradation |
+| [📊 Benchmarks](#-benchmarks) | Reproducible numbers |
+| [⚠️ Limitations](#limitations) · [🗺 Roadmap](#roadmap) | Honest scope and what's next |
 
 ---
 
@@ -52,7 +115,7 @@ documented, configurable, and benchmarkable.
 | **Ingestion** | Files · audio · **Web URL** (SSRF-safe) · **Notion / Slack / Drive** connectors · **Watch Folder** auto-reindex · Contextual Retrieval |
 | **Models** | Local Ollama · bge-m3 embeddings · **HF Inference Providers** (Llama-3.3-70B) · BYO OpenAI/Anthropic/Cohere · hardware-aware ModelFit |
 | **Voice** | Whisper ASR + diarization + TTS, with deterministic offline fallbacks |
-| **Ops** | Local-first at **$0** · rootless Podman · single-container HF Space · observable trace on every query · 460 tests @ 81.5% coverage |
+| **Ops** | Local-first at **$0** · rootless Podman · single-container HF Space · observable trace on every query · 515 tests @ 83% coverage |
 
 ---
 
@@ -959,11 +1022,19 @@ Full guide with TLS-certificate options: [docs/getting-started/server.md](docs/g
 
 ## 🤗 Hugging Face Space
 
+**▶ Live demo: [huggingface.co/spaces/MHamdan/auralynq-rag](https://huggingface.co/spaces/MHamdan/auralynq-rag)**
+
 A single-container Space image (`deploy/huggingface/`) packages the API and
 web UI together with a pre-seeded, license-clear demo corpus, offline
-extractive answering, and uploads disabled by default. Built and smoke-tested
-locally with Podman; **not yet published to a real Hugging Face Space** — see
-[docs/getting-started/huggingface-space.md](docs/getting-started/huggingface-space.md)
+extractive answering, and uploads disabled by default.
+
+> **Note:** the demo runs on free Space hardware and **sleeps when idle** — the first
+> request after a nap takes a minute or so to wake the container. It uses offline
+> extractive answering (no paid keys), so it demonstrates retrieval, citations and
+> visual grounding rather than large-model generation. Run it locally for the full
+> experience.
+
+See [docs/getting-started/huggingface-space.md](docs/getting-started/huggingface-space.md)
 for what's verified vs. not, and [deploy/huggingface/README.md](deploy/huggingface/README.md)
 for the publish steps. Nothing is auto-published; deploying a Space is always
 a manual, explicit step you take yourself.
@@ -1031,12 +1102,45 @@ HPA autoscaling, Qdrant StatefulSet, ConfigMap/Secret, Ingress.
 | Embeddings | `BAAI/bge-m3` → hash fallback | OpenAI embeddings | `OPENAI_API_KEY` |
 | Vector DB | Qdrant (Podman) → in-memory | Qdrant Cloud | `AURALYNQ_VECTOR__URL` |
 | Rerank | `bge-reranker-v2-m3` → lexical | Cohere rerank | `COHERE_API_KEY` |
-| LLM | Ollama local → extractive | OpenAI / Anthropic / Cohere | `*_API_KEY` |
+| LLM | Ollama local → local GGUF → extractive | Hugging Face / OpenAI / Anthropic / Cohere | `HUGGINGFACE_TOKEN`, `*_API_KEY` |
 | ASR | faster-whisper → null | WhisperX (align+diarize) | `HUGGINGFACE_TOKEN` |
 | TTS | Kokoro-82M → silent/sine | — | — |
 | Tracing | in-process spans | Phoenix + Langfuse | `LANGFUSE_*` |
 | Layout | pdfplumber (included) | — | — |
 | Page render | pdf2image + poppler (included) | higher DPI via env | — |
+
+### Graceful degradation — the answer path never hard-fails
+
+Auralynq is **local-first by default**: with `AURALYNQ_LLM__PROVIDER=auto` it picks a
+local Ollama daemon if one is reachable, then a local GGUF model, and only then any
+configured hosted provider. A hosted API is **never auto-selected** — a
+`HUGGINGFACE_TOKEN` present for gated model *downloads* will never silently route your
+documents to a paid API. You opt in explicitly:
+
+```bash
+# Powerful hosted generation via HF Inference Providers (great with a HF PRO account)
+AURALYNQ_LLM__PROVIDER=huggingface
+AURALYNQ_LLM__MODEL=meta-llama/Llama-3.3-70B-Instruct
+HUGGINGFACE_TOKEN=hf_...
+```
+
+When you do opt in, a request-time failure — expired key, inactive billing, rate
+limit, network blip — degrades **down a chain** rather than erroring or dropping
+straight to quotation-only output:
+
+```
+Hugging Face (hosted)  →  local Ollama  →  local GGUF SLM  →  extractive
+```
+
+Each link is tried in order and the first one that answers wins, so a rate-limited
+hosted model falls back to a *generative* local model that is already running.
+Extractive answering is the terminal link: it always succeeds and stays
+citation-faithful, so `/query` degrades in quality but never 500s. The provider that
+actually served a response is recorded on the trace (`served_by`), and the local
+backup model is resolved against the tags your Ollama daemon actually has installed.
+
+Set `AURALYNQ_AIR_GAPPED=true` to forbid every external provider outright, regardless
+of which keys are present in the environment.
 
 ---
 

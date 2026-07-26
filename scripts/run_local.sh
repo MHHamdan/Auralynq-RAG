@@ -21,8 +21,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # ---- configuration (edit here) -----------------------------------------------
-export AURALYNQ_CERT_HOST="${AURALYNQ_CERT_HOST:-yourIP}"   # browser host (cert SAN)
-PUBLIC_IP="yourIP"
+# Host you open in the browser; also the SAN baked into the self-signed cert.
+# Defaults to localhost. For LAN/remote access export your machine's IP first:
+#   AURALYNQ_HOST=yourIP ./scripts/run_local.sh
+PUBLIC_IP="${AURALYNQ_HOST:-localhost}"
+export AURALYNQ_CERT_HOST="${AURALYNQ_CERT_HOST:-$PUBLIC_IP}"   # browser host (cert SAN)
 
 export AURALYNQ_HTTPS_PORT="2002"          # public — the URL you open
 export AURALYNQ_WEB_PORT="2004"

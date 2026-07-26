@@ -106,6 +106,109 @@ def test_resilient_llm_falls_back_on_runtime_error():
     # streaming also degrades cleanly
     streamed = "".join(r.stream_answer("What is the capital of France?", ctx))
     assert "[1]" in streamed
+    assert r.served_by == "extractive"
+
+
+def _boom_llm(label="boom"):
+    from auralynq.llm.base import LLM
+
+    class _Boom(LLM):
+        name = label
+
+        def generate(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            raise RuntimeError("billing_not_active")
+
+    return _Boom()
+
+
+def _echo_llm(label, text):
+    from auralynq.llm.base import LLM
+
+    class _Echo(LLM):
+        name = label
+
+        def generate(self, prompt, *, system=None, temperature=None, max_tokens=None):
+            return text
+
+    return _Echo()
+
+
+def test_resilient_llm_prefers_local_backup_over_extractive():
+    """A failing hosted provider degrades to a local generative model, not extractive."""
+    from auralynq.llm.base import Context
+    from auralynq.llm.resilient import ResilientLLM
+
+    r = ResilientLLM(_boom_llm("huggingface"), backups=[lambda: _echo_llm("ollama", "local ans")])
+    ctx = [Context(marker=1, text="Paris is the capital of France.", source="geo.md")]
+
+    assert r.answer("capital?", ctx) == "local ans"
+    assert r.served_by == "ollama"
+    assert r.last_fallback == "RuntimeError"
+    assert "".join(r.stream_answer("capital?", ctx)) == "local ans"
+
+
+def test_resilient_llm_skips_unconstructable_and_failing_backups():
+    """Backups that fail to construct or raise are skipped; extractive is terminal."""
+    from auralynq.llm.base import Context
+    from auralynq.llm.resilient import ResilientLLM
+
+    def _cannot_construct():
+        raise RuntimeError("ollama daemon down")
+
+    r = ResilientLLM(
+        _boom_llm("huggingface"),
+        backups=[_cannot_construct, lambda: _boom_llm("slm")],
+    )
+    ctx = [Context(marker=1, text="Paris is the capital of France.", source="geo.md")]
+    out = r.answer("capital?", ctx)
+    assert "[1]" in out  # fell all the way through to extractive
+    assert r.served_by == "extractive"
+
+
+def test_ollama_backup_model_resolves_against_installed_tags(monkeypatch):
+    """A hosted model id must not be handed to Ollama verbatim (it would 404)."""
+    from auralynq.llm import factory
+
+    installed = ["llama3.2:3b", "qwen2.5:14b", "nomic-embed-text:latest"]
+    monkeypatch.setattr(factory, "_installed_ollama_models", lambda _url: installed)
+    resolve = factory._ollama_backup_model
+
+    # Hosted repo path → not installed → falls to the local default.
+    assert resolve("meta-llama/Llama-3.3-70B-Instruct", "u") == "llama3.2:3b"
+    # Configured tag that IS installed wins.
+    assert resolve("qwen2.5:14b", "u") == "qwen2.5:14b"
+    # Bare family name matches an installed tag.
+    assert resolve("qwen2.5", "u") == "qwen2.5:14b"
+
+    # Default absent → first installed non-embedding model, never the embedder.
+    monkeypatch.setattr(
+        factory, "_installed_ollama_models", lambda _url: ["nomic-embed-text:latest", "phi4:14b"]
+    )
+    assert resolve("meta-llama/Llama-3.3-70B-Instruct", "u") == "phi4:14b"
+
+    # Only embedding models installed → no valid generation backup.
+    monkeypatch.setattr(factory, "_installed_ollama_models", lambda _url: ["bge-m3:latest"])
+    assert resolve("meta-llama/Llama-3.3-70B-Instruct", "u") is None
+
+    # Tag listing failed → trust an ollama-shaped name, reject a repo path.
+    monkeypatch.setattr(factory, "_installed_ollama_models", lambda _url: [])
+    assert resolve("llama3.1:8b", "u") == "llama3.1:8b"
+    assert resolve("meta-llama/Llama-3.3-70B-Instruct", "u") is None
+
+
+def test_resilient_llm_healthy_primary_ignores_backups():
+    """No failure → primary serves and backups are never constructed."""
+    from auralynq.llm.base import Context
+    from auralynq.llm.resilient import ResilientLLM
+
+    def _must_not_run():
+        raise AssertionError("backup constructed despite healthy primary")
+
+    r = ResilientLLM(_echo_llm("huggingface", "hosted ans"), backups=[_must_not_run])
+    ctx = [Context(marker=1, text="Paris is the capital of France.", source="geo.md")]
+    assert r.answer("capital?", ctx) == "hosted ans"
+    assert r.served_by == "huggingface"
+    assert r.last_fallback is None
 
 
 def test_llm_model_defaulting_for_cohere():
