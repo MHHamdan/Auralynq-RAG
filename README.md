@@ -416,7 +416,7 @@ Inspired by Bayesian RAG (Frontiers 2026). **Implementation**: `auralynq/agent/n
 A pluggable strategy registry dispatches to 13 distinct retrieval modes based on
 query complexity, corpus metadata, and available infrastructure.
 
-**Fig 5 — Strategy Registry (13 strategies across 3 groups)**
+**Fig 5 — Strategy Registry (14 strategies across 3 groups)**
 
 ```mermaid
 flowchart LR
@@ -962,7 +962,7 @@ Open **http://localhost:3000**, API docs at **http://localhost:8000/docs**.
 
 - **Upload a document**: Ingest tab in the UI, or `curl -X POST http://localhost:8000/ingest -F "file=@mydoc.pdf"`.
 - **Visually verify a citation**: click any numbered citation under an answer — the Source Workspace opens full-screen with the original page and bounding-box overlays.
-- **Try a different RAG strategy**: `curl http://localhost:8000/rag/strategies` to list all 13, then `POST /query` with `"rag_strategy": "hybrid"` (or use the Algorithm Selector in the composer bar).
+- **Try a different RAG strategy**: `curl http://localhost:8000/rag/strategies` to list all 14, then `POST /query` with `"rag_strategy": "hybrid"` (or use the Algorithm Selector in the composer bar).
 - **ModelFit — find the best model for your hardware**:
   ```bash
   auralynq-modelfit recommend --task rag --limit 5
