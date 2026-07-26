@@ -37,9 +37,12 @@ useful if you can check it**:
 - **🔍 Verify, don't trust.** Click any citation and a full-screen workspace opens on
   the original PDF page with **exact bounding-box overlays** on the supporting text.
   Grounding is verified against the rendered pixels, not just the chunk metadata.
-- **📐 Trust is measured, not claimed.** A built-in eval harness reports citation
-  attribution and **confidence calibration (ECE)** — so the confidence number means
-  something. Numbers come only from `make eval` / `make bench`.
+- **📐 Trust is measured, not claimed.** A built-in eval harness scores citation
+  attribution, faithfulness and **confidence calibration (ECE)** against a frozen
+  golden set, behind a pass/fail regression gate. Every number in this README comes
+  from `make eval` / `make bench` — including the calibration check that currently
+  **fails**, which is published in [Benchmarks](#-benchmarks) rather than quietly
+  dropped.
 - **🧠 It reasons in the open.** An agentic multi-hop loop (Self-RAG) decomposes the
   question, judges whether its evidence is sufficient, re-retrieves when it isn't,
   and **streams that reasoning live** instead of hiding it.
@@ -124,7 +127,102 @@ See [Quickstart & deployment](#-quickstart) below.
 Auralynq operates in three phases: **Ingest** (parse → chunk → embed → store),
 **Query** (plan → retrieve → critique → synthesize → ground),
 and **Inspect** (source workspace with span-level visual verification).
-The figures below cover each phase independently.
+Fig 0 shows how every subsystem fits together; the figures after it zoom into
+each phase.
+
+---
+
+### Fig 0 — System Overview
+
+Everything Auralynq is built on, in one view. Five ingest sources feed four
+persistent stores; the query loop routes across **14 retrieval strategies**
+(lexical, graph, visual and agentic), gates the result through an evidence
+critic and a calibrated confidence signal, then grounds every claim back to
+pixels on the source page. Model providers, observability and evaluation are
+cross-cutting — each degrades gracefully rather than failing.
+
+```mermaid
+flowchart TB
+    classDef client fill:#0f766e,color:#fff,stroke:#115e59,stroke-width:1px
+    classDef src fill:#1d4ed8,color:#fff,stroke:#1e40af,stroke-width:1px
+    classDef proc fill:#7c3aed,color:#fff,stroke:#6d28d9,stroke-width:1px
+    classDef store fill:#065f46,color:#fff,stroke:#047857,stroke-width:1px
+    classDef ground fill:#be123c,color:#fff,stroke:#9f1239,stroke-width:1px
+    classDef model fill:#92400e,color:#fff,stroke:#78350f,stroke-width:1px
+    classDef ops fill:#334155,color:#fff,stroke:#1e293b,stroke-width:1px
+
+    subgraph CL["🖥 Clients"]
+        direction LR
+        WEB["Web UI (Next.js)<br/>chat · trace · workspace"]:::client
+        CLI["CLI<br/>ask · talk · index"]:::client
+        MCP["MCP server<br/>7 tools + agent memory"]:::client
+    end
+
+    subgraph ING["📥 Ingest"]
+        direction LR
+        SRC["Files · Audio · Web URL<br/>Notion/Slack/Drive · Watch Folder"]:::src
+        PARSE["Parse → layout blocks + bbox<br/>ASR + diarization · page render"]:::proc
+        ENRICH["Chunk → Contextual Retrieval<br/>bge-m3 dense + sparse"]:::proc
+    end
+
+    subgraph ST["🗄 Persistent Stores"]
+        direction LR
+        QD[("Qdrant<br/>dense + sparse")]:::store
+        KG[("Knowledge Graph<br/>entities · relations")]:::store
+        WK[("Compounding Wiki<br/>cited entity pages")]:::store
+        BEL[("Belief Store<br/>bi-temporal · contradictions")]:::store
+        PC[("Page Cache<br/>rendered page images")]:::store
+    end
+
+    subgraph RET["🔍 Retrieval — 14 switchable strategies"]
+        direction LR
+        HYB["Hybrid dense+sparse<br/>RRF · MMR · rerank"]:::proc
+        PATH["PPR-augmented<br/>PathRAG"]:::proc
+        GRAPH["GraphRAG<br/>community summaries"]:::proc
+        COLP["ColPali<br/>late-interaction visual"]:::proc
+    end
+
+    subgraph REASON["🧠 Reasoning & Trust Gate"]
+        direction LR
+        ROUTE["Adaptive router<br/>picks strategy per query"]:::proc
+        AGENT["Agentic multi-hop loop<br/>decompose → judge → re-retrieve"]:::proc
+        CRIT["Evidence sufficiency critic<br/>dual-signal"]:::proc
+        CONF["Calibrated confidence<br/>4 signals + self-consistency"]:::proc
+        ABST["Abstention gate<br/>refuses when unsupported"]:::proc
+    end
+
+    subgraph GR["🎯 Grounding & Verification"]
+        direction LR
+        VG["Span-level resolver<br/>exact bounding boxes"]:::ground
+        VLM["VLM page-image Q&A<br/>hosted vision model"]:::ground
+        WS["Source Workspace<br/>claim-level support"]:::ground
+    end
+
+    subgraph MOD["🔌 Model Providers — graceful degradation"]
+        direction LR
+        CHAIN["Hugging Face / OpenAI / Anthropic / Cohere<br/>↓ local Ollama ↓ local GGUF ↓ extractive"]:::model
+        MF["ModelFit Index<br/>hardware-aware selection"]:::model
+    end
+
+    subgraph OPS["🔭 Observability & Evaluation"]
+        direction LR
+        TR["Per-query trace<br/>Phoenix · Langfuse"]:::ops
+        EV["Eval harness<br/>attribution · ECE · judge · gate"]:::ops
+    end
+
+    CL --> ING
+    ING --> SRC --> PARSE --> ENRICH --> ST
+    CL ==>|question| ROUTE
+    ROUTE --> RET
+    ST -.->|evidence| RET
+    RET --> AGENT --> CRIT --> CONF --> ABST
+    ABST ==>|grounded answer| GR
+    GR ==>|cited + verifiable| CL
+    MOD -.->|generation + embeddings| REASON
+    MOD -.-> ENRICH
+    OPS -.->|instruments| REASON
+    OPS -.->|instruments| RET
+```
 
 ---
 
@@ -416,7 +514,7 @@ Inspired by Bayesian RAG (Frontiers 2026). **Implementation**: `auralynq/agent/n
 A pluggable strategy registry dispatches to 13 distinct retrieval modes based on
 query complexity, corpus metadata, and available infrastructure.
 
-**Fig 5 — Strategy Registry (13 strategies across 3 groups)**
+**Fig 5 — Strategy Registry (14 strategies across 3 groups)**
 
 ```mermaid
 flowchart LR
@@ -962,7 +1060,7 @@ Open **http://localhost:3000**, API docs at **http://localhost:8000/docs**.
 
 - **Upload a document**: Ingest tab in the UI, or `curl -X POST http://localhost:8000/ingest -F "file=@mydoc.pdf"`.
 - **Visually verify a citation**: click any numbered citation under an answer — the Source Workspace opens full-screen with the original page and bounding-box overlays.
-- **Try a different RAG strategy**: `curl http://localhost:8000/rag/strategies` to list all 13, then `POST /query` with `"rag_strategy": "hybrid"` (or use the Algorithm Selector in the composer bar).
+- **Try a different RAG strategy**: `curl http://localhost:8000/rag/strategies` to list all 14, then `POST /query` with `"rag_strategy": "hybrid"` (or use the Algorithm Selector in the composer bar).
 - **ModelFit — find the best model for your hardware**:
   ```bash
   auralynq-modelfit recommend --task rag --limit 5
@@ -1188,29 +1286,44 @@ Claude Desktop config:
 > [docs/benchmarks.md](docs/benchmarks.md) (also covers `make bench-rag` /
 > `bench-modelfit` / `bench-visual-grounding` / `export-paper-tables`).
 
-**Retrieval comparison** (k=6, nDCG@10):
+**Retrieval comparison** (k=6, frozen 5-item golden set):
 
 | Metric | naive | hybrid | PathRAG | full agentic |
 |--------|------:|-------:|--------:|-------------:|
 | Recall@k          | 1.00  | 1.00   | 0.80    | 0.80         |
-| nDCG@10           | 0.900 | 0.886  | 0.800   | 0.800        |
-| MRR               | 0.867 | 0.850  | 0.800   | 0.800        |
+| nDCG@10           | 0.900 | 0.900  | 0.800   | 0.726        |
+| MRR               | 0.867 | 0.867  | 0.800   | 0.700        |
 | Precision@k       | 0.167 | 0.167  | 0.133   | 0.133        |
-| Latency p50 (ms)  | 0.1   | 1.3    | 0.1     | 16.6         |
+| Latency p50 (ms)  | 0.12  | 0.74   | 3.33    | 17.76        |
 
-**Answer quality** (full agentic, Ragas proxy):
+**Answer quality & citation** (full agentic, lexical judge):
 
-| Faithfulness | Answer relevancy | Context precision |
-|-------------:|-----------------:|------------------:|
-| 0.80         | 0.41             | 0.64              |
+| Faithfulness | Answer relevancy | Context precision | Citation precision | Attribution rate | Unsupported claims |
+|-------------:|-----------------:|------------------:|-------------------:|-----------------:|-------------------:|
+| 1.00         | 0.439            | 0.700             | 0.889              | 0.895            | 0.105              |
 
-**Qdrant quantization trade-off** (289 vectors, dim 256):
+**Vector quantization trade-off** (256 vectors, dim 256, k=10, 32 queries):
 
 | Quantization | Recall@10 | Memory | Compression |
 |--------------|----------:|-------:|------------:|
-| none (fp32)  | 1.00      | 289 KB | 1×          |
-| scalar (int8)| 1.00      | 72 KB  | **4×**      |
-| binary (1-bit)| 0.50     | 9 KB   | **32×**     |
+| none (fp32)  | 1.000     | 256 KB | 1×          |
+| scalar (int8)| 0.988     | 64 KB  | **4×**      |
+| binary (1-bit)| 0.519    | 8 KB   | **32×**     |
+
+**Calibration — the trust gate currently fails here, and that is worth stating plainly:**
+
+| ECE | MCE | Brier | Accuracy | Mean confidence | Gate (ECE ≤ 0.20) |
+|----:|----:|------:|---------:|----------------:|:------------------|
+| 0.532 | 0.545 | 0.284 | 1.000 | 0.468 | ❌ **fail** |
+
+The system answered all 5 golden questions correctly while reporting a mean
+confidence of 0.47 — it is **under-confident**, not over-confident, which is the
+safer direction to be wrong in but still miscalibrated. Two caveats on how much
+to read into this: a 5-item set with perfect accuracy makes ECE collapse to
+`1 − mean_confidence`, and the `$0` config scores confidence on top of the
+*extractive* answerer rather than a real generative model. Calibrating this
+properly — a larger golden set and a temperature-scaled confidence head — is
+tracked in [Roadmap](#roadmap). The other five gate checks pass.
 
 ---
 
@@ -1261,15 +1374,22 @@ Claude Desktop config:
 - [x] **Trust-eval harness** — citation attribution, confidence calibration (ECE), LLM-as-judge, regression gate (`auralynq eval --gate`)
 - [x] **Ingestion** — SSRF-safe Web URL scraping; Notion / Slack / Drive connectors (token / service-account, cursor sync); auto-reindexing Watch Folder
 - [x] **HF Inference Providers** — Llama-3.3-70B and other hosted models with no local GPU
+- [x] **ColPali late-interaction visual retrieval** — image-to-image matching that drives span grounding, with an offline hash fallback and a GPU `colpali` extra (`/visual/search`)
+- [x] **GraphRAG community summaries** — corpus-wide sensemaking over graph communities (`/graphrag/communities`)
+- [x] **Contradiction alerts** — proactive cross-source conflict detection (`/alerts`)
+- [x] **Bi-temporal belief store + timeline** — invalidate-not-delete revision history per entity (`/beliefs/{entity}/timeline`)
+- [x] **MCP server + agent-memory tier** — 7 tools plus `remember` / `recall` long-term memory
+- [x] **Self-consistency in the abstention gate** — SelfCheckGPT-style agreement as a fifth confidence signal, coupled to abstention
+- [x] **VLM page-image Q&A** — ask questions directly against rendered page images via a hosted vision model (`/visual/ask`)
+- [x] **Graceful provider degradation** — hosted → local Ollama → local GGUF → extractive, so a rate-limited or unbilled API never breaks the answer path
 
 **Next**
 
-- [ ] ColPali / late-interaction visual retrieval (image-to-image, drives span grounding)
-- [ ] GraphRAG-style community summaries + global/local router
-- [ ] Proactive contradiction alerts on connector/watch sync
-- [ ] Bi-temporal belief-revision timeline on the Compounding Wiki
-- [ ] Expose Auralynq as an MCP server + long-term memory tier
-- [ ] SelfCheckGPT self-consistency wired into the abstention gate
+- [ ] **Fix confidence calibration** — the ECE gate currently fails (see [Benchmarks](#-benchmarks)); needs a larger golden set and a temperature-scaled confidence head
+- [ ] Expand the golden set well beyond 5 items so the trust metrics carry statistical weight
+- [ ] GraphRAG global map-reduce retriever to activate the `lightrag_global` strategy
+- [ ] Time-aware MCP `recall` via the belief store's `as_of`
+- [ ] ColPali reranking wired into the agent node
 - [ ] Streaming partial ASR in the WebSocket loop · Graph-DB KG backend · multi-tenant auth
 
 ---
