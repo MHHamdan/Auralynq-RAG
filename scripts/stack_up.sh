@@ -68,6 +68,20 @@ if [ -z "${existing_base}" ]; then
   fi
 fi
 
+# Same reasoning for a host-side vLLM server: inside the container `localhost`
+# is the container, so a vLLM on the host is only reachable via the LAN IP.
+existing_vllm="${AURALYNQ_LLM__VLLM_BASE_URL:-$(grep -E '^AURALYNQ_LLM__VLLM_BASE_URL=' .env 2>/dev/null | cut -d= -f2- || true)}"
+if [ -z "${existing_vllm}" ]; then
+  vllm_port="${AURALYNQ_VLLM_PORT:-8001}"
+  vllm_host_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' | head -1 || true)"
+  if [ -n "${vllm_host_ip}" ]; then
+    export AURALYNQ_LLM__VLLM_BASE_URL="http://${vllm_host_ip}:${vllm_port}/v1"
+    if curl -fsS -m 2 "http://${vllm_host_ip}:${vllm_port}/v1/models" >/dev/null 2>&1; then
+      echo "→ host vLLM reachable at ${vllm_host_ip}:${vllm_port} — routing containers there."
+    fi
+  fi
+fi
+
 # ── Optional NVIDIA GPU visibility for hardware detection ─────────────────────
 # The API's ModelFit page reports the host's real GPUs. In a rootless container
 # without the nvidia-container-toolkit those GPUs are invisible, so the report

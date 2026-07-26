@@ -124,6 +124,9 @@ services:
       - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
       - AURALYNQ_LLM__MODEL=${AURALYNQ_LLM__MODEL:-llama3.1:8b}
       - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
+      # vLLM serving backend (optional). Host-side servers are reached via the
+      # LAN IP, not localhost — scripts/stack_up.sh derives it.
+      - AURALYNQ_LLM__VLLM_BASE_URL=${AURALYNQ_LLM__VLLM_BASE_URL:-http://host.containers.internal:8001/v1}
       - AURALYNQ_TELEMETRY__OTLP_ENDPOINT=${AURALYNQ_OTLP_ENDPOINT:-http://auralynq-phoenix:4317}
       - AURALYNQ_DATA_DIR=/app/data
       - AURALYNQ_SERVE__API_KEY=${AURALYNQ_SERVE__API_KEY:-}
@@ -176,6 +179,9 @@ services:
       - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
       - AURALYNQ_LLM__MODEL=${AURALYNQ_LLM__MODEL:-llama3.1:8b}
       - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
+      # vLLM serving backend (optional). Host-side servers are reached via the
+      # LAN IP, not localhost — scripts/stack_up.sh derives it.
+      - AURALYNQ_LLM__VLLM_BASE_URL=${AURALYNQ_LLM__VLLM_BASE_URL:-http://host.containers.internal:8001/v1}
       - AURALYNQ_DATA_DIR=/app/data
     volumes:
       - auralynq-data:/app/data
@@ -207,6 +213,9 @@ services:
       - AURALYNQ_LLM__PROVIDER=${AURALYNQ_LLM__PROVIDER:-auto}
       - AURALYNQ_LLM__MODEL=${AURALYNQ_LLM__MODEL:-llama3.1:8b}
       - AURALYNQ_LLM__BASE_URL=${AURALYNQ_LLM__BASE_URL:-http://host.containers.internal:11434}
+      # vLLM serving backend (optional). Host-side servers are reached via the
+      # LAN IP, not localhost — scripts/stack_up.sh derives it.
+      - AURALYNQ_LLM__VLLM_BASE_URL=${AURALYNQ_LLM__VLLM_BASE_URL:-http://host.containers.internal:8001/v1}
       - AURALYNQ_DATA_DIR=/app/data
       - AURALYNQ_WIKI__ENABLED=${AURALYNQ_WIKI__ENABLED:-false}
       - AURALYNQ_WATCH__ENABLED=${AURALYNQ_WATCH__ENABLED:-false}

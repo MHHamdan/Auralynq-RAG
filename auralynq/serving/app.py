@@ -82,6 +82,7 @@ from auralynq.serving.schemas import (
     QueryRequestV2,
     QueryResponse,
     RAGStrategiesResponse,
+    SetLLMBackendRequest,
     StatusResponse,
     SuggestionsResponse,
     VisualAskResponse,
@@ -1240,6 +1241,48 @@ def create_app() -> FastAPI:
             strategies=[RAGStrategyInfo(**s) for s in strategies_raw],
             default_strategy=registry.default_strategy_id,
         )
+
+    @app.get("/llm/backends")
+    async def llm_backends_ep(recheck: bool = False) -> dict[str, Any]:
+        """Availability of the local serving backends (Ollama / vLLM / AirLLM)."""
+        from auralynq.llm.backends import backends_payload, invalidate_probe_cache
+
+        if recheck:
+            invalidate_probe_cache()
+        return await asyncio.to_thread(backends_payload)
+
+    @app.post("/llm/backend")
+    async def set_llm_backend_ep(req: SetLLMBackendRequest) -> dict[str, Any]:
+        """Switch the serving backend for this process.
+
+        In-process only — it does not rewrite config, so a restart returns to the
+        configured provider. That keeps the UI selector honest (it changes what
+        answers right now) without inventing a settings-write path.
+        """
+        from auralynq.config.settings import get_settings as _get_settings
+        from auralynq.llm.backends import detect_backend, invalidate_probe_cache
+        from auralynq.llm.factory import get_llm as _get_llm
+        from auralynq.llm.factory import resolved_provider
+
+        backend = req.backend
+        if backend != "auto":
+            try:
+                info = detect_backend(backend)
+            except KeyError:
+                raise HTTPException(400, f"Unknown backend '{backend}'.") from None
+            if not info.available:
+                raise HTTPException(
+                    409,
+                    f"{info.name} is not available: {info.unavailable_reason}. "
+                    f"{info.remediation or ''}".strip(),
+                )
+
+        settings = _get_settings()
+        settings.llm.provider = backend  # type: ignore[assignment]
+        _get_llm.cache_clear()
+        invalidate_probe_cache()
+        _log.info("llm.backend_switched", backend=backend)
+        return {"backend": backend, "active": resolved_provider()}
 
     # v2 query endpoint with strategy selection
     @app.post("/query/v2", response_model=QueryResponse)

@@ -65,7 +65,16 @@ class RetrievalSettings(BaseSettings):
 
 class LLMSettings(BaseSettings):
     provider: Literal[
-        "auto", "ollama", "slm", "openai", "anthropic", "cohere", "huggingface", "extractive"
+        "auto",
+        "ollama",
+        "vllm",
+        "airllm",
+        "slm",
+        "openai",
+        "anthropic",
+        "cohere",
+        "huggingface",
+        "extractive",
     ] = "auto"
     model: str = "llama3.2:3b"
     base_url: str = "http://localhost:11434"
@@ -80,6 +89,20 @@ class LLMSettings(BaseSettings):
     slm_n_ctx: int = 4096
     # -1 = auto (GPU when CUDA present, CPU otherwise); 0 = force CPU; N = N layers on GPU
     slm_n_gpu_layers: int = -1
+    # ── vLLM (local OpenAI-compatible GPU server) ──────────────────────────
+    # Port 8001 by default, not vLLM's own 8000 — that collides with serve.port.
+    vllm_base_url: str = "http://localhost:8001/v1"
+    # Empty → auto-discover from /v1/models. A vLLM process serves one model for
+    # its lifetime, so the server is the source of truth, not this setting.
+    vllm_model: str = ""
+    vllm_api_key: str = ""  # only when the server was started with --api-key
+    # ── AirLLM (in-process layer streaming) ────────────────────────────────
+    # Off by default: a single answer takes minutes and saturates the disk.
+    # Never auto-selected; must be chosen explicitly.
+    airllm_enabled: bool = False
+    airllm_model: str = "Qwen/Qwen2.5-7B-Instruct"  # HF repo id, not an Ollama tag
+    airllm_compression: str = ""  # "" | "4bit" | "8bit" (needs bitsandbytes)
+    airllm_max_new_tokens: int = 256
 
 
 class AgentSettings(BaseSettings):
@@ -139,6 +162,9 @@ class TelemetrySettings(BaseSettings):
 
 class ModelFitSettings(BaseSettings):
     enabled: bool = True
+    # Ollama endpoint used for model discovery/pull. Empty → reuse llm.base_url.
+    # Set this only when models are managed on a different host than inference.
+    ollama_url: str = ""
 
 
 class VisualGroundingSettings(BaseSettings):
