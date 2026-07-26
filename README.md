@@ -153,16 +153,18 @@ flowchart TB
 
     subgraph CL["🖥 Clients"]
         direction LR
-        WEB["Web UI (Next.js)<br/>chat · trace · workspace"]:::client
+        WEB["Web UI · Next.js<br/>chat · trace · workspace"]:::client
         CLI["CLI<br/>ask · talk · index"]:::client
         MCP["MCP server<br/>7 tools + agent memory"]:::client
+        WEB ~~~ CLI ~~~ MCP
     end
 
-    subgraph ING["📥 Ingest"]
+    subgraph ING["📥 Ingest — one pass"]
         direction LR
         SRC["Files · Audio · Web URL<br/>Notion/Slack/Drive · Watch Folder"]:::src
-        PARSE["Parse → layout blocks + bbox<br/>ASR + diarization · page render"]:::proc
-        ENRICH["Chunk → Contextual Retrieval<br/>bge-m3 dense + sparse"]:::proc
+        PARSE["Parse<br/>layout blocks + bbox · ASR · page render"]:::proc
+        ENRICH["Chunk + Contextual Retrieval<br/>bge-m3 dense + sparse"]:::proc
+        SRC --> PARSE --> ENRICH
     end
 
     subgraph ST["🗄 Persistent Stores"]
@@ -171,57 +173,55 @@ flowchart TB
         KG[("Knowledge Graph<br/>entities · relations")]:::store
         WK[("Compounding Wiki<br/>cited entity pages")]:::store
         BEL[("Belief Store<br/>bi-temporal · contradictions")]:::store
-        PC[("Page Cache<br/>rendered page images")]:::store
+        PC[("Page Cache<br/>page images")]:::store
+        QD ~~~ KG ~~~ WK ~~~ BEL ~~~ PC
     end
 
-    subgraph RET["🔍 Retrieval — 14 switchable strategies"]
+    subgraph RET["🔍 Retrieval — adaptive router over 14 strategies"]
         direction LR
+        ROUTE["Adaptive router<br/>picks strategy per query"]:::proc
         HYB["Hybrid dense+sparse<br/>RRF · MMR · rerank"]:::proc
         PATH["PPR-augmented<br/>PathRAG"]:::proc
         GRAPH["GraphRAG<br/>community summaries"]:::proc
         COLP["ColPali<br/>late-interaction visual"]:::proc
+        ROUTE --> HYB
+        HYB ~~~ PATH ~~~ GRAPH ~~~ COLP
     end
 
-    subgraph REASON["🧠 Reasoning & Trust Gate"]
+    subgraph RSN["🧠 Reasoning &amp; Trust Gate"]
         direction LR
-        ROUTE["Adaptive router<br/>picks strategy per query"]:::proc
-        AGENT["Agentic multi-hop loop<br/>decompose → judge → re-retrieve"]:::proc
-        CRIT["Evidence sufficiency critic<br/>dual-signal"]:::proc
+        AGENT["Agentic multi-hop<br/>decompose → judge → re-retrieve"]:::proc
+        CRIT["Evidence critic<br/>dual-signal sufficiency"]:::proc
         CONF["Calibrated confidence<br/>4 signals + self-consistency"]:::proc
         ABST["Abstention gate<br/>refuses when unsupported"]:::proc
+        AGENT --> CRIT --> CONF --> ABST
     end
 
-    subgraph GR["🎯 Grounding & Verification"]
+    subgraph GRD["🎯 Grounding &amp; Verification"]
         direction LR
         VG["Span-level resolver<br/>exact bounding boxes"]:::ground
-        VLM["VLM page-image Q&A<br/>hosted vision model"]:::ground
+        VLM["VLM page-image Q&amp;A<br/>hosted vision model"]:::ground
         WS["Source Workspace<br/>claim-level support"]:::ground
+        VG ~~~ VLM ~~~ WS
     end
 
-    subgraph MOD["🔌 Model Providers — graceful degradation"]
+    subgraph INF["🔌 Providers &amp; Ops — cross-cutting, every layer degrades gracefully"]
         direction LR
-        CHAIN["Hugging Face / OpenAI / Anthropic / Cohere<br/>↓ local Ollama ↓ local GGUF ↓ extractive"]:::model
-        MF["ModelFit Index<br/>hardware-aware selection"]:::model
+        CHAIN["Hosted HF/OpenAI/Anthropic/Cohere<br/>↓ Ollama ↓ GGUF ↓ extractive"]:::model
+        MFIT["ModelFit Index<br/>hardware-aware selection"]:::model
+        TRC["Per-query trace<br/>Phoenix · Langfuse"]:::ops
+        EVAL["Eval harness<br/>attribution · ECE · gate"]:::ops
+        CHAIN ~~~ MFIT ~~~ TRC ~~~ EVAL
     end
 
-    subgraph OPS["🔭 Observability & Evaluation"]
-        direction LR
-        TR["Per-query trace<br/>Phoenix · Langfuse"]:::ops
-        EV["Eval harness<br/>attribution · ECE · judge · gate"]:::ops
-    end
-
-    CL --> ING
-    ING --> SRC --> PARSE --> ENRICH --> ST
-    CL ==>|question| ROUTE
-    ROUTE --> RET
-    ST -.->|evidence| RET
-    RET --> AGENT --> CRIT --> CONF --> ABST
-    ABST ==>|grounded answer| GR
-    GR ==>|cited + verifiable| CL
-    MOD -.->|generation + embeddings| REASON
-    MOD -.-> ENRICH
-    OPS -.->|instruments| REASON
-    OPS -.->|instruments| RET
+    ENRICH ==> QD
+    WEB ==>|question| ROUTE
+    QD -.->|evidence| HYB
+    COLP ==> AGENT
+    ABST ==>|grounded answer| VG
+    WS ==>|cited + verifiable| WEB
+    CHAIN -.->|generation + embeddings| AGENT
+    EVAL -.->|scores the gate| ABST
 ```
 
 ---
