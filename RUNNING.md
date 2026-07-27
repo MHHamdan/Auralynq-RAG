@@ -63,7 +63,7 @@ Clone the repo (or copy just `compose.yml`, `containers/Caddyfile`,
 `scripts/`, `Makefile`):
 
 ```bash
-git clone https://github.com/MHHamdan/Auralynq.git && cd Auralynq
+git clone https://github.com/MHHamdan/Auralynq-RAG.git && cd Auralynq-RAG
 ```
 
 ### Step 2 — create `.env` (git-ignored; never commit it)
@@ -139,7 +139,7 @@ the UI **transparently fail over to the remote server** when the laptop's own AP
 is down (ADR-0020). Because it's your laptop, `localhost` works in the browser.
 
 ```bash
-git clone https://github.com/MHHamdan/Auralynq.git && cd Auralynq
+git clone https://github.com/MHHamdan/Auralynq-RAG.git && cd Auralynq-RAG
 
 cat > .env <<'EOF'
 # --- browser reaches the laptop locally ---

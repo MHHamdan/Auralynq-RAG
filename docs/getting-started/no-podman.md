@@ -8,7 +8,7 @@ path always works, even with zero API keys installed.
 ## 1. Install
 
 ```bash
-git clone https://github.com/MHHamdan/Auralynq.git && cd Auralynq
+git clone https://github.com/MHHamdan/Auralynq-RAG.git && cd Auralynq
 make setup      # uv venv (or python -m venv) + dev/ingest/eval deps
 source .venv/bin/activate
 ```

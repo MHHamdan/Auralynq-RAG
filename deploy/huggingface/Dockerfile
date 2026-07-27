@@ -63,7 +63,7 @@ RUN chmod +x /app/entrypoint.sh \
 
 LABEL org.opencontainers.image.title="auralynq-space" \
       org.opencontainers.image.description="Auralynq single-container image for Hugging Face Spaces" \
-      org.opencontainers.image.source="https://github.com/MHHamdan/Auralynq" \
+      org.opencontainers.image.source="https://github.com/MHHamdan/Auralynq-RAG" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 USER auralynq

@@ -78,7 +78,7 @@ export function DemoBanner({ mode }: { mode: DeploymentMode | null }) {
           <>
             {" "}
             <a
-              href="https://github.com/MHHamdan/Auralynq/blob/main/docs/getting-started/huggingface-space.md"
+              href="https://github.com/MHHamdan/Auralynq-RAG/blob/main/docs/getting-started/huggingface-space.md"
               target="_blank"
               rel="noreferrer"
               className="underline decoration-dotted hover:text-brand"

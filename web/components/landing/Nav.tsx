@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-const REPO = "https://github.com/MHHamdan/Auralynq";
+const REPO = "https://github.com/MHHamdan/Auralynq-RAG";
 
 const LINKS = [
   { href: "#features", label: "Features" },

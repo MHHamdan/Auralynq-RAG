@@ -22,7 +22,7 @@ You only need `compose.yml`, `containers/Caddyfile`, `scripts/`, and a
 `Makefile` — or just clone the repo, it's small.
 
 ```bash
-git clone https://github.com/MHHamdan/Auralynq.git && cd Auralynq
+git clone https://github.com/MHHamdan/Auralynq-RAG.git && cd Auralynq
 ```
 
 Create `.env` (git-ignored; never commit it) — replace `<SERVER>` with the

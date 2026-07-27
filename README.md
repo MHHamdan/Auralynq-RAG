@@ -65,7 +65,7 @@ useful if you can check it**:
 No GPU, no containers, no paid API keys required.
 
 ```bash
-git clone https://github.com/MHHamdan/Auralynq.git && cd Auralynq
+git clone https://github.com/MHHamdan/Auralynq-RAG.git && cd Auralynq-RAG
 
 make setup     # light install — offline-capable, $0
 make data      # fetch a small license-clear sample corpus

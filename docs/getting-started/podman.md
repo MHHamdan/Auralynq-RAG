@@ -19,7 +19,7 @@ make runtime-check   # verifies a Podman Compose command is available
 ## 1. Build and start
 
 ```bash
-git clone https://github.com/MHHamdan/Auralynq.git && cd Auralynq
+git clone https://github.com/MHHamdan/Auralynq-RAG.git && cd Auralynq
 cp .env.example .env    # optional; only HUGGINGFACE_TOKEN matters for gated models
 
 make images       # build versioned api/web/caddy images locally

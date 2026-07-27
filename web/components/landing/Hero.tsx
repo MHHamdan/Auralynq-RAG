@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChatPreview } from "@/components/landing/ChatPreview";
 
-const REPO = "https://github.com/MHHamdan/Auralynq";
+const REPO = "https://github.com/MHHamdan/Auralynq-RAG";
 
 // Trust / value badges — the product promise at a glance.
 const BADGES = [
