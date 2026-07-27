@@ -173,7 +173,7 @@ export function SystemReport({
           server, not on your machine. To profile your Mac/PC and pull models onto it, run Auralynq
           locally (
           <a
-            href="https://github.com/MHHamdan/Auralynq"
+            href="https://github.com/MHHamdan/Auralynq-RAG"
             target="_blank"
             rel="noopener noreferrer"
             className="underline hover:text-amber-100"

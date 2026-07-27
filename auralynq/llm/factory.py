@@ -1,12 +1,16 @@
 """LLM factory with ``auto`` resolution + extractive fallback.
 
 Auto-resolution priority (local-first, zero-cost):
-  1. ollama   — if daemon is reachable (GPU/CPU handled by Ollama)
-  2. slm      — llama-cpp-python GGUF (GPU when CUDA present, CPU otherwise)
-  3. anthropic — if ANTHROPIC_API_KEY set and SDK installed
-  4. openai   — if OPENAI_API_KEY set and SDK installed
-  5. cohere   — if COHERE_API_KEY set and SDK installed
-  6. extractive — citation-faithful quotation (always available, no generation)
+  1. vllm     — if a local vLLM server answers (GPU, batched, OpenAI-compatible)
+  2. ollama   — if daemon is reachable (GPU/CPU handled by Ollama)
+  3. slm      — llama-cpp-python GGUF (GPU when CUDA present, CPU otherwise)
+  4. anthropic — if ANTHROPIC_API_KEY set and SDK installed
+  5. openai   — if OPENAI_API_KEY set and SDK installed
+  6. cohere   — if COHERE_API_KEY set and SDK installed
+  7. extractive — citation-faithful quotation (always available, no generation)
+
+`airllm` is never auto-selected: it runs a model far larger than the machine's
+VRAM by streaming layers from disk, at minutes per answer. Explicit choice only.
 
 Hosted providers (huggingface/openai/anthropic/cohere) are never auto-selected and
 are wrapped so a request-time failure degrades down a chain: hosted → local Ollama
@@ -45,6 +49,24 @@ def _ollama_reachable(base_url: str) -> bool:
     except Exception:
         ok = False
     _ollama_probe[base_url] = (ok, now)
+    return ok
+
+
+_vllm_probe: dict[str, tuple[bool, float]] = {}
+
+
+def _vllm_reachable(base_url: str) -> bool:
+    """True when a vLLM server answers on its OpenAI-compatible route."""
+    now = time.monotonic()
+    cached = _vllm_probe.get(base_url)
+    if cached is not None and now - cached[1] < _OLLAMA_PROBE_TTL:
+        return cached[0]
+    try:  # pragma: no cover - network probe
+        resp = httpx.get(base_url.rstrip("/") + "/models", timeout=0.5)
+        ok = resp.status_code == 200
+    except Exception:
+        ok = False
+    _vllm_probe[base_url] = (ok, now)
     return ok
 
 
@@ -131,6 +153,15 @@ def _local_backups() -> list:
     s = get_settings()
     backups: list = []
 
+    if _vllm_reachable(s.llm.vllm_base_url):
+
+        def _vllm() -> LLM:
+            from auralynq.llm.providers import VLLMLLM
+
+            return VLLMLLM(s.llm.vllm_base_url, s.llm.vllm_model, s.llm.vllm_api_key)
+
+        backups.append(_vllm)
+
     if _ollama_reachable(s.llm.base_url):
         model = _ollama_backup_model(s.llm.model, s.llm.base_url)
         if model is not None:
@@ -174,35 +205,47 @@ def _build_slm() -> LLM | None:
         return None
 
 
+def _resolve_auto() -> str:
+    """The `auto` priority ladder, local-first and zero-cost.
+
+    Single source of truth for both `build_llm()` and `resolved_provider()` — these
+    were duplicated, so adding a backend to one silently desynced /health from what
+    actually served. AirLLM is deliberately absent: minutes per answer is never a
+    sane automatic choice, so it must be selected explicitly.
+    """
+    s = get_settings()
+
+    if _vllm_reachable(s.llm.vllm_base_url):
+        # A running vLLM server is a deliberate act by the operator — prefer it.
+        return "vllm"
+    if _ollama_reachable(s.llm.base_url):
+        # Local Ollama: zero-cost, no data egress, works offline.
+        return "ollama"
+    if _slm_available():
+        # Local GGUF SLM: GPU when CUDA present, CPU otherwise.
+        return "slm"
+
+    # Air-gap mode: external commercial providers are forbidden regardless of
+    # which keys are present in the environment.
+    if s.air_gapped:
+        _log.info("llm.air_gapped", skipped=["anthropic", "openai", "cohere"])
+        return "extractive"
+
+    if s.anthropic_api_key and importlib.util.find_spec("anthropic"):
+        return "anthropic"
+    if s.openai_api_key and importlib.util.find_spec("openai"):
+        return "openai"
+    if s.cohere_api_key and importlib.util.find_spec("cohere"):
+        return "cohere"
+    return "extractive"
+
+
 def build_llm(provider: str | None = None) -> LLM:
     s = get_settings()
     provider = provider or s.llm.provider
 
     if provider == "auto":
-        # Air-gap mode: external commercial providers are forbidden regardless of
-        # which keys are present in the environment.
-        if s.air_gapped:
-            _log.info("llm.air_gapped", skipped=["anthropic", "openai", "cohere"])
-            if _ollama_reachable(s.llm.base_url):
-                provider = "ollama"
-            elif _slm_available():
-                provider = "slm"
-            else:
-                provider = "extractive"
-        elif _ollama_reachable(s.llm.base_url):
-            # Local Ollama: zero-cost, no data egress, works offline.
-            provider = "ollama"
-        elif _slm_available():
-            # Local GGUF SLM: GPU when CUDA present, CPU otherwise.
-            provider = "slm"
-        elif s.anthropic_api_key and importlib.util.find_spec("anthropic"):
-            provider = "anthropic"
-        elif s.openai_api_key and importlib.util.find_spec("openai"):
-            provider = "openai"
-        elif s.cohere_api_key and importlib.util.find_spec("cohere"):
-            provider = "cohere"
-        else:
-            provider = "extractive"
+        provider = _resolve_auto()
 
     # Hard-fail: if air-gapped and a commercial provider was explicitly configured,
     # refuse rather than silently sending data out.
@@ -223,6 +266,33 @@ def build_llm(provider: str | None = None) -> LLM:
             from auralynq.llm.resilient import ResilientLLM
 
             return ResilientLLM(OllamaLLM(s.llm.model, s.llm.base_url))
+
+        if provider == "vllm":
+            from auralynq.llm.providers import VLLMLLM
+            from auralynq.llm.resilient import ResilientLLM
+
+            # An unreachable vLLM server degrades to the other local backends
+            # rather than to quotation-only output.
+            return ResilientLLM(
+                VLLMLLM(s.llm.vllm_base_url, s.llm.vllm_model, s.llm.vllm_api_key),
+                backups=_local_backups(),
+            )
+
+        if provider == "airllm":
+            from auralynq.llm.providers import AirLLMLLM
+            from auralynq.llm.resilient import ResilientLLM
+
+            if not s.llm.airllm_enabled:
+                _log.warning("llm.airllm_disabled", fallback="auto")
+                return build_llm("auto")
+            return ResilientLLM(
+                AirLLMLLM(
+                    s.llm.airllm_model,
+                    compression=s.llm.airllm_compression,
+                    max_new_tokens=s.llm.airllm_max_new_tokens,
+                ),
+                backups=_local_backups(),
+            )
 
         if provider == "slm":
             slm = _build_slm()
@@ -294,21 +364,7 @@ def resolved_provider() -> str:
         if s.air_gapped and s.llm.provider in ("openai", "anthropic", "cohere", "huggingface"):
             return "extractive"
         return s.llm.provider
-    if s.air_gapped:
-        if _ollama_reachable(s.llm.base_url):
-            return "ollama"
-        return "slm" if _slm_available() else "extractive"
-    if _ollama_reachable(s.llm.base_url):
-        return "ollama"
-    if _slm_available():
-        return "slm"
-    if s.anthropic_api_key and importlib.util.find_spec("anthropic"):
-        return "anthropic"
-    if s.openai_api_key and importlib.util.find_spec("openai"):
-        return "openai"
-    if s.cohere_api_key and importlib.util.find_spec("cohere"):
-        return "cohere"
-    return "extractive"
+    return _resolve_auto()
 
 
 @functools.lru_cache(maxsize=1)

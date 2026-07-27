@@ -3,15 +3,30 @@
 # Set AURALYNQ_CONFIG=/path/to/config.yaml to point at a non-default location.
 
 # ── LLM ─────────────────────────────────────────────────────────────────────
-# provider: auto   → tries ollama first, then OpenAI/Anthropic if keys are set
-# provider: ollama → forces local Ollama (no cloud deps, no API key needed)
-# provider: openai | anthropic | cohere → forces that provider (requires key)
+# Local serving backends, fastest first:
+#   vllm   → local vLLM server; GPU-only, batched, one model per server process
+#   ollama → local Ollama daemon; easiest, hot-swaps models, CPU or GPU
+#   airllm → streams model layers from disk to run oversized models on a small
+#            GPU. MINUTES per answer — never auto-selected, opt in explicitly.
+#   slm    → llama-cpp-python GGUF in-process
+# provider: auto   → vllm, then ollama, then slm, then a cloud key, then extractive
+# provider: openai | anthropic | cohere | huggingface → forces that (requires key)
 llm:
   provider: auto
   model: llama3          # Ollama model tag (ignored when provider != ollama)
   base_url: http://localhost:11434
   temperature: 0.1
   max_tokens: 1024
+  # vLLM — port 8001, not vLLM's own default of 8000, which collides with serve.port.
+  # Leave vllm_model empty to adopt whatever the server reports on /v1/models.
+  vllm_base_url: http://localhost:8001/v1
+  vllm_model: ""
+  vllm_api_key: ""       # only when the server ran with --api-key
+  # AirLLM — off by default; a single answer takes minutes and saturates the disk.
+  airllm_enabled: false
+  airllm_model: Qwen/Qwen2.5-7B-Instruct   # HF repo id, not an Ollama tag
+  airllm_compression: ""                   # "" | 4bit | 8bit (needs bitsandbytes)
+  airllm_max_new_tokens: 256
 
 # ── Embeddings ───────────────────────────────────────────────────────────────
 # provider: auto   → tries ollama first, then bge (if installed), then hash

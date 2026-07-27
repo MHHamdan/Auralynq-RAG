@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-const REPO = "https://github.com/MHHamdan/Auralynq";
+const REPO = "https://github.com/MHHamdan/Auralynq-RAG";
 
 export function CTA() {
   return (

@@ -48,6 +48,23 @@ t("DemoBanner composes every deployment-mode state", () => {
   has(b, "ephemeral");
 });
 
+t("deploymentMode distinguishes which subsystem is falling back", () => {
+  const api = read("lib/api.ts");
+  // A hosted 70B over hash embeddings is a real deployment shape (the public
+  // Space). Collapsing both into one "offline fallback" flag made the banner
+  // claim answers don't reflect model quality while a 70B was generating.
+  has(api, "extractiveLlm");
+  has(api, "hashEmbeddings");
+});
+
+t("DemoBanner names the caveat that actually applies", () => {
+  const b = read("components/DemoBanner.tsx");
+  has(b, "mode.extractiveLlm");
+  has(b, "not model quality");
+  // weak-retrieval wording for the embeddings-only case
+  has(b, "keyword-grade");
+});
+
 t("DemoBanner renders nothing for a normal private deployment", () => {
   const b = read("components/DemoBanner.tsx");
   // guard: returns null unless at least one mode flag is set

@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from auralynq.modelfit.ollama_client import ollama_base_url
 from auralynq.telemetry import get_logger
 
 _log = get_logger("auralynq.modelfit.rag_bench")
@@ -135,7 +136,7 @@ async def run_rag_benchmark(
         import httpx
 
         async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get("http://localhost:11434/api/tags")
+            r = await client.get(f"{ollama_base_url()}/api/tags")
             if r.status_code != 200:
                 warnings.append("Ollama not reachable — skipping RAG benchmark.")
                 return metrics
@@ -182,7 +183,7 @@ async def run_rag_benchmark(
 
             try:
                 resp = await client.post(
-                    "http://localhost:11434/api/generate",
+                    f"{ollama_base_url()}/api/generate",
                     json={
                         "model": tag,
                         "prompt": f"{system_prompt}\n\n{user_msg}",
@@ -219,7 +220,7 @@ async def run_rag_benchmark(
         for prompt in abstention_prompts:
             try:
                 resp = await client.post(
-                    "http://localhost:11434/api/generate",
+                    f"{ollama_base_url()}/api/generate",
                     json={
                         "model": tag,
                         "prompt": (

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -417,6 +417,13 @@ class RAGStrategyInfo(BaseModel):
 class RAGStrategiesResponse(BaseModel):
     strategies: list[RAGStrategyInfo]
     default_strategy: str
+
+
+# --------------------------------------------------------------- llm backends --
+class SetLLMBackendRequest(BaseModel):
+    backend: Literal["auto", "ollama", "vllm", "airllm"] = Field(
+        ..., description="Local serving backend to use, or 'auto' to re-resolve."
+    )
 
 
 # ---------------------------------------------------------------------- eval --

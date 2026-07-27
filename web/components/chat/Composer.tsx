@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import { VoiceRecorder } from "@/components/VoiceRecorder";
 import { AlgorithmSelector } from "@/components/chat/AlgorithmSelector";
+import { BackendSelector } from "@/components/chat/BackendSelector";
 
 export type ChatMode = "corpus" | "web" | "inventory" | "summarize";
 
@@ -31,6 +32,8 @@ export function Composer({
   onUploadClick,
   ragStrategy,
   onRagStrategyChange,
+  llmBackend,
+  onLlmBackendChange,
 }: {
   input: string;
   setInput: (v: string) => void;
@@ -43,6 +46,8 @@ export function Composer({
   onUploadClick: () => void;
   ragStrategy: string;
   onRagStrategyChange: (id: string) => void;
+  llmBackend: string;
+  onLlmBackendChange: (id: string) => void;
 }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -55,9 +60,13 @@ export function Composer({
 
   return (
     <div className="border-t border-edge bg-panel/95 px-3 py-3 backdrop-blur md:px-4">
-      {/* Mode tabs + algorithm selector */}
-      <div className="mb-2.5 flex items-center gap-1 overflow-x-auto">
-        <div className="flex items-center rounded-xl border border-edge bg-panel2/70 p-0.5">
+      {/* Mode tabs + backend/algorithm selectors.
+          The horizontal scroll belongs to the tab group alone. When it sat on
+          this row, it clipped both selectors' popovers — they rendered and
+          reported as visible but were unhittable, so clicking an option did
+          nothing. Keep any popover trigger out of a scrolling container. */}
+      <div className="mb-2.5 flex items-center gap-1">
+        <div className="flex items-center overflow-x-auto rounded-xl border border-edge bg-panel2/70 p-0.5">
           {MODES.map((m) => (
             <button
               key={m.id}
@@ -76,7 +85,8 @@ export function Composer({
             </button>
           ))}
         </div>
-        <div className="ml-auto shrink-0">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <BackendSelector value={llmBackend} onChange={onLlmBackendChange} />
           <AlgorithmSelector value={ragStrategy} onChange={onRagStrategyChange} />
         </div>
       </div>

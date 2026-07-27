@@ -101,6 +101,14 @@ web/.env.*
 data/*
 !data/.gitkeep
 !data/README.md
+# The community-results directory ships empty but must exist; it was tracked
+# while `data/*` claimed it was local, so a fresh `git add .` would drop it.
+!data/modelfit/
+!data/modelfit/community_results/
+# Re-exclude the contents: submitted results carry contributor hardware
+# telemetry and must stay local. Only the placeholder is published.
+data/modelfit/community_results/*
+!data/modelfit/community_results/.gitkeep
 
 reports/*
 !reports/.gitkeep
@@ -141,6 +149,14 @@ runs/*
 !runs/.gitkeep
 # LaTeX paper draft — kept local, built on Overleaf, never committed (per request)
 docs/paper/
+# Anything naming an unpublished contribution stays local. The hub paper-card
+# template named a research codename in a public repo, which is exactly the
+# leak these rules exist to prevent.
+paper-card*.md
+*paper-card*
+hub/paper-*
+*-readiness-audit.md
+*release-audit*
 # Research datasets (manual download; never auto-committed)
 data/research/
 
@@ -150,11 +166,32 @@ configs/research/
 scripts/research/
 tests/test_research.py
 
-# All docs — local only (design notes, audits, service descriptions, paper)
-docs/
+# Docs are local-only by DEFAULT — design notes, audits, service descriptions,
+# the paper. Anchored with a leading slash: a bare `docs/` also matches a docs
+# directory at ANY depth, which silently swallowed examples/demo_corpus/docs/
+# (the shipped demo corpus).
+/docs/*
 
-# Screenshots / snapshots — local only
-docs/screenshots/
+# ...except the user-facing guides the public README links to. Without these
+# negations a fresh `git add .` drops them and every README link 404s on GitHub.
+!/docs/getting-started/
+!/docs/benchmarks.md
+!/docs/evaluation.md
+!/docs/modelfit/
+
+# Never publishable, restated explicitly so a future negation can't re-expose
+# them by accident.
+/docs/paper/
+/docs/research/
+/docs/release/
+/docs/screenshots/
+/docs/**/*audit*
+/docs/**/*internal*
+
+# Nested docs dirs that the old unanchored `docs/` rule was covering by
+# accident — named explicitly now that the main rule is root-anchored.
+# web/docs/ holds the local-only frontend UX teardown.
+web/docs/
 
 # Podman / compose local artifacts
 .podman/

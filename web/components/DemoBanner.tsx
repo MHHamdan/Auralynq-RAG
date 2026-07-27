@@ -33,8 +33,19 @@ export function DemoBanner({ mode }: { mode: DeploymentMode | null }) {
 
   const parts: string[] = [];
   if (mode.demo || mode.publicDemo) parts.push("Running in demo mode");
-  if (mode.offlineFallback)
-    parts.push(`offline fallback (${mode.offlineProviders.join(" + ")}) — answers verify the pipeline, not model quality`);
+  // Name the caveat that actually applies. A deployment can have a real hosted
+  // generator over hash embeddings (weak retrieval, strong answers) or the
+  // reverse — saying "answers verify the pipeline, not model quality" when a
+  // 70B is generating is simply false, and hides the real limitation.
+  if (mode.offlineFallback) {
+    const list = mode.offlineProviders.join(" + ");
+    const caveat = mode.extractiveLlm
+      ? "answers verify the pipeline, not model quality"
+      : mode.hashEmbeddings
+        ? "retrieval is keyword-grade, so relevance is weaker than a real embedding model"
+        : "some providers are running offline fallbacks";
+    parts.push(`offline fallback (${list}) — ${caveat}`);
+  }
   if (mode.uploadsDisabled) parts.push("document uploads are disabled");
   if (mode.hfSpace) parts.push("on a Hugging Face Space — storage is ephemeral and resets on restart");
 
@@ -67,7 +78,7 @@ export function DemoBanner({ mode }: { mode: DeploymentMode | null }) {
           <>
             {" "}
             <a
-              href="https://github.com/MHHamdan/Auralynq/blob/main/docs/getting-started/huggingface-space.md"
+              href="https://github.com/MHHamdan/Auralynq-RAG/blob/main/docs/getting-started/huggingface-space.md"
               target="_blank"
               rel="noreferrer"
               className="underline decoration-dotted hover:text-brand"

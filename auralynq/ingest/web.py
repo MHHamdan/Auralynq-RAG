@@ -21,7 +21,7 @@ from auralynq.utils import content_hash
 
 _log = get_logger("auralynq.web")
 
-DEFAULT_UA = "AuralynqBot/0.2 (+https://github.com/MHHamdan/Auralynq)"
+DEFAULT_UA = "AuralynqBot/0.2 (+https://github.com/MHHamdan/Auralynq-RAG)"
 MAX_BYTES = 5_000_000
 TIMEOUT_S = 15.0
 MAX_REDIRECTS = 5

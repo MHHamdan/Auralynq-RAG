@@ -14,6 +14,8 @@ import auralynq.modelfit.catalog_fetcher as fetcher_mod
 import auralynq.modelfit.community as community_mod
 import auralynq.modelfit.hardware as hw_mod
 import auralynq.modelfit.model_registry as registry_mod
+import auralynq.modelfit.ollama_client as ollama_client_mod
+import auralynq.modelfit.pull_jobs as pull_jobs_mod
 import pytest
 from auralynq.modelfit.benchmark_runner import (
     BenchmarkResult,
@@ -534,17 +536,70 @@ def test_detect_apple_silicon_skipped_off_darwin(monkeypatch):
 
 
 def test_detect_ollama_present(monkeypatch):
-    monkeypatch.setattr(hw_mod.shutil, "which", lambda _: "/usr/bin/ollama")
-    version = SimpleNamespace(returncode=0, stdout="ollama version is 0.5.1\n", stderr="")
-    monkeypatch.setattr(hw_mod.subprocess, "run", _fake_run_factory({"ollama": version}))
+    """Detection is an HTTP probe — the CLI is absent inside the API container."""
+    monkeypatch.setattr(
+        ollama_client_mod.httpx,
+        "get",
+        lambda *a, **k: _FakeResponse(200, {"version": "0.5.1"}),
+    )
     available, ver = hw_mod._detect_ollama()
     assert available is True
     assert "0.5.1" in (ver or "")
 
 
 def test_detect_ollama_absent(monkeypatch):
-    monkeypatch.setattr(hw_mod.shutil, "which", lambda _: None)
+    def _refuse(*a, **k):
+        raise ConnectionError("connection refused")
+
+    monkeypatch.setattr(ollama_client_mod.httpx, "get", _refuse)
     assert hw_mod._detect_ollama() == (False, None)
+
+
+def test_ollama_base_url_honours_llm_settings(monkeypatch):
+    """Regression: ModelFit must never hardcode localhost — the daemon is on the host."""
+    from auralynq.config.settings import reload_settings
+
+    monkeypatch.setenv("AURALYNQ_LLM__BASE_URL", "http://host.containers.internal:11434/")
+    monkeypatch.setenv("AURALYNQ_MODELFIT__OLLAMA_URL", "")
+    reload_settings()
+    assert ollama_client_mod.ollama_base_url() == "http://host.containers.internal:11434"
+
+    # An explicit ModelFit override wins over the shared inference endpoint.
+    monkeypatch.setenv("AURALYNQ_MODELFIT__OLLAMA_URL", "http://models.local:11434")
+    reload_settings()
+    assert ollama_client_mod.ollama_base_url() == "http://models.local:11434"
+
+
+def test_modelfit_never_shells_out_to_ollama():
+    """Guard against the `[Errno 2] No such file or directory` pull regression.
+
+    The API image has no `ollama` binary and `localhost` is the container itself,
+    so ModelFit must reach the daemon over HTTP at a configured base URL.
+    """
+    import ast
+    import pathlib
+
+    offenders: list[str] = []
+    for path in sorted(pathlib.Path("auralynq/modelfit").glob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                first = node.args[0] if node.args else None
+                is_ollama_arg = isinstance(first, ast.Constant) and first.value == "ollama"
+                if node.func.attr == "which" and is_ollama_arg:
+                    offenders.append(f"{path}:{node.lineno} probes for the ollama CLI binary")
+                if node.func.attr in ("create_subprocess_exec", "run") and is_ollama_arg:
+                    offenders.append(f"{path}:{node.lineno} shells out to the ollama CLI")
+            # The URL-resolving module owns the remediation hint; nobody else may
+            # embed an endpoint.
+            if (
+                path.name != "ollama_client.py"
+                and isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and "localhost:11434" in node.value
+            ):
+                offenders.append(f"{path}:{node.lineno} hardcodes localhost:11434")
+    assert not offenders, offenders
 
 
 # ── HTTP router ───────────────────────────────────────────────────────────────
@@ -773,23 +828,71 @@ def test_api_pull_bad_prefix(api):
     assert "Unrecognised" in r.json()["detail"]
 
 
-def test_api_pull_ollama(api, monkeypatch):
-    async def fake_pull(tag):
-        return True, f"pulled {tag}"
+def _fake_pull_stream(frames: list[dict]):
+    async def stream(tag):
+        for frame in frames:
+            yield frame
 
-    monkeypatch.setattr(fetcher_mod, "pull_ollama_model", fake_pull)
+    return stream
+
+
+def _fake_version(version: str | None):
+    async def get_version(*a, **k):
+        return version
+
+    return get_version
+
+
+def test_api_pull_ollama_starts_job(api, monkeypatch):
+    monkeypatch.setattr(ollama_client_mod, "get_version", _fake_version("0.5.1"))
+    monkeypatch.setattr(
+        pull_jobs_mod,
+        "stream_pull",
+        _fake_pull_stream(
+            [
+                {"status": "pulling manifest"},
+                {"status": "pulling sha256:abc", "total": 100, "completed": 50},
+                {"status": "success"},
+            ]
+        ),
+    )
     r = api.post("/api/modelfit/pull", json={"model_id": "ollama:llama3.2:1b", "confirmed": True})
     assert r.status_code == 200
-    assert r.json()["status"] == "pulled"
+    body = r.json()
+    assert body["status"] == "pulling"
+    assert body["job_id"]
+    assert body["stream_url"] == f"/api/modelfit/pull/{body['job_id']}/stream"
+
+    # The job completes in the background and is readable afterwards.
+    final = api.get(f"/api/modelfit/pull/{body['job_id']}").json()
+    assert final["phase"] in ("queued", "manifest", "downloading", "success")
 
 
-def test_api_pull_ollama_failure(api, monkeypatch):
-    async def fake_pull(tag):
-        return False, "disk full"
-
-    monkeypatch.setattr(fetcher_mod, "pull_ollama_model", fake_pull)
+def test_api_pull_ollama_unreachable_is_503(api, monkeypatch):
+    monkeypatch.setattr(ollama_client_mod, "get_version", _fake_version(None))
     r = api.post("/api/modelfit/pull", json={"model_id": "ollama:llama3.2:1b", "confirmed": True})
-    assert r.status_code == 500
+    assert r.status_code == 503
+    assert "not reachable" in r.text
+
+
+def test_api_pull_job_unknown_id_is_404(api):
+    assert api.get("/api/modelfit/pull/nosuchjob").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("raw", "status"),
+    [
+        ("pull model manifest: file does not exist", 404),
+        ("write /root/.ollama: no space left on device", 507),
+        ("unauthorized: access denied", 403),
+        ("connection reset by peer", 502),
+        ("something unexpected exploded", 500),
+    ],
+)
+def test_pull_error_classification(raw, status):
+    got, message = ollama_client_mod.classify_pull_error("qwen2.5:14b", raw)
+    assert got == status
+    assert "qwen2.5:14b" in message
 
 
 def test_api_pull_hf_validations(api):

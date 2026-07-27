@@ -21,6 +21,7 @@ def _fake_settings(
     anthropic_key: str = "",
     openai_key: str = "",
     cohere_key: str = "",
+    airllm_enabled: bool = False,
 ):
     return SimpleNamespace(
         air_gapped=air_gapped,
@@ -36,6 +37,13 @@ def _fake_settings(
             slm_filename="fake.gguf",
             slm_n_ctx=2048,
             slm_n_gpu_layers=0,
+            vllm_base_url="http://fake-vllm:8001/v1",
+            vllm_model="",
+            vllm_api_key="",
+            airllm_enabled=airllm_enabled,
+            airllm_model="fake/airllm-model",
+            airllm_compression="",
+            airllm_max_new_tokens=128,
         ),
         embedding=SimpleNamespace(
             provider=embed_provider,
@@ -71,8 +79,35 @@ def test_llm_resolved_provider_air_gap_blocks_commercial(monkeypatch):
 
 def test_llm_resolved_provider_auto_prefers_ollama(monkeypatch):
     monkeypatch.setattr(llm_factory, "get_settings", lambda: _fake_settings())
+    monkeypatch.setattr(llm_factory, "_vllm_reachable", lambda url: False)
     monkeypatch.setattr(llm_factory, "_ollama_reachable", lambda url: True)
     assert llm_factory.resolved_provider() == "ollama"
+
+
+def test_llm_resolved_provider_auto_prefers_vllm_over_ollama(monkeypatch):
+    """A running vLLM server is a deliberate act — it outranks Ollama."""
+    monkeypatch.setattr(llm_factory, "get_settings", lambda: _fake_settings())
+    monkeypatch.setattr(llm_factory, "_vllm_reachable", lambda url: True)
+    monkeypatch.setattr(llm_factory, "_ollama_reachable", lambda url: True)
+    assert llm_factory.resolved_provider() == "vllm"
+
+
+def test_llm_auto_never_selects_airllm(monkeypatch):
+    """Minutes-per-answer is never an automatic choice, even when nothing else is up."""
+    monkeypatch.setattr(llm_factory, "get_settings", lambda: _fake_settings(airllm_enabled=True))
+    monkeypatch.setattr(llm_factory, "_vllm_reachable", lambda url: False)
+    monkeypatch.setattr(llm_factory, "_ollama_reachable", lambda url: False)
+    monkeypatch.setattr(llm_factory, "_slm_available", lambda: False)
+    assert llm_factory.resolved_provider() == "extractive"
+
+
+def test_build_llm_airllm_requires_explicit_enable(monkeypatch):
+    """Selecting airllm without enabling it falls back rather than blocking for minutes."""
+    monkeypatch.setattr(llm_factory, "get_settings", lambda: _fake_settings("airllm"))
+    monkeypatch.setattr(llm_factory, "_vllm_reachable", lambda url: False)
+    monkeypatch.setattr(llm_factory, "_ollama_reachable", lambda url: False)
+    monkeypatch.setattr(llm_factory, "_slm_available", lambda: False)
+    assert llm_factory.build_llm().name == "extractive"
 
 
 def test_llm_resolved_provider_auto_falls_to_extractive(monkeypatch):

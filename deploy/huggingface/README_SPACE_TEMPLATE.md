@@ -12,14 +12,14 @@ short_description: "Local-first, voice-native, agentic RAG with visual citation 
 
 # Auralynq (demo Space)
 
-This Space runs [Auralynq](https://github.com/MHHamdan/Auralynq), a
+This Space runs [Auralynq](https://github.com/MHHamdan/Auralynq-RAG), a
 local-first, voice-native, agentic RAG platform, in its **lightweight
 offline demo configuration**:
 
 - Hash embeddings + in-memory vector store + extractive answering — no GPU,
   no model downloads, no paid API keys.
 - Pre-loaded with the project's small, original, CC0-licensed
-  [demo corpus](https://github.com/MHHamdan/Auralynq/tree/main/examples/demo_corpus)
+  [demo corpus](https://github.com/MHHamdan/Auralynq-RAG/tree/main/examples/demo_corpus)
   (three documents — no private or third-party data).
 - Document uploads are **disabled by default** on this Space
   (`AURALYNQ_ALLOW_UPLOADS=false`) — you can browse and ask questions, but
@@ -38,7 +38,7 @@ offline demo configuration**:
 ## Try it
 
 - Ask a question from
-  [`examples/demo_corpus/expected_questions.md`](https://github.com/MHHamdan/Auralynq/blob/main/examples/demo_corpus/expected_questions.md).
+  [`examples/demo_corpus/expected_questions.md`](https://github.com/MHHamdan/Auralynq-RAG/blob/main/examples/demo_corpus/expected_questions.md).
 - Click a citation to open the Source Workspace and see the exact
   bounding-box highlight in the sample PDF.
 - Visit `/modelfit` to see the hardware-aware model-selection tool (numbers
@@ -67,7 +67,7 @@ defaults. From there you can:
 - **Add persistent storage**: attach Hugging Face Persistent Storage and
   point `AURALYNQ_DATA_DIR` at the mounted path — read the storage-ownership
   caveat in
-  [`deploy/huggingface/README.md`](https://github.com/MHHamdan/Auralynq/blob/main/deploy/huggingface/README.md)
+  [`deploy/huggingface/README.md`](https://github.com/MHHamdan/Auralynq-RAG/blob/main/deploy/huggingface/README.md)
   first; the container runs as a non-root user and the mount may need its
   ownership fixed on first boot.
 - **Upgrade hardware**: this demo needs no GPU; only upgrade if you've also
@@ -76,5 +76,5 @@ defaults. From there you can:
 ## Source
 
 Full source, docs, and the no-Podman / Podman / server run modes:
-<https://github.com/MHHamdan/Auralynq>. License: Apache-2.0 (code);
+<https://github.com/MHHamdan/Auralynq-RAG>. License: Apache-2.0 (code);
 CC0-1.0 (this Space's demo corpus).

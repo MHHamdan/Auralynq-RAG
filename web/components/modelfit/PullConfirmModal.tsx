@@ -1,14 +1,67 @@
 "use client";
-import { useState } from "react";
-import type { DiscoverEntry, DiscoverHardware } from "@/lib/modelfit";
-import { pullModel } from "@/lib/modelfit";
+import { useEffect, useRef, useState } from "react";
+import type { DiscoverEntry, DiscoverHardware, PullProgress } from "@/lib/modelfit";
+import { formatBytes, formatEta, pullModel, streamPullProgress } from "@/lib/modelfit";
 import { VERDICT_META } from "@/components/modelfit/verdict";
 
 // Explicit "agree to pull" gate. The user sees exactly what will be downloaded
 // (size, destination, command) and confirms with a size-labelled button before
 // anything hits the network — no silent auto-pull.
+//
+// The download itself runs as a server-side job: this modal subscribes to its
+// progress, so closing the modal does not cancel the pull and reopening it
+// re-attaches to the running download.
 
 type PullState = "idle" | "pulling" | "done" | "error";
+
+const PHASE_LABEL: Record<PullProgress["phase"], string> = {
+  queued: "Starting…",
+  manifest: "Fetching manifest…",
+  downloading: "Downloading",
+  verifying: "Verifying…",
+  success: "Installed",
+  error: "Failed",
+};
+
+function ProgressBar({ progress }: { progress: PullProgress }) {
+  const determinate = progress.total_bytes > 0;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm text-zinc-200">{PHASE_LABEL[progress.phase]}</span>
+        {determinate && (
+          <span className="text-sm font-mono text-sky-300">{progress.percent.toFixed(1)}%</span>
+        )}
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+        <div
+          className={`h-full rounded-full bg-sky-500 transition-[width] duration-300 ${
+            determinate ? "" : "w-1/3 animate-pulse"
+          }`}
+          style={determinate ? { width: `${Math.max(2, progress.percent)}%` } : undefined}
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono text-zinc-500">
+        {determinate && (
+          <span>
+            {formatBytes(progress.completed_bytes)} / {formatBytes(progress.total_bytes)}
+          </span>
+        )}
+        {progress.speed_bps > 0 && <span>{formatBytes(progress.speed_bps)}/s</span>}
+        {progress.eta_s != null && <span>ETA {formatEta(progress.eta_s)}</span>}
+        {progress.layers_total > 0 && (
+          <span>
+            layer {Math.min(progress.layers_done + 1, progress.layers_total)}/
+            {progress.layers_total}
+          </span>
+        )}
+      </div>
+      <p className="text-[11px] text-zinc-600">
+        You can close this — the download keeps running on the server.
+      </p>
+    </div>
+  );
+}
 
 function Line({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -32,6 +85,11 @@ export function PullConfirmModal({
 }) {
   const [state, setState] = useState<PullState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<PullProgress | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Detach the stream on unmount; the server-side job is unaffected.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const re = entry.resource_estimate;
   const meta = entry.model_meta;
@@ -43,11 +101,30 @@ export function PullConfirmModal({
   async function confirmPull() {
     setState("pulling");
     setError(null);
+    setProgress(null);
     try {
-      await pullModel(entry.model_id);
+      const started = await pullModel(entry.model_id);
+
+      // HF downloads are synchronous and return no job to follow.
+      if (!started.job_id) {
+        setState("done");
+        onPulled(entry.model_id);
+        return;
+      }
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const final = await streamPullProgress(started.job_id, setProgress, controller.signal);
+
+      if (final.phase === "error") {
+        setState("error");
+        setError(final.error || "The download failed.");
+        return;
+      }
       setState("done");
       onPulled(entry.model_id);
     } catch (e) {
+      if ((e as Error)?.name === "AbortError") return;
       setState("error");
       setError(String(e).replace(/^Error:\s*/, ""));
     }
@@ -56,7 +133,7 @@ export function PullConfirmModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-      onClick={state === "pulling" ? undefined : onClose}
+      onClick={onClose}
     >
       <div
         className="w-full max-w-lg rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl overflow-hidden"
@@ -70,11 +147,9 @@ export function PullConfirmModal({
               You are about to fetch a model onto this machine.
             </p>
           </div>
-          {state !== "pulling" && (
-            <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">
-              ×
-            </button>
-          )}
+          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 text-xl leading-none">
+            ×
+          </button>
         </div>
 
         <div className="px-6 py-4 space-y-4">
@@ -129,18 +204,25 @@ export function PullConfirmModal({
           )}
 
           {/* State feedback */}
-          {state === "pulling" && (
-            <div className="flex items-center gap-2 text-sm text-zinc-300">
-              <span className="animate-spin">⟳</span>
-              <span>Downloading… this can take several minutes. Keep this open.</span>
-            </div>
-          )}
+          {state === "pulling" &&
+            (progress ? (
+              <ProgressBar progress={progress} />
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-zinc-300">
+                <span className="animate-spin">⟳</span>
+                <span>Starting download…</span>
+              </div>
+            ))}
           {state === "done" && (
             <div className="flex items-center gap-2 text-sm text-emerald-400">
               <span>✓</span> Installed — {displayName} is ready to use.
             </div>
           )}
-          {state === "error" && <p className="text-sm text-red-400">Download failed: {error}</p>}
+          {state === "error" && (
+            <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2">
+              <p className="text-sm text-red-300">{error}</p>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -156,10 +238,9 @@ export function PullConfirmModal({
             <>
               <button
                 onClick={onClose}
-                disabled={state === "pulling"}
-                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200"
               >
-                Cancel
+                {state === "pulling" ? "Continue in background" : "Cancel"}
               </button>
               {isOllama ? (
                 <button

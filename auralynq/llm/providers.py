@@ -2,6 +2,8 @@
 
 Local providers (no API key, no egress):
   OllamaLLM  — HTTP to a running Ollama daemon (GPU/CPU handled by the daemon).
+  VLLMLLM    — HTTP to a local vLLM server (OpenAI-compatible); GPU-only, batched.
+  AirLLMLLM  — in-process layer-streaming; runs oversized models, minutes/answer.
   SLMLlm     — llama-cpp-python + GGUF; GPU layers when CUDA is present, CPU otherwise.
 
 Cloud providers (require keys + network):
@@ -67,6 +69,128 @@ class OllamaLLM(LLM):
                     yield chunk["response"]
                 if chunk.get("done"):
                     break
+
+
+class VLLMLLM(LLM):
+    """Local vLLM server over its OpenAI-compatible API.
+
+    Deliberately built on ``httpx`` rather than the ``openai`` SDK: vLLM is a
+    *local* backend and must not drag in the optional commercial-SDK extra.
+
+    A vLLM process serves exactly one model for its lifetime, so an empty
+    ``model`` is resolved from ``/v1/models`` — the served model is whatever the
+    operator launched ``vllm serve`` with.
+    """
+
+    name = "vllm"
+
+    def __init__(self, base_url: str, model: str = "", api_key: str = "") -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model or self._discover_model()
+
+    def _headers(self) -> dict[str, str]:
+        # vLLM only enforces auth when started with --api-key.
+        return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+
+    def _discover_model(self) -> str:
+        resp = httpx.get(f"{self.base_url}/models", headers=self._headers(), timeout=5.0)
+        resp.raise_for_status()
+        data = resp.json().get("data") or []
+        if not data:
+            raise RuntimeError(f"vLLM at {self.base_url} is serving no models.")
+        return str(data[0]["id"])
+
+    def _payload(self, prompt, system, temperature, max_tokens, stream: bool) -> dict[str, Any]:
+        msgs = ([{"role": "system", "content": system}] if system else []) + [
+            {"role": "user", "content": prompt}
+        ]
+        return {
+            "model": self.model,
+            "messages": msgs,
+            "stream": stream,
+            "temperature": temperature if temperature is not None else 0.1,
+            "max_tokens": max_tokens or 1024,
+        }
+
+    def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
+        resp = httpx.post(
+            f"{self.base_url}/chat/completions",
+            json=self._payload(prompt, system, temperature, max_tokens, False),
+            headers=self._headers(),
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return (resp.json()["choices"][0]["message"].get("content") or "").strip()
+
+    def stream(self, prompt, *, system=None, temperature=None, max_tokens=None) -> Iterator[str]:
+        import json as _json
+
+        with httpx.stream(
+            "POST",
+            f"{self.base_url}/chat/completions",
+            json=self._payload(prompt, system, temperature, max_tokens, True),
+            headers=self._headers(),
+            timeout=120,
+        ) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = _json.loads(data)
+                except ValueError:
+                    continue
+                choices = chunk.get("choices") or []
+                if choices and (delta := choices[0].get("delta", {}).get("content")):
+                    yield delta
+
+
+class AirLLMLLM(LLM):  # pragma: no cover - requires airllm + a sharded checkpoint
+    """AirLLM layer-streaming inference — runs oversized models on small GPUs.
+
+    AirLLM ships no server, so unlike Ollama and vLLM this runs **in-process**:
+    it loads each transformer layer from disk, computes, frees it, and prefetches
+    the next. That is what lets a 70B model run on 4 GB of VRAM, and it is also
+    why a single answer takes minutes and saturates the disk while it does.
+
+    Not suitable for interactive querying. Selectable only when explicitly
+    enabled, and every surface that offers it must state the latency cost.
+    """
+
+    name = "airllm"
+
+    def __init__(self, model: str, compression: str = "", max_new_tokens: int = 256) -> None:
+        from airllm import AutoModel
+
+        self.model = model
+        self.max_new_tokens = max_new_tokens
+        kwargs: dict[str, Any] = {}
+        if compression:
+            kwargs["compression"] = compression
+        _log.warning("llm.airllm_init", model=model, note="minutes per answer expected")
+        self._model = AutoModel.from_pretrained(model, **kwargs)
+
+    def generate(self, prompt, *, system=None, temperature=None, max_tokens=None) -> str:
+        text = f"{system}\n\n{prompt}" if system else prompt
+        inputs = self._model.tokenizer(
+            [text],
+            return_tensors="pt",
+            return_attention_mask=False,
+            truncation=True,
+            padding=False,
+        )
+        out = self._model.generate(
+            inputs["input_ids"].cuda() if self._model.device == "cuda" else inputs["input_ids"],
+            max_new_tokens=max_tokens or self.max_new_tokens,
+            use_cache=True,
+            return_dict_in_generate=True,
+        )
+        decoded = self._model.tokenizer.decode(out.sequences[0], skip_special_tokens=True)
+        return decoded.removeprefix(text).strip()
 
 
 class SLMLlm(LLM):  # pragma: no cover - requires llama-cpp-python install
