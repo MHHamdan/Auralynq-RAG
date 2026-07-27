@@ -15,7 +15,6 @@ invented numbers still in it.
 | [`model-card-template.md`](model-card-template.md) | a fine-tuned model or a LoRA/QLoRA adapter trained with/for Auralynq |
 | [`dataset-card-template.md`](dataset-card-template.md) | a dataset (e.g. a RAG eval set, or a grounded-document corpus) |
 | [`space-readme-template.md`](space-readme-template.md) | a Hugging Face Space running Auralynq (see also `deploy/huggingface/`) |
-| [`paper-card-template.md`](paper-card-template.md) | a paper page / "Papers with Code"-style summary of an Auralynq contribution |
 | [`demo-space-checklist.md`](demo-space-checklist.md) | pre-launch checks before making a public demo Space live |
 
 ## Ground rules for every card
