@@ -343,16 +343,30 @@ export interface DeploymentMode {
   uploadsDisabled: boolean;
   offlineFallback: boolean;
   offlineProviders: string[];
+  /** Generation is quotation-only — answers do not reflect model quality. */
+  extractiveLlm: boolean;
+  /** Retrieval is keyword-grade — relevance is weaker than a real embedder. */
+  hashEmbeddings: boolean;
 }
 
 export function deploymentMode(s: StatusResponse | null | undefined): DeploymentMode {
   const providers = s?.providers ?? [];
   const offline: string[] = [];
+  let extractiveLlm = false;
+  let hashEmbeddings = false;
   for (const p of providers) {
-    if (p.subsystem === "llm" && p.provider === "extractive") offline.push("extractive answering");
-    if (p.subsystem === "embeddings" && p.provider === "hash") offline.push("hash embeddings");
+    if (p.subsystem === "llm" && p.provider === "extractive") {
+      offline.push("extractive answering");
+      extractiveLlm = true;
+    }
+    if (p.subsystem === "embeddings" && p.provider === "hash") {
+      offline.push("hash embeddings");
+      hashEmbeddings = true;
+    }
   }
   return {
+    extractiveLlm,
+    hashEmbeddings,
     demo: Boolean(s?.demo_mode),
     publicDemo: Boolean(s?.public_demo),
     hfSpace: Boolean(s?.hf_space),
