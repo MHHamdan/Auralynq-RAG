@@ -8,8 +8,8 @@
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org)
 [![Podman](https://img.shields.io/badge/runtime-Podman-892CA0.svg)](https://podman.io)
-[![Tests](https://img.shields.io/badge/tests-515_passing-brightgreen.svg)](#-benchmarks)
-[![Coverage](https://img.shields.io/badge/coverage-83%25-brightgreen.svg)](#-benchmarks)
+[![Tests](https://img.shields.io/badge/tests-526_passing-brightgreen.svg)](#-benchmarks)
+[![Coverage](https://img.shields.io/badge/coverage-81%25-brightgreen.svg)](#-benchmarks)
 [![Live demo](https://img.shields.io/badge/🤗_live_demo-Hugging_Face-yellow.svg)](https://huggingface.co/spaces/MHamdan/auralynq-rag)
 
 **Ask questions about your own documents and get answers you can actually verify —
@@ -49,9 +49,10 @@ useful if you can check it**:
 - **📚 Knowledge compounds.** Ingest builds a persistent cited knowledge base with
   durable entity pages and **cross-source contradiction flags**, rather than
   re-deriving everything on every query.
-- **🔌 Your hardware, your models.** Local Ollama by default; hosted models when you
-  want them; **every layer degrades gracefully** instead of failing (see
-  [Model providers](#-providers)).
+- **🔌 Your hardware, your models.** Pick the local engine that fits the machine —
+  **Ollama, vLLM, or AirLLM** — with availability, hardware fit and honest
+  latency shown per backend; hosted models when you want them; **every layer degrades
+  gracefully** instead of failing (see [Model providers](#-providers)).
 
 > **Honest scope:** this is a research-grade system built for reproducibility and
 > evaluation, not a hardened commercial product. Read [Limitations](#limitations)
@@ -99,8 +100,9 @@ See [Quickstart & deployment](#-quickstart) below.
 | [📚 Compounding Wiki](#-compounding-wiki) | Persistent cited knowledge + contradiction flags |
 | [🔬 Visual grounding](#-visual-source-grounding) | Span-level bounding-box citations |
 | [🖥 Frontend](#-frontend) | Chat workspace, inspector, strategy selector |
-| [🚀 Quickstart & deployment](#-quickstart) | Local, Podman, remote server, HF Space |
-| [🔌 Providers & fallback](#-providers) | Ollama, Hugging Face, BYO keys, graceful degradation |
+| [🚀 Quickstart & deployment](#-quickstart) | Local, Podman, remote server |
+| [🤗 Two ways to run](#-two-ways-to-run-auralynq) | Hosted demo on Hugging Face, or clone and run locally |
+| [🔌 Providers & fallback](#-providers) | Ollama / vLLM / AirLLM, Hugging Face, BYO keys, graceful degradation |
 | [📊 Benchmarks](#-benchmarks) | Reproducible numbers |
 | [⚠️ Limitations](#limitations) · [🗺 Roadmap](#roadmap) | Honest scope and what's next |
 
@@ -116,9 +118,9 @@ See [Quickstart & deployment](#-quickstart) below.
 | **Compounding Wiki** | Durable cited entity pages synthesized at ingest; cross-source **contradiction flags** (invalidate-not-delete); answers file back |
 | **Trust & eval** | Citation attribution + confidence **calibration (ECE)** + LLM-as-judge + a regression gate — measured, not asserted |
 | **Ingestion** | Files · audio · **Web URL** (SSRF-safe) · **Notion / Slack / Drive** connectors · **Watch Folder** auto-reindex · Contextual Retrieval |
-| **Models** | Local Ollama · bge-m3 embeddings · **HF Inference Providers** (Llama-3.3-70B) · BYO OpenAI/Anthropic/Cohere · hardware-aware ModelFit |
+| **Models** | Switchable local backend — **Ollama / vLLM / AirLLM** · bge-m3 embeddings · **HF Inference Providers** (Llama-3.3-70B) · BYO OpenAI/Anthropic/Cohere · hardware-aware ModelFit with one-click pull |
 | **Voice** | Whisper ASR + diarization + TTS, with deterministic offline fallbacks |
-| **Ops** | Local-first at **$0** · rootless Podman · single-container HF Space · observable trace on every query · 515 tests @ 83% coverage |
+| **Ops** | Local-first at **$0** · rootless Podman · single-container HF Space · observable trace on every query · 526 tests @ 81% coverage |
 
 ---
 
@@ -658,6 +660,25 @@ flowchart LR
 | `POST /api/modelfit/benchmark/preview` | Dry-run plan (safe, never runs) |
 | `POST /api/modelfit/benchmark/run?confirmed=true` | Execute benchmark (Ollama only) |
 | `GET  /api/modelfit/benchmark/runs` | List past benchmark results |
+| `POST /api/modelfit/pull` | Start a model download (requires `confirmed=true`); returns a `job_id` |
+| `GET  /api/modelfit/pull/{job_id}/stream` | SSE download progress — bytes, MB/s, ETA, layer count |
+| `GET  /api/modelfit/pull/{job_id}` | Last-known job state (reconnect / no-SSE fallback) |
+| `DELETE /api/modelfit/models/{tag}` | Remove an installed model to reclaim disk |
+| `GET  /llm/backends` | Availability probe for Ollama / vLLM / AirLLM |
+| `POST /llm/backend` | Switch the serving backend for the running process |
+
+**Pulling a model** is a background job, not a blocking request. `POST /pull` returns
+immediately with a `job_id`; the UI subscribes to the SSE stream and renders a real
+progress bar (aggregate across layers, transfer rate, ETA). Because the download belongs
+to the job rather than the request, closing the dialog does not cancel it and reopening
+re-attaches to the running download. Failures map to specific, actionable statuses —
+`503` daemon unreachable · `404` unknown tag · `507` out of disk · `403` gated model ·
+`502` network interruption — instead of one opaque error.
+
+> Everything reaches the Ollama daemon over its **HTTP API**, resolved from
+> `llm.base_url` (or `modelfit.ollama_url`). Nothing shells out to an `ollama` CLI:
+> the API container has no such binary, and inside a container `localhost` is the
+> container, not the host running the daemon.
 
 ### CLI
 
@@ -691,7 +712,9 @@ Recommended, Score Cards, Benchmark Lab, and Comparison.
 - Community results with implausible tok/s (> 10 000) or sensitive hardware fields (serial, MAC, hostname) are rejected at validation.
 - Hardware telemetry stays local; no private data leaves the machine.
 
-**Implementation**: `auralynq/modelfit/` — `hardware.py`, `scoring.py`, `benchmark_runner.py`, `rag_bench.py`, `cli.py`, `router.py`
+**Implementation**: `auralynq/modelfit/` — `hardware.py`, `scoring.py`, `benchmark_runner.py`,
+`rag_bench.py`, `ollama_client.py`, `pull_jobs.py`, `cli.py`, `router.py`; backend probing in
+`auralynq/llm/backends.py`
 
 ---
 
@@ -1118,24 +1141,61 @@ Full guide with TLS-certificate options: [docs/getting-started/server.md](docs/g
 
 ---
 
-## 🤗 Hugging Face Space
+## 🤗 Two ways to run Auralynq
 
-**▶ Live demo: [huggingface.co/spaces/MHamdan/auralynq-rag](https://huggingface.co/spaces/MHamdan/auralynq-rag)**
+There is no feature difference between the two paths — they are the same image and the
+same code. They differ only in **who supplies the model compute**.
 
-A single-container Space image (`deploy/huggingface/`) packages the API and
-web UI together with a pre-seeded, license-clear demo corpus, offline
-extractive answering, and uploads disabled by default.
+| | **A · Hosted demo** | **B · Clone and run locally** |
+|---|---|---|
+| Get started | [**open the Space**](https://huggingface.co/spaces/MHamdan/auralynq-rag) — nothing to install | `git clone` + `make setup` ([Quickstart](#-quickstart-60-seconds)) |
+| Generation | Hugging Face **Inference Providers**, billed to the maintainer's PRO account | your own hardware — vLLM / Ollama / GGUF, or your own API key |
+| Cost to you | **free** | **$0** — no GPU and no paid key required |
+| Your documents | uploaded to a shared public Space; `/data` is ephemeral | never leave your machine |
+| Best for | seeing it work in 30 seconds | real use, your own corpus, full model choice |
 
-> **Note:** the demo runs on free Space hardware and **sleeps when idle** — the first
-> request after a nap takes a minute or so to wake the container. It uses offline
-> extractive answering (no paid keys), so it demonstrates retrieval, citations and
-> visual grounding rather than large-model generation. Run it locally for the full
-> experience.
+### A · Hosted demo
+
+**▶ [huggingface.co/spaces/MHamdan/auralynq-rag](https://huggingface.co/spaces/MHamdan/auralynq-rag)**
+
+A single-container Space image (`deploy/huggingface/`) packages the API and web UI
+together with a pre-seeded, license-clear demo corpus. Generation is routed through
+**Hugging Face Inference Providers** on the maintainer's **PRO** account, so the hosted
+demo answers with a large instruct model rather than the offline extractive fallback —
+no GPU to rent and no key for you to supply.
+
+> **What to expect:** the Space **sleeps when idle**, so the first request after a nap
+> takes a minute or so to wake the container. It is a **public, shared** deployment:
+> treat it as a demo, not a private workspace — don't upload anything confidential, and
+> note that `/data` is ephemeral, so uploads vanish on restart. Hosted generation is
+> rate-limited and degrades to a local model and then to extractive answering if the
+> upstream budget or quota is exhausted, so the demo stays up either way.
+
+### B · Clone and run locally
+
+The local path is the real one, and it is deliberately **$0 and offline-capable**: no
+GPU, no API key, no account. See the [60-second Quickstart](#-quickstart-60-seconds), or
+[Podman stack](#podman-stack-local--remote) for the production-shaped deployment. You
+choose the serving backend — see
+[Choose your local serving backend](#choose-your-local-serving-backend--ollama-vllm-or-airllm) —
+and if you have your own HF PRO account you can point generation at the same hosted
+router the demo uses:
+
+```bash
+AURALYNQ_LLM__PROVIDER=huggingface
+AURALYNQ_LLM__MODEL=meta-llama/Llama-3.3-70B-Instruct
+HUGGINGFACE_TOKEN=hf_...        # your own token, your own account
+```
+
+### Publishing your own Space
 
 See [docs/getting-started/huggingface-space.md](docs/getting-started/huggingface-space.md)
 for what's verified vs. not, and [deploy/huggingface/README.md](deploy/huggingface/README.md)
-for the publish steps. Nothing is auto-published; deploying a Space is always
-a manual, explicit step you take yourself.
+for the publish steps. Nothing is auto-published; deploying a Space is always a manual,
+explicit step you take yourself. If you fork this and add **your own**
+`HUGGINGFACE_TOKEN` as a Space *Secret*, generation bills to **your** account — set
+`AURALYNQ_SERVE__RATE_LIMIT_PER_MIN` and keep the Space private or gated unless you
+intend to fund public traffic.
 
 ---
 
@@ -1147,7 +1207,11 @@ All config via env vars (prefix `AURALYNQ_`, nested with `__`). See [`.env.examp
 |----------|---------|---------|
 | `AURALYNQ_EMBEDDING__PROVIDER` | `auto` | `auto` / `bge` / `hash` / `openai` |
 | `AURALYNQ_VECTOR__BACKEND` | `auto` | `auto` / `qdrant` / `memory` |
-| `AURALYNQ_LLM__PROVIDER` | `auto` | `auto` / `ollama` / `openai` / `anthropic` / `cohere` |
+| `AURALYNQ_LLM__PROVIDER` | `auto` | `auto` / `ollama` / `vllm` / `airllm` / `slm` / `huggingface` / `openai` / `anthropic` / `cohere` / `extractive` |
+| `AURALYNQ_LLM__VLLM_BASE_URL` | `http://localhost:8001/v1` | vLLM server (`:8001`, not `:8000` — that's the API port) |
+| `AURALYNQ_LLM__VLLM_MODEL` | _(empty)_ | Empty = adopt whatever `/v1/models` reports |
+| `AURALYNQ_LLM__AIRLLM_ENABLED` | `false` | Second opt-in for AirLLM (minutes per answer) |
+| `AURALYNQ_MODELFIT__OLLAMA_URL` | _(empty)_ | Override the Ollama endpoint used for discovery/pull; empty = reuse `llm.base_url` |
 | `AURALYNQ_VOICE__ASR_PROVIDER` | `auto` | `auto` / `faster_whisper` / `whisperx` / `null` |
 | `AURALYNQ_VOICE__TTS_PROVIDER` | `auto` | `auto` / `kokoro` / `null` |
 | `AURALYNQ_AGENT__MAX_ITERS` | `3` | Retry cap for the rewrite loop |
@@ -1200,18 +1264,68 @@ HPA autoscaling, Qdrant StatefulSet, ConfigMap/Secret, Ingress.
 | Embeddings | `BAAI/bge-m3` → hash fallback | OpenAI embeddings | `OPENAI_API_KEY` |
 | Vector DB | Qdrant (Podman) → in-memory | Qdrant Cloud | `AURALYNQ_VECTOR__URL` |
 | Rerank | `bge-reranker-v2-m3` → lexical | Cohere rerank | `COHERE_API_KEY` |
-| LLM | Ollama local → local GGUF → extractive | Hugging Face / OpenAI / Anthropic / Cohere | `HUGGINGFACE_TOKEN`, `*_API_KEY` |
+| LLM | local **vLLM / Ollama / AirLLM** → local GGUF → extractive | Hugging Face / OpenAI / Anthropic / Cohere | `HUGGINGFACE_TOKEN`, `*_API_KEY` |
 | ASR | faster-whisper → null | WhisperX (align+diarize) | `HUGGINGFACE_TOKEN` |
 | TTS | Kokoro-82M → silent/sine | — | — |
 | Tracing | in-process spans | Phoenix + Langfuse | `LANGFUSE_*` |
 | Layout | pdfplumber (included) | — | — |
 | Page render | pdf2image + poppler (included) | higher DPI via env | — |
 
+### Choose your local serving backend — Ollama, vLLM, or AirLLM
+
+Three engines can serve generation locally, and they fail in different ways. Auralynq
+probes all three and lets you pick from the composer bar (**Serving backend**), or
+leaves it on `auto`. Availability is reported on three separate axes — *is it
+reachable*, *does this machine have what it needs*, and *how long will an answer take* —
+because no single "available" badge can honestly describe all three:
+
+| | **Ollama** | **vLLM** | **AirLLM** |
+|---|---|---|---|
+| Answer latency (~200 tok) | 2–15 s | **0.5–3 s** | **5–40 min** |
+| Concurrency | serialized | **continuous batching + PagedAttention** | < 1 tok/s |
+| Model switching | free, hot-swap by tag | restart the server (one model per process) | reload layer shards |
+| Runs on CPU-only laptop | ✅ | ❌ (needs CUDA) | ✅ (slower still) |
+| Runs a model bigger than VRAM | ❌ | ❌ | ✅ — its one unique trick |
+| Apple Silicon | ✅ first-class | ❌ | ✅ (MLX) |
+| Quantization | GGUF, effortless | AWQ / GPTQ / INT8 / FP8 / GGUF | 4-bit / 8-bit (bitsandbytes) |
+| HTTP API | ✅ `/api/generate` | ✅ OpenAI-compatible | ❌ **library only — in-process** |
+| Disk per model | model size (~4 GB for a 7B q4) | model size | **120–140 GB** of layer shards for a 70B |
+| Machine usable while generating | ✅ | ✅ | ❌ disk + CPU saturated |
+| Project health | active | active | 21-month release gap; recent commits are automated star-chart refreshes |
+| **Use it when** | **default — easiest, hot-swaps models** | **you have a GPU and concurrent/batched load** | **experimental only; never for interactive Q&A** |
+
+```bash
+# Default: Ollama (or leave AURALYNQ_LLM__PROVIDER=auto)
+AURALYNQ_LLM__PROVIDER=ollama
+
+# vLLM — start the server yourself, Auralynq adopts whatever it serves.
+# Port 8001, not vLLM's own 8000, which collides with the API port.
+vllm serve Qwen/Qwen2.5-7B-Instruct --port 8001 --dtype half
+AURALYNQ_LLM__PROVIDER=vllm            # vllm_model empty => read from /v1/models
+
+# AirLLM — off by default, and deliberately never auto-selected.
+AURALYNQ_LLM__PROVIDER=airllm
+AURALYNQ_LLM__AIRLLM_ENABLED=true      # required second opt-in
+```
+
+**Why AirLLM is gated behind two opt-ins.** It streams transformer layers from disk one
+at a time, so a 70B model runs on ~4 GB of VRAM — but measured cost is **5–40 minutes
+per answer and 30–60 GB of disk reads each time**, and it ships no server, so it must
+run in-process. For a RAG system where someone is waiting on an answer, *running a
+right-sized model well* beats *running an oversized model badly*, which is what the
+existing GGUF and extractive links already do. It is selectable, honestly labelled, and
+never chosen for you.
+
+`GET /llm/backends` returns the live probe (endpoint, version, model count, speed class,
+and a specific reason + remediation for anything unavailable); `POST /llm/backend`
+switches the running process without rewriting config.
+
 ### Graceful degradation — the answer path never hard-fails
 
 Auralynq is **local-first by default**: with `AURALYNQ_LLM__PROVIDER=auto` it picks a
-local Ollama daemon if one is reachable, then a local GGUF model, and only then any
-configured hosted provider. A hosted API is **never auto-selected** — a
+local vLLM server if one is answering, then a local Ollama daemon, then a local GGUF
+model, and only then any configured hosted provider. A hosted API is **never
+auto-selected** — a
 `HUGGINGFACE_TOKEN` present for gated model *downloads* will never silently route your
 documents to a paid API. You opt in explicitly:
 
@@ -1227,7 +1341,7 @@ limit, network blip — degrades **down a chain** rather than erroring or droppi
 straight to quotation-only output:
 
 ```
-Hugging Face (hosted)  →  local Ollama  →  local GGUF SLM  →  extractive
+Hugging Face (hosted)  →  local vLLM  →  local Ollama  →  local GGUF SLM  →  extractive
 ```
 
 Each link is tried in order and the first one that answers wins, so a rate-limited

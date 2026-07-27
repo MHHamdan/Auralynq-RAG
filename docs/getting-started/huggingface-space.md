@@ -39,6 +39,13 @@ container.
 **Mode B — Full Docker Space (same image; flip the env vars below)**
 - Reads provider keys from HF Space **Secrets** (never Variables, never
   baked into the image).
+- **Recommended shape for a hosted demo: PRO-backed generation on free
+  hardware.** Set `AURALYNQ_LLM__PROVIDER=huggingface` plus a model, and put
+  `HUGGINGFACE_TOKEN` in Secrets. Generation then runs on HF Inference
+  Providers rather than in the container, so a large instruct model answers in
+  seconds on `cpu-basic` — no GPU tier to rent, and none of the
+  "hardware silently reverts to cpu-basic on rebuild" failure mode that bites
+  a GPU + local-Ollama Space. Inference bills to the token owner.
 - Optionally attaches persistent `/data` if the Space has persistent storage
   enabled; otherwise storage is ephemeral and reset on every Space restart —
   this will be stated plainly in the Space README so nobody mistakes it for
@@ -63,6 +70,23 @@ AURALYNQ_EMBEDDING__PROVIDER=hash
 AURALYNQ_VISUAL__ENABLED=true
 AURALYNQ_MODELFIT__ENABLED=true
 ```
+
+For Mode B with PRO-backed generation, override these (Variables) and add
+`HUGGINGFACE_TOKEN` as a **Secret**:
+
+```bash
+AURALYNQ_LLM__PROVIDER=huggingface
+AURALYNQ_LLM__MODEL=meta-llama/Llama-3.3-70B-Instruct
+AURALYNQ_SERVE__RATE_LIMIT_PER_MIN=10   # a public Space spends the owner's credits
+AURALYNQ_LLM__MAX_TOKENS=512
+```
+
+Scope that token to **inference only** ("Make calls to Inference Providers").
+A write-scoped token in a Space secret grants repo write access to everything
+the owner has if it ever leaks, which is a much larger blast radius than the
+inference spend you actually intend. If the quota is exhausted the documented
+fallback chain (Hugging Face → local vLLM → Ollama → GGUF → extractive) keeps
+the Space answering instead of erroring.
 
 All of these are real, typed `Settings` fields (`auralynq/config/settings.py`)
 read by the API at startup — `hf_space`, `demo_mode`, `public_demo`, and
@@ -94,9 +118,14 @@ set, split into Space Variables vs. Secrets.
 
 - Default target: **CPU basic** — the whole point of the lightweight mode is
   that it needs no GPU.
-- Upgrading to GPU: only meaningful if you also enable a real embedding/LLM
-  provider; document the specific hardware tier once ModelFit numbers exist
-  for it (no fabricated numbers — see `docs/benchmarks.md` once it exists).
+- **A GPU tier is only worth paying for if inference runs *inside* the
+  container.** If generation is routed to HF Inference Providers (Mode B
+  above), the container does retrieval and UI only, so `cpu-basic` is the
+  correct tier and a GPU is wasted spend.
+- If you do run a local model on GPU, note that HF **resets the hardware
+  request to `cpu-basic` on rebuild**; re-request the tier and verify
+  `runtime.hardware.current` afterwards, or the Space will quietly serve from
+  CPU at a fraction of the speed.
 
 ## Duplicating the Space
 
